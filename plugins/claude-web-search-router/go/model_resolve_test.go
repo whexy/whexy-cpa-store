@@ -29,6 +29,14 @@ func TestResolveAntigravityWebSearchTargetModelConfiguredWins(t *testing.T) {
 	}
 }
 
+func TestResolveAntigravityWebSearchTargetModelStaticDefault(t *testing.T) {
+	// With no configured model and an empty registry (the normal case in a dlopen'd
+	// plugin process), the static default applies.
+	if got := resolveAntigravityWebSearchTargetModel("", "claude-sonnet-4-6"); got != defaultAntigravityWebSearchModel {
+		t.Fatalf("default = %q, want %q", got, defaultAntigravityWebSearchModel)
+	}
+}
+
 func TestResolveAntigravityWebSearchTargetModelFromRegistry(t *testing.T) {
 	reg := registry.GetGlobalRegistry()
 	const clientID = "test-claude-web-search-router-antigravity"

@@ -44,7 +44,7 @@ plugins:
       enabled: true
       priority: 20
       route: fallback
-      antigravity_model: "" # empty: registry lookup, then first supports_web_search
+      antigravity_model: "" # empty: registry lookup, then first supports_web_search, else gemini-3.1-flash-lite
       codex_model: "gpt-5.6-luna"
       xai_model: "grok-4.3"
       tavily_api_keys:
