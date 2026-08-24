@@ -26,7 +26,8 @@ steps:
         from_secret: github_token
     commands:
       - apk add --no-cache github-cli
-      - gh release create "$CI_COMMIT_TAG" --repo "$CI_REPO" --title "$CI_COMMIT_TAG" --generate-notes dist/*.zip
+      # Idempotent so the pipeline can be re-run after a later step fails.
+      - gh release view "$CI_COMMIT_TAG" --repo "$CI_REPO" >/dev/null 2>&1 || gh release create "$CI_COMMIT_TAG" --repo "$CI_REPO" --title "$CI_COMMIT_TAG" --generate-notes dist/*.zip
   update-registry:
     image: alpine/git
     environment:
