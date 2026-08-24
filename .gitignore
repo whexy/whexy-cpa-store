@@ -1,3 +1,7 @@
 dist/
 *.so
 *.h
+
+.pre-commit-config.yaml
+.direnv/
+result

@@ -6,7 +6,6 @@
 when:
   - event: tag
     ref: refs/tags/v*
-
 steps:
   nix:
     # nixos/nix already contains git, which nix needs to read the workspace flake.
@@ -20,21 +19,19 @@ steps:
       - nix --option sandbox false build .#plugins --print-build-logs --out-link dist-out
       - mkdir -p dist && cp -L dist-out/*.zip dist/
       - cp -L dist-out/registry.json registry.json
-
   release:
     image: alpine:3.21
     environment:
       GH_TOKEN:
-        from_secret: GITHUB_TOKEN
+        from_secret: github_token
     commands:
       - apk add --no-cache github-cli
       - gh release create "$CI_COMMIT_TAG" --repo "$CI_REPO" --title "$CI_COMMIT_TAG" --generate-notes dist/*.zip
-
   update-registry:
     image: alpine/git
     environment:
       GITHUB_TOKEN:
-        from_secret: GITHUB_TOKEN
+        from_secret: github_token
     commands:
       - cp registry.json /tmp/registry.json
       - git config --global user.email "woodpecker-ci@users.noreply.github.com"
