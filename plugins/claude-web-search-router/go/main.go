@@ -270,7 +270,7 @@ func pluginRegistration() registration {
 					string(backendXAIWebSearch), string(backendTavily), string(backendDefaultProvider),
 				}, Description: "Backend for Claude Code web_search. fallback (default): antigravity → codex → xai → tavily."},
 				{Name: "antigravity_model", Type: pluginapi.ConfigFieldTypeString, Description: "Antigravity googleSearch model (empty: registry lookup, then first supports_web_search)."},
-				{Name: "codex_model", Type: pluginapi.ConfigFieldTypeString, Description: "Codex Responses model for web_search (empty defaults to gpt-5.4, never client Claude model)."},
+				{Name: "codex_model", Type: pluginapi.ConfigFieldTypeString, Description: "Codex Responses model for web_search (empty defaults to gpt-5.6-luna, never client Claude model)."},
 				{Name: "xai_model", Type: pluginapi.ConfigFieldTypeString, Description: "xAI Responses model with web_search (empty uses grok-4.3, not the client Claude model)."},
 				{Name: "default_provider", Type: pluginapi.ConfigFieldTypeString, Description: "Built-in provider key when route=default_provider."},
 				{Name: "default_provider_model", Type: pluginapi.ConfigFieldTypeString, Description: "Optional execution model on default_provider route."},

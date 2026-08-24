@@ -8,7 +8,7 @@ import (
 
 const (
 	// Default Codex model for Claude web_search → Codex Responses (override with codex_model).
-	defaultCodexWebSearchModel = "gpt-5.4-mini"
+	defaultCodexWebSearchModel = "gpt-5.6-luna"
 	// Default xAI model for server-side web_search per https://docs.x.ai/developers/tools/web-search
 	defaultXAIWebSearchModel = "grok-4.3"
 )

@@ -45,7 +45,7 @@ plugins:
       priority: 20
       route: fallback
       antigravity_model: "" # empty: registry lookup, then first supports_web_search
-      codex_model: "gpt-5.4-mini"
+      codex_model: "gpt-5.6-luna"
       xai_model: "grok-4.3"
       tavily_api_keys:
         - "tvly-xxxxxxxx"
@@ -93,7 +93,7 @@ plugins:
       enabled: true
       priority: 20
       route: codex_web_search
-      codex_model: "gpt-5.4-mini"
+      codex_model: "gpt-5.6-luna"
       require_web_search_only: true
 ```
 
@@ -161,7 +161,7 @@ plugins:
 | `priority`                                    | Host plugin order for ModelRouter (higher runs earlier; see main repo plugins docs)                            |
 | `route`                                       | `fallback` (default), `antigravity_google`, `codex_web_search`, `xai_web_search`, `tavily`, `default_provider` |
 | `antigravity_model`                           | Antigravity execution model; never the client Claude model name                                                |
-| `codex_model`                                 | Codex model; empty → `gpt-5.4-mini`                                                                            |
+| `codex_model`                                 | Codex model; empty → `gpt-5.6-luna`                                                                            |
 | `xai_model`                                   | xAI model; empty → `grok-4.3`                                                                                  |
 | `default_provider` / `default_provider_model` | Used when `route=default_provider`                                                                             |
 | `tavily_api_keys`                             | Required for `route=tavily` or fallback last step                                                              |
