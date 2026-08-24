@@ -40,5 +40,5 @@ steps:
       - git checkout main
       - cp /tmp/registry.json registry.json
       - git add registry.json
-      - git commit -m "chore(registry): update registry.json for $CI_COMMIT_TAG" || echo "registry unchanged"
+      - 'git commit -m "chore(registry): update registry.json for $CI_COMMIT_TAG" || echo "registry unchanged"'
       - git push "https://x-access-token:$GITHUB_TOKEN@github.com/$CI_REPO.git" HEAD:main
