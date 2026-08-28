@@ -4,6 +4,11 @@ Private plugin store registry for [CLIProxyAPI](https://github.com/router-for-me
 CLIProxyAPI's Management Center reads this repo's `registry.json` and installs
 plugins directly from this repo's GitHub release assets.
 
+## Plugins
+
+- `claude-web-search-router` — routes Claude Code built-in web searches across supported backends.
+- `usage-insights` — records per-call token usage, cache ratios, latency, failures, and quota headers, then estimates equivalent raw API spend from live models.dev pricing.
+
 ## How it works
 
 - `registry.json` is a CLIProxyAPI plugin store registry (`schema_version` 2,
