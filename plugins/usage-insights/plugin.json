@@ -3,7 +3,7 @@
   "name": "Usage Insights",
   "description": "Collects per-call token usage, cache ratios, latency, failures, and quota headers into a local JSONL ledger, then estimates raw API spend from live models.dev pricing.",
   "author": "Whexy",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "repository": "https://github.com/whexy/whexy-cpa-store",
   "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/usage-insights",
   "license": "MIT",
