@@ -54,7 +54,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const pluginVersion = "0.2.0"
+const (
+	pluginVersion = "0.2.1"
+	// Usage and Management API capabilities have used the same RPC shape since
+	// schema v1; advertising the SDK's latest schema would unnecessarily reject older hosts.
+	pluginSchemaVersion uint32 = 1
+)
 
 type envelope struct {
 	OK     bool            `json:"ok"`
@@ -219,7 +224,7 @@ func handleUsage(raw []byte) ([]byte, error) {
 
 func pluginRegistration() registration {
 	return registration{
-		SchemaVersion: pluginabi.SchemaVersion,
+		SchemaVersion: pluginSchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "Usage Insights",
 			Version:          pluginVersion,

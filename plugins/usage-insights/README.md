@@ -2,6 +2,8 @@
 
 A CLIProxyAPI usage plugin that records one local event for every completed model call and uses the live [models.dev](https://models.dev) catalog to estimate equivalent raw API spend.
 
+The plugin advertises RPC schema v1 because its Usage and Management API capabilities do not require newer stream or WebSocket schema features. This keeps it compatible with older CLIProxyAPI plugin hosts.
+
 ## Collected data
 
 Each JSONL event includes:

@@ -13,7 +13,7 @@ import (
 
 func TestPluginRegistrationDeclaresUsageAndManagement(t *testing.T) {
 	registration := pluginRegistration()
-	if registration.SchemaVersion != pluginabi.SchemaVersion || !registration.Capabilities.UsagePlugin || !registration.Capabilities.ManagementAPI {
+	if registration.SchemaVersion != pluginSchemaVersion || !registration.Capabilities.UsagePlugin || !registration.Capabilities.ManagementAPI {
 		t.Fatalf("registration = %+v", registration)
 	}
 	if registration.Metadata.Version != pluginVersion {
