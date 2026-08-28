@@ -30,8 +30,9 @@ plugins/<id>/
 nix/
   packages/plugins/  # builds all plugins -> zips + registry.json
 scripts/
-  dist.sh            # nix build + copy artifacts to ./dist and ./registry.json
-  check-tag-version.sh  # CI guard: plugin.json versions must match the tag
+  dist.sh            # nix build + copy all artifacts to ./dist and ./registry.json
+  dist-plugin.sh     # stage one plugin-scoped release plus regenerated registry
+  check-tag-version.sh  # CI guard for <plugin-id>-v<version> tags
 store.json           # GitHub "owner/repo" used for artifact download URLs
 ```
 
@@ -50,18 +51,26 @@ needed at build time.
 2. Add `plugins/<id>/plugin.json` (id must equal the directory name).
 3. Add `plugins/<id>/vendor-hash.nix` with `lib.fakeHash`, run
    `nix build .#plugins`, and paste the hash from the error message.
-4. Bump `version` in `plugin.json`, commit, and tag `v<version>`.
+4. Bump only that plugin's `version` in `plugin.json`, commit, and tag
+   `<plugin-id>-v<version>`.
 
 ## Release flow (Woodpecker CI)
 
-Tagging `v<version>` runs `.woodpecker.yaml`:
+Tagging `<plugin-id>-v<version>` runs `.woodpecker.yaml`:
 
 1. `nix flake check` — formatting (treefmt), lint (nil/statix), plugin build +
    unit tests.
-2. Tag/version guard, then `nix build .#plugins` produces the zips and a
-   regenerated `registry.json`.
-3. A GitHub release for the tag is created with the zips as assets.
+2. The tag/version guard validates only the selected plugin. Nix builds all
+   plugins to regenerate the complete registry, but stages only the selected
+   plugin's zip.
+3. A GitHub release for the plugin-scoped tag is created with that zip as its
+   asset.
 4. The regenerated `registry.json` is committed back to `main`.
+
+Plugin versions are independent. Changing one plugin does not require changing
+or rereleasing any other plugin. The older shared `v0.3.0` release remains the
+artifact source for plugins still at version `0.3.0`; later versions use
+plugin-scoped release tags.
 
 Required Woodpecker secret: `GITHUB_TOKEN` (repo scope, used by `gh release`
 and the registry push).
@@ -88,5 +97,6 @@ the config file and the plugins directory are writable volumes.
 nix develop            # go, zip, jq, gh + pre-commit hooks
 nix fmt                # treefmt: nixfmt, gofmt, shfmt, prettier
 nix flake check        # lint + build + test everything
-./scripts/dist.sh      # build and stage ./dist + registry.json
+./scripts/dist.sh      # build and stage all plugins + registry.json
+./scripts/dist-plugin.sh usage-insights-v0.3.1  # stage one release
 ```

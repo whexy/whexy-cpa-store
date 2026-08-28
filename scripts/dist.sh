@@ -9,5 +9,6 @@ rm -rf dist
 mkdir -p dist
 cp -L dist-out/*.zip dist/
 cp -L dist-out/registry.json registry.json
+nix fmt -- registry.json
 rm -f dist-out
 echo "==> dist/ and registry.json updated"

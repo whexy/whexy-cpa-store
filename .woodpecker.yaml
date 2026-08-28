@@ -1,11 +1,12 @@
-# Release pipeline, triggered by version tags (v*).
-# 1. nix: run flake checks (formatting, lint, plugin build + tests), verify the
-#    tag matches plugin.json versions, build release zips + registry.json.
-# 2. release: upload zips as GitHub release assets.
-# 3. update-registry: commit the generated registry.json back to main.
+# Release pipeline, triggered by plugin-scoped version tags:
+# <plugin-id>-v<version>.
+# 1. nix: run flake checks, verify the selected plugin version, build all
+#    plugins to regenerate the registry, and stage only the selected artifact.
+# 2. release: upload that plugin's zip as a GitHub release asset.
+# 3. update-registry: commit the regenerated registry.json back to main.
 when:
   - event: tag
-    ref: refs/tags/v*
+    ref: refs/tags/*-v*
 steps:
   nix:
     # nixos/nix already contains git, which nix needs to read the workspace flake.
@@ -15,10 +16,7 @@ steps:
       # The default Docker seccomp profile blocks the namespaces nix uses for
       # its build sandbox.
       - nix --option sandbox false flake check --print-build-logs
-      - nix --option sandbox false shell nixpkgs#jq -c ./scripts/check-tag-version.sh "${CI_COMMIT_TAG##v}"
-      - nix --option sandbox false build .#plugins --print-build-logs --out-link dist-out
-      - mkdir -p dist && cp -L dist-out/*.zip dist/
-      - cp -L dist-out/registry.json registry.json
+      - nix --option sandbox false shell nixpkgs#jq -c ./scripts/dist-plugin.sh "$CI_COMMIT_TAG"
   release:
     image: alpine:3.21
     environment:

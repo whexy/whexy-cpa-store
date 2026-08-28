@@ -9,6 +9,7 @@ let
   pluginsDir = flake + "/plugins";
   store = builtins.fromJSON (builtins.readFile (flake + "/store.json"));
   repo = store.repository;
+  legacyReleaseVersions = store.legacy_release_versions or [ ];
 
   entries = builtins.readDir pluginsDir;
   discoveredIds = builtins.filter (
@@ -114,7 +115,11 @@ pkgs.stdenvNoCC.mkDerivation {
         goarch="''${platform##*-}"
         sha256=$(sha256sum "$zipfile" | cut -d' ' -f1)
         size=$(stat -c %s "$zipfile")
-        url="https://github.com/${repo}/releases/download/v''${version}/''${base}.zip"
+        release_tag="$id-v$version"
+        case " ${lib.concatStringsSep " " legacyReleaseVersions} " in
+          *" $version "*) release_tag="v$version" ;;
+        esac
+        url="https://github.com/${repo}/releases/download/$release_tag/''${base}.zip"
         artifacts=$(jq \
           --arg goos "$goos" --arg goarch "$goarch" --arg url "$url" \
           --arg sha256 "$sha256" --argjson size "$size" \
