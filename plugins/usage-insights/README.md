@@ -62,14 +62,14 @@ The CSV endpoint exports the recent in-memory window configured by `recent_recor
 
 ### Per-model usage API
 
-`GET /v0/management/plugins/usage-insights/models` returns per-provider/per-model aggregates for a half-open UTC time period: `from <= requested_at < to`. `from` and `to` accept RFC 3339 timestamps or `YYYY-MM-DD`; omitted `from` means all recorded history and omitted `to` means the current time.
+`GET /v0/management/plugins/usage-insights/models` returns per-credential/per-provider/per-model aggregates for a half-open UTC time period: `from <= requested_at < to`. `from` and `to` accept RFC 3339 timestamps or `YYYY-MM-DD`; omitted `from` means all recorded history and omitted `to` means the current time.
 
 ```bash
 curl -H "Authorization: Bearer $MANAGEMENT_KEY" \
   'https://your-cliproxy.example/v0/management/plugins/usage-insights/models?from=2026-08-01&to=2026-09-01'
 ```
 
-Each model row includes `api_calls`, `input_tokens` (uncached input), `cache_read_tokens`, `cache_write_tokens`, `output_tokens`, `total_tokens`, `cache_hit_rate`, and `cost_usd`. `priced_api_calls` and `unpriced_api_calls` make partial cost coverage explicit. Provider is part of the grouping key so identically named models from different providers are not merged.
+Each model row includes `credential_id`, `provider`, `model`, `api_calls`, `input_tokens` (uncached input), `cache_read_tokens`, `cache_write_tokens`, `output_tokens`, `total_tokens`, `cache_hit_rate`, and `cost_usd`. `credential_id` is the stable runtime auth index when the host supplies it, allowing usage to be joined with `auth_files[].auth_index`; records without a credential are grouped under `"unknown"`. `priced_api_calls` and `unpriced_api_calls` make partial cost coverage explicit. Credential and provider are both part of the grouping key, so separate accounts and identically named models from different providers are not merged.
 
 ## Cache accounting
 

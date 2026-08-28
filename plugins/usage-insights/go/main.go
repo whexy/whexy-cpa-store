@@ -55,7 +55,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.2.2"
+	pluginVersion = "0.3.0"
 	// Usage and Management API capabilities have used the same RPC shape since
 	// schema v1; advertising the SDK's latest schema would unnecessarily reject older hosts.
 	pluginSchemaVersion uint32 = 1

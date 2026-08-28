@@ -114,6 +114,7 @@ type modelUsagePeriod struct {
 }
 
 type modelUsageRow struct {
+	CredentialID     string  `json:"credential_id"`
 	Provider         string  `json:"provider"`
 	Model            string  `json:"model"`
 	APICalls         int64   `json:"api_calls"`
@@ -137,8 +138,9 @@ type modelUsageReport struct {
 }
 
 type modelUsageKey struct {
-	Provider string
-	Model    string
+	CredentialID string
+	Provider     string
+	Model        string
 }
 
 type aggregate struct {
@@ -433,8 +435,9 @@ func (s *usageStore) modelUsage(from, to time.Time) (modelUsageReport, error) {
 		}
 		addAggregate(&totals, record)
 		key := modelUsageKey{
-			Provider: normalizedGroupKey(record.Provider),
-			Model:    normalizedGroupKey(record.Model),
+			CredentialID: normalizedGroupKey(record.CredentialID),
+			Provider:     normalizedGroupKey(record.Provider),
+			Model:        normalizedGroupKey(record.Model),
 		}
 		item := groups[key]
 		if item == nil {
@@ -447,10 +450,10 @@ func (s *usageStore) modelUsage(from, to time.Time) (modelUsageReport, error) {
 		return report, fmt.Errorf("read usage data for report: %w", errScan)
 	}
 
-	report.Totals = modelUsageRowFromAggregate("", "", totals)
+	report.Totals = modelUsageRowFromAggregate("", "", "", totals)
 	report.Models = make([]modelUsageRow, 0, len(groups))
 	for key, item := range groups {
-		report.Models = append(report.Models, modelUsageRowFromAggregate(key.Provider, key.Model, *item))
+		report.Models = append(report.Models, modelUsageRowFromAggregate(key.CredentialID, key.Provider, key.Model, *item))
 	}
 	sort.Slice(report.Models, func(i, j int) bool {
 		if report.Models[i].TotalTokens != report.Models[j].TotalTokens {
@@ -462,14 +465,18 @@ func (s *usageStore) modelUsage(from, to time.Time) (modelUsageReport, error) {
 		if report.Models[i].Provider != report.Models[j].Provider {
 			return report.Models[i].Provider < report.Models[j].Provider
 		}
+		if report.Models[i].CredentialID != report.Models[j].CredentialID {
+			return report.Models[i].CredentialID < report.Models[j].CredentialID
+		}
 		return report.Models[i].Model < report.Models[j].Model
 	})
 	return report, nil
 }
 
-func modelUsageRowFromAggregate(provider, model string, item aggregate) modelUsageRow {
+func modelUsageRowFromAggregate(credentialID, provider, model string, item aggregate) modelUsageRow {
 	result := finalizedSummary(item)
 	return modelUsageRow{
+		CredentialID:     credentialID,
 		Provider:         provider,
 		Model:            model,
 		APICalls:         result.Requests,

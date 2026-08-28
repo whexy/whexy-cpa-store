@@ -114,11 +114,12 @@ func TestUsageStorePersistsAndReloads(t *testing.T) {
 	}
 }
 
-func TestModelUsageAggregatesByProviderAndModelForPeriod(t *testing.T) {
+func TestModelUsageAggregatesByCredentialProviderAndModelForPeriod(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "usage.jsonl")
 	records := []persistedRecord{
 		{
 			RequestedAt:      time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC),
+			CredentialID:     "credential-b",
 			Provider:         "codex",
 			Model:            "shared-model",
 			UncachedInput:    60,
@@ -127,6 +128,15 @@ func TestModelUsageAggregatesByProviderAndModelForPeriod(t *testing.T) {
 			OutputTokens:     20,
 			TotalTokens:      130,
 			APICost:          &pricingEstimate{TotalCostUSD: 0.25},
+		},
+		{
+			RequestedAt:   time.Date(2026, 8, 27, 12, 30, 0, 0, time.UTC),
+			CredentialID:  "credential-a",
+			Provider:      "codex",
+			Model:         "shared-model",
+			UncachedInput: 10,
+			OutputTokens:  5,
+			TotalTokens:   15,
 		},
 		{
 			RequestedAt:      time.Date(2026, 8, 27, 13, 0, 0, 0, time.UTC),
@@ -174,20 +184,23 @@ func TestModelUsageAggregatesByProviderAndModelForPeriod(t *testing.T) {
 	if errReport != nil {
 		t.Fatal(errReport)
 	}
-	if report.Totals.APICalls != 2 || report.Totals.InputTokens != 160 || report.Totals.CacheReadTokens != 90 || report.Totals.CacheWriteTokens != 30 || report.Totals.OutputTokens != 45 || report.Totals.TotalTokens != 325 {
+	if report.Totals.APICalls != 3 || report.Totals.InputTokens != 170 || report.Totals.CacheReadTokens != 90 || report.Totals.CacheWriteTokens != 30 || report.Totals.OutputTokens != 50 || report.Totals.TotalTokens != 340 {
 		t.Fatalf("totals = %+v", report.Totals)
 	}
-	if report.Totals.CacheHitRate != float64(90)/280 || report.Totals.CostUSD != 0.25 || report.Totals.PricedAPICalls != 1 || report.Totals.UnpricedAPICalls != 1 {
+	if report.Totals.CacheHitRate != float64(90)/290 || report.Totals.CostUSD != 0.25 || report.Totals.PricedAPICalls != 1 || report.Totals.UnpricedAPICalls != 2 {
 		t.Fatalf("totals pricing/cache = %+v", report.Totals)
 	}
-	if len(report.Models) != 2 {
+	if len(report.Models) != 3 {
 		t.Fatalf("models = %+v", report.Models)
 	}
-	if report.Models[0].Provider != "claude" || report.Models[0].Model != "shared-model" || report.Models[0].APICalls != 1 || report.Models[0].FailedAPICalls != 1 {
+	if report.Models[0].CredentialID != "unknown" || report.Models[0].Provider != "claude" || report.Models[0].Model != "shared-model" || report.Models[0].FailedAPICalls != 1 {
 		t.Fatalf("first model = %+v", report.Models[0])
 	}
-	if report.Models[1].Provider != "codex" || report.Models[1].CostUSD != 0.25 {
+	if report.Models[1].CredentialID != "credential-b" || report.Models[1].Provider != "codex" || report.Models[1].CostUSD != 0.25 {
 		t.Fatalf("second model = %+v", report.Models[1])
+	}
+	if report.Models[2].CredentialID != "credential-a" || report.Models[2].Provider != "codex" || report.Models[2].TotalTokens != 15 {
+		t.Fatalf("third model = %+v", report.Models[2])
 	}
 }
 
