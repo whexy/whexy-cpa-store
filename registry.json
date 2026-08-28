@@ -6,19 +6,23 @@
       "name": "Claude Web Search Router",
       "description": "ModelRouter + executor for Claude Code built-in web_search requests. Orchestrates fallback across antigravity googleSearch, codex, xai, and tavily backends.",
       "author": "router-for-me",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "repository": "https://github.com/router-for-me/CLIProxyAPI",
       "homepage": "https://github.com/whexy/whexy-cpa-store",
       "license": "MIT",
-      "tags": ["claude", "web-search", "model-router"],
+      "tags": [
+        "claude",
+        "web-search",
+        "model-router"
+      ],
       "install": {
         "type": "direct",
         "artifacts": [
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://github.com/whexy/whexy-cpa-store/releases/download/v0.2.2/claude-web-search-router-v0.2.2-linux-amd64.zip",
-            "sha256": "e472d4543b68ad19b2d674c2cd79f63cf0d0d8f3d6987585aa1bf035f604ba79",
+            "url": "https://github.com/whexy/whexy-cpa-store/releases/download/v0.3.0/claude-web-search-router-v0.3.0-linux-amd64.zip",
+            "sha256": "c45489bcc854b4807a0bb8a94be2267262842a44f40efb94b9bf5148efe58dec",
             "size": 5642917
           }
         ]
@@ -29,20 +33,25 @@
       "name": "Usage Insights",
       "description": "Collects per-call token usage, cache ratios, latency, failures, and quota headers into a local JSONL ledger, then estimates raw API spend from live models.dev pricing.",
       "author": "Whexy",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "repository": "https://github.com/whexy/whexy-cpa-store",
       "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/usage-insights",
       "license": "MIT",
-      "tags": ["usage", "tokens", "cache", "analytics"],
+      "tags": [
+        "usage",
+        "tokens",
+        "cache",
+        "analytics"
+      ],
       "install": {
         "type": "direct",
         "artifacts": [
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://github.com/whexy/whexy-cpa-store/releases/download/v0.2.2/usage-insights-v0.2.2-linux-amd64.zip",
-            "sha256": "85a38a69ce7fd4ac4fbf4cc44545b5ece580d735103aedca3d9f00dee92e4940",
-            "size": 6617298
+            "url": "https://github.com/whexy/whexy-cpa-store/releases/download/v0.3.0/usage-insights-v0.3.0-linux-amd64.zip",
+            "sha256": "3a317a410108f9f140db4bc5aabf7ca20c0dabe0b225cae9c428a17bf2b78e0a",
+            "size": 6617666
           }
         ]
       }
