@@ -107,6 +107,40 @@ type snapshot struct {
 	Recent       []persistedRecord `json:"recent"`
 }
 
+type modelUsagePeriod struct {
+	From         time.Time `json:"from"`
+	To           time.Time `json:"to"`
+	EndExclusive bool      `json:"end_exclusive"`
+}
+
+type modelUsageRow struct {
+	Provider         string  `json:"provider"`
+	Model            string  `json:"model"`
+	APICalls         int64   `json:"api_calls"`
+	FailedAPICalls   int64   `json:"failed_api_calls"`
+	InputTokens      int64   `json:"input_tokens"`
+	CacheReadTokens  int64   `json:"cache_read_tokens"`
+	CacheWriteTokens int64   `json:"cache_write_tokens"`
+	OutputTokens     int64   `json:"output_tokens"`
+	TotalTokens      int64   `json:"total_tokens"`
+	CacheHitRate     float64 `json:"cache_hit_rate"`
+	CostUSD          float64 `json:"cost_usd"`
+	PricedAPICalls   int64   `json:"priced_api_calls"`
+	UnpricedAPICalls int64   `json:"unpriced_api_calls"`
+}
+
+type modelUsageReport struct {
+	GeneratedAt time.Time        `json:"generated_at"`
+	Period      modelUsagePeriod `json:"period"`
+	Totals      modelUsageRow    `json:"totals"`
+	Models      []modelUsageRow  `json:"models"`
+}
+
+type modelUsageKey struct {
+	Provider string
+	Model    string
+}
+
 type aggregate struct {
 	summary
 	latencyTotal float64
@@ -359,6 +393,112 @@ func (s *usageStore) snapshot() snapshot {
 		ByCredential: groupSummaries(s.byCredential),
 		Recent:       reverseRecords(s.recent),
 	}
+}
+
+func (s *usageStore) modelUsage(from, to time.Time) (modelUsageReport, error) {
+	report := modelUsageReport{
+		GeneratedAt: time.Now().UTC(),
+		Period: modelUsagePeriod{
+			From:         from.UTC(),
+			To:           to.UTC(),
+			EndExclusive: true,
+		},
+	}
+	if s == nil {
+		return report, nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	file, errOpen := os.Open(s.path)
+	if errOpen != nil {
+		return report, fmt.Errorf("open usage data for report: %w", errOpen)
+	}
+	defer func() { _ = file.Close() }()
+
+	var totals aggregate
+	groups := make(map[modelUsageKey]*aggregate)
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	line := 0
+	for scanner.Scan() {
+		line++
+		var record persistedRecord
+		if errDecode := json.Unmarshal(scanner.Bytes(), &record); errDecode != nil {
+			return report, fmt.Errorf("decode usage data line %d: %w", line, errDecode)
+		}
+		requestedAt := recordRequestedAt(record)
+		if requestedAt.Before(from) || !requestedAt.Before(to) {
+			continue
+		}
+		addAggregate(&totals, record)
+		key := modelUsageKey{
+			Provider: normalizedGroupKey(record.Provider),
+			Model:    normalizedGroupKey(record.Model),
+		}
+		item := groups[key]
+		if item == nil {
+			item = &aggregate{}
+			groups[key] = item
+		}
+		addAggregate(item, record)
+	}
+	if errScan := scanner.Err(); errScan != nil {
+		return report, fmt.Errorf("read usage data for report: %w", errScan)
+	}
+
+	report.Totals = modelUsageRowFromAggregate("", "", totals)
+	report.Models = make([]modelUsageRow, 0, len(groups))
+	for key, item := range groups {
+		report.Models = append(report.Models, modelUsageRowFromAggregate(key.Provider, key.Model, *item))
+	}
+	sort.Slice(report.Models, func(i, j int) bool {
+		if report.Models[i].TotalTokens != report.Models[j].TotalTokens {
+			return report.Models[i].TotalTokens > report.Models[j].TotalTokens
+		}
+		if report.Models[i].APICalls != report.Models[j].APICalls {
+			return report.Models[i].APICalls > report.Models[j].APICalls
+		}
+		if report.Models[i].Provider != report.Models[j].Provider {
+			return report.Models[i].Provider < report.Models[j].Provider
+		}
+		return report.Models[i].Model < report.Models[j].Model
+	})
+	return report, nil
+}
+
+func modelUsageRowFromAggregate(provider, model string, item aggregate) modelUsageRow {
+	result := finalizedSummary(item)
+	return modelUsageRow{
+		Provider:         provider,
+		Model:            model,
+		APICalls:         result.Requests,
+		FailedAPICalls:   result.FailedRequests,
+		InputTokens:      result.UncachedInput,
+		CacheReadTokens:  result.CacheReadTokens,
+		CacheWriteTokens: result.CacheWriteTokens,
+		OutputTokens:     result.OutputTokens,
+		TotalTokens:      result.TotalTokens,
+		CacheHitRate:     result.CacheReadRatio,
+		CostUSD:          result.EstimatedAPICostUSD,
+		PricedAPICalls:   result.PricedRequests,
+		UnpricedAPICalls: result.UnpricedRequests,
+	}
+}
+
+func recordRequestedAt(record persistedRecord) time.Time {
+	if !record.RequestedAt.IsZero() {
+		return record.RequestedAt
+	}
+	return record.RecordedAt
+}
+
+func normalizedGroupKey(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "unknown"
+	}
+	return value
 }
 
 func groupSummaries(groups map[string]*aggregate) []groupSummary {

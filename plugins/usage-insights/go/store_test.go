@@ -114,6 +114,83 @@ func TestUsageStorePersistsAndReloads(t *testing.T) {
 	}
 }
 
+func TestModelUsageAggregatesByProviderAndModelForPeriod(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	records := []persistedRecord{
+		{
+			RequestedAt:      time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC),
+			Provider:         "codex",
+			Model:            "shared-model",
+			UncachedInput:    60,
+			CacheReadTokens:  40,
+			CacheWriteTokens: 10,
+			OutputTokens:     20,
+			TotalTokens:      130,
+			APICost:          &pricingEstimate{TotalCostUSD: 0.25},
+		},
+		{
+			RequestedAt:      time.Date(2026, 8, 27, 13, 0, 0, 0, time.UTC),
+			Provider:         "claude",
+			Model:            "shared-model",
+			UncachedInput:    100,
+			CacheReadTokens:  50,
+			CacheWriteTokens: 20,
+			OutputTokens:     25,
+			TotalTokens:      195,
+			Failed:           true,
+		},
+		{
+			RequestedAt:   time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
+			Provider:      "codex",
+			Model:         "outside-period",
+			UncachedInput: 1000,
+			TotalTokens:   1000,
+		},
+	}
+	file, errCreate := os.Create(path)
+	if errCreate != nil {
+		t.Fatal(errCreate)
+	}
+	encoder := json.NewEncoder(file)
+	for _, record := range records {
+		if errEncode := encoder.Encode(record); errEncode != nil {
+			t.Fatal(errEncode)
+		}
+	}
+	if errClose := file.Close(); errClose != nil {
+		t.Fatal(errClose)
+	}
+
+	store, errStore := newUsageStore(pluginConfig{Enabled: true, DataFile: path, PricingEnabled: false})
+	if errStore != nil {
+		t.Fatal(errStore)
+	}
+	defer func() { _ = store.close() }()
+
+	report, errReport := store.modelUsage(
+		time.Date(2026, 8, 27, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
+	)
+	if errReport != nil {
+		t.Fatal(errReport)
+	}
+	if report.Totals.APICalls != 2 || report.Totals.InputTokens != 160 || report.Totals.CacheReadTokens != 90 || report.Totals.CacheWriteTokens != 30 || report.Totals.OutputTokens != 45 || report.Totals.TotalTokens != 325 {
+		t.Fatalf("totals = %+v", report.Totals)
+	}
+	if report.Totals.CacheHitRate != float64(90)/280 || report.Totals.CostUSD != 0.25 || report.Totals.PricedAPICalls != 1 || report.Totals.UnpricedAPICalls != 1 {
+		t.Fatalf("totals pricing/cache = %+v", report.Totals)
+	}
+	if len(report.Models) != 2 {
+		t.Fatalf("models = %+v", report.Models)
+	}
+	if report.Models[0].Provider != "claude" || report.Models[0].Model != "shared-model" || report.Models[0].APICalls != 1 || report.Models[0].FailedAPICalls != 1 {
+		t.Fatalf("first model = %+v", report.Models[0])
+	}
+	if report.Models[1].Provider != "codex" || report.Models[1].CostUSD != 0.25 {
+		t.Fatalf("second model = %+v", report.Models[1])
+	}
+}
+
 func TestNormalizeUsageRecordUnknownCachedTokensRemainUnclassified(t *testing.T) {
 	record := normalizeUsageRecord(pluginapi.UsageRecord{
 		Provider: "custom-provider",

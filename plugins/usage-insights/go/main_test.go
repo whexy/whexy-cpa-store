@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
@@ -52,13 +54,15 @@ func TestHandleManagementSummaryAndDashboard(t *testing.T) {
 
 	for _, testCase := range []struct {
 		path        string
+		query       url.Values
 		contentType string
 		contains    string
 	}{
 		{path: "/v0/management/plugins/usage-insights/summary", contentType: "application/json", contains: `"requests": 1`},
+		{path: "/v0/management/plugins/usage-insights/models", query: url.Values{"from": {"2026-01-01"}, "to": {"2027-01-01"}}, contentType: "application/json", contains: `"api_calls": 1`},
 		{path: "/v0/management/plugins/usage-insights/dashboard", contentType: "text/html", contains: "Usage Insights"},
 	} {
-		request, errRequest := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: testCase.path})
+		request, errRequest := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: testCase.path, Query: testCase.query})
 		if errRequest != nil {
 			t.Fatal(errRequest)
 		}
@@ -77,6 +81,23 @@ func TestHandleManagementSummaryAndDashboard(t *testing.T) {
 		if !strings.Contains(response.Headers.Get("Content-Type"), testCase.contentType) || !strings.Contains(string(response.Body), testCase.contains) {
 			t.Fatalf("response for %s = headers=%v body=%s", testCase.path, response.Headers, response.Body)
 		}
+	}
+}
+
+func TestModelUsagePeriodFromQuery(t *testing.T) {
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	from, to, errPeriod := modelUsagePeriodFromQuery(url.Values{
+		"from": {"2026-08-01"},
+		"to":   {"2026-08-28T12:00:00-05:00"},
+	}, now)
+	if errPeriod != nil {
+		t.Fatal(errPeriod)
+	}
+	if !from.Equal(time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)) || !to.Equal(time.Date(2026, 8, 28, 17, 0, 0, 0, time.UTC)) {
+		t.Fatalf("period = %s to %s", from, to)
+	}
+	if _, _, errInvalid := modelUsagePeriodFromQuery(url.Values{"from": {"2026-08-28"}, "to": {"2026-08-01"}}, now); errInvalid == nil {
+		t.Fatal("expected invalid period error")
 	}
 }
 

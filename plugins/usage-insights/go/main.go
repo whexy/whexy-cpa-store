@@ -252,6 +252,7 @@ func managementRegistration() managementRegistrationResponse {
 		Routes: []pluginapi.ManagementRoute{
 			{Method: http.MethodGet, Path: "/plugins/usage-insights/dashboard"},
 			{Method: http.MethodGet, Path: "/plugins/usage-insights/summary"},
+			{Method: http.MethodGet, Path: "/plugins/usage-insights/models"},
 			{Method: http.MethodGet, Path: "/plugins/usage-insights/export.csv"},
 			{Method: http.MethodPost, Path: "/plugins/usage-insights/pricing/refresh"},
 		},
@@ -301,6 +302,26 @@ func handleManagement(raw []byte) ([]byte, error) {
 			Body:       append(body, '\n'),
 		})
 	}
+	if strings.HasSuffix(request.Path, "/models") {
+		from, to, errPeriod := modelUsagePeriodFromQuery(request.Query, time.Now().UTC())
+		if errPeriod != nil {
+			return managementJSONError(http.StatusBadRequest, errPeriod.Error())
+		}
+		report, errReport := store.modelUsage(from, to)
+		if errReport != nil {
+			return nil, errReport
+		}
+		body, errMarshal := json.MarshalIndent(report, "", "  ")
+		if errMarshal != nil {
+			return nil, errMarshal
+		}
+		return okEnvelope(pluginapi.ManagementResponse{
+			StatusCode: http.StatusOK,
+			Headers:    http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
+			Body:       append(body, '\n'),
+		})
+	}
+
 	snapshot := store.snapshot()
 	switch {
 	case strings.HasSuffix(request.Path, "/dashboard"):
@@ -339,6 +360,58 @@ func handleManagement(raw []byte) ([]byte, error) {
 	default:
 		return okEnvelope(pluginapi.ManagementResponse{StatusCode: http.StatusNotFound, Body: []byte("not found\n")})
 	}
+}
+
+func modelUsagePeriodFromQuery(query map[string][]string, now time.Time) (time.Time, time.Time, error) {
+	from := time.Unix(0, 0).UTC()
+	to := now.UTC()
+	var err error
+	if value := strings.TrimSpace(firstQueryValue(query, "from")); value != "" {
+		from, err = parseReportTime(value)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid from: %w", err)
+		}
+	}
+	if value := strings.TrimSpace(firstQueryValue(query, "to")); value != "" {
+		to, err = parseReportTime(value)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid to: %w", err)
+		}
+	}
+	if !from.Before(to) {
+		return time.Time{}, time.Time{}, fmt.Errorf("from must be earlier than to")
+	}
+	return from, to, nil
+}
+
+func firstQueryValue(query map[string][]string, key string) string {
+	values := query[key]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func parseReportTime(value string) (time.Time, error) {
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed.UTC(), nil
+	}
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		return parsed.UTC(), nil
+	}
+	return time.Time{}, fmt.Errorf("use RFC3339 or YYYY-MM-DD")
+}
+
+func managementJSONError(statusCode int, message string) ([]byte, error) {
+	body, errMarshal := json.Marshal(map[string]string{"error": message})
+	if errMarshal != nil {
+		return nil, errMarshal
+	}
+	return okEnvelope(pluginapi.ManagementResponse{
+		StatusCode: statusCode,
+		Headers:    http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
+		Body:       append(body, '\n'),
+	})
 }
 
 func renderCSV(records []persistedRecord) ([]byte, error) {

@@ -54,10 +54,22 @@ The dashboard shows overall and grouped totals plus recent model calls. Open it 
 
 - `GET /v0/management/plugins/usage-insights/dashboard`
 - `GET /v0/management/plugins/usage-insights/summary`
+- `GET /v0/management/plugins/usage-insights/models?from=<time>&to=<time>`
 - `GET /v0/management/plugins/usage-insights/export.csv`
 - `POST /v0/management/plugins/usage-insights/pricing/refresh`
 
 The CSV endpoint exports the recent in-memory window configured by `recent_records`. The JSON summary aggregates the entire JSONL ledger loaded at startup.
+
+### Per-model usage API
+
+`GET /v0/management/plugins/usage-insights/models` returns per-provider/per-model aggregates for a half-open UTC time period: `from <= requested_at < to`. `from` and `to` accept RFC 3339 timestamps or `YYYY-MM-DD`; omitted `from` means all recorded history and omitted `to` means the current time.
+
+```bash
+curl -H "Authorization: Bearer $MANAGEMENT_KEY" \
+  'https://your-cliproxy.example/v0/management/plugins/usage-insights/models?from=2026-08-01&to=2026-09-01'
+```
+
+Each model row includes `api_calls`, `input_tokens` (uncached input), `cache_read_tokens`, `cache_write_tokens`, `output_tokens`, `total_tokens`, `cache_hit_rate`, and `cost_usd`. `priced_api_calls` and `unpriced_api_calls` make partial cost coverage explicit. Provider is part of the grouping key so identically named models from different providers are not merged.
 
 ## Cache accounting
 
