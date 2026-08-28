@@ -3,7 +3,7 @@
   "name": "Claude Web Search Router",
   "description": "ModelRouter + executor for Claude Code built-in web_search requests. Orchestrates fallback across antigravity googleSearch, codex, xai, and tavily backends.",
   "author": "router-for-me",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "repository": "https://github.com/router-for-me/CLIProxyAPI",
   "homepage": "https://github.com/whexy/whexy-cpa-store",
   "license": "MIT",
