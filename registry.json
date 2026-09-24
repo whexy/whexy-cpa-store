@@ -25,6 +25,29 @@
       }
     },
     {
+      "id": "disable-response-api",
+      "name": "Disable Response API",
+      "description": "Rejects OpenAI Responses API requests carrying the WHEXY_CPA_DISABLE_RESPONSE_API header with an empty 404, so clients fall back to another API.",
+      "author": "Whexy",
+      "version": "0.1.0",
+      "repository": "https://github.com/whexy/whexy-cpa-store",
+      "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/disable-response-api",
+      "license": "MIT",
+      "tags": ["openai", "responses", "interceptor"],
+      "install": {
+        "type": "direct",
+        "artifacts": [
+          {
+            "goos": "linux",
+            "goarch": "amd64",
+            "url": "https://github.com/whexy/whexy-cpa-store/releases/download/disable-response-api-v0.1.0/disable-response-api-v0.1.0-linux-amd64.zip",
+            "sha256": "3c24a176e54ec35b0b6c04abf19d37f89e53939514a41a94901bdca292664a85",
+            "size": 3226167
+          }
+        ]
+      }
+    },
+    {
       "id": "usage-insights",
       "name": "Usage Insights",
       "description": "Collects per-call token usage, cache ratios, latency, failures, and quota headers into a local JSONL ledger, then estimates raw API spend from live models.dev pricing.",
