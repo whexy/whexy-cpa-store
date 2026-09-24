@@ -1,0 +1,11 @@
+{
+  "id": "disable-response-api",
+  "name": "Disable Response API",
+  "description": "Rejects OpenAI Responses API requests carrying the WHEXY_CPA_DISABLE_RESPONSE_API header with an empty 404, so clients fall back to another API.",
+  "author": "Whexy",
+  "version": "0.1.0",
+  "repository": "https://github.com/whexy/whexy-cpa-store",
+  "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/disable-response-api",
+  "license": "MIT",
+  "tags": ["openai", "responses", "interceptor"]
+}
