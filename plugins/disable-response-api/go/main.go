@@ -41,14 +41,16 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"gopkg.in/yaml.v3"
 )
 
 const (
-	pluginVersion = "0.1.0"
+	pluginVersion = "0.2.0"
 	// The request interceptor capability has used the same RPC shape since
 	// schema v1; advertising the SDK's latest schema would unnecessarily reject older hosts.
 	pluginSchemaVersion uint32 = 1
@@ -68,6 +70,16 @@ type envelopeError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
+
+type lifecycleRequest struct {
+	ConfigYAML []byte `json:"config_yaml"`
+}
+
+type pluginConfig struct {
+	APIKeys []string `yaml:"api_keys"`
+}
+
+var blockedAPIKeys atomic.Pointer[map[string]struct{}]
 
 type registration struct {
 	SchemaVersion uint32                 `json:"schema_version"`
@@ -129,6 +141,9 @@ func cliproxyPluginShutdown() {}
 func handleMethod(method string, request []byte) ([]byte, error) {
 	switch method {
 	case pluginabi.MethodPluginRegister, pluginabi.MethodPluginReconfigure:
+		if errConfigure := configure(request); errConfigure != nil {
+			return nil, errConfigure
+		}
 		return okEnvelope(pluginRegistration())
 	case pluginabi.MethodPluginQuiesce:
 		return okEnvelope(struct{}{})
@@ -149,9 +164,35 @@ func pluginRegistration() registration {
 			Version:          pluginVersion,
 			Author:           "Whexy",
 			GitHubRepository: "https://github.com/whexy/whexy-cpa-store",
+			ConfigFields: []pluginapi.ConfigField{
+				{Name: "api_keys", Type: pluginapi.ConfigFieldTypeArray, Description: "Client API keys whose OpenAI Responses API requests are rejected with an empty 404."},
+			},
 		},
 		Capabilities: registrationCapability{RequestInterceptor: true},
 	}
+}
+
+func configure(raw []byte) error {
+	var request lifecycleRequest
+	if len(raw) > 0 {
+		if errUnmarshal := json.Unmarshal(raw, &request); errUnmarshal != nil {
+			return fmt.Errorf("decode lifecycle request: %w", errUnmarshal)
+		}
+	}
+	var cfg pluginConfig
+	if len(request.ConfigYAML) > 0 {
+		if errUnmarshal := yaml.Unmarshal(request.ConfigYAML, &cfg); errUnmarshal != nil {
+			return fmt.Errorf("decode plugin config: %w", errUnmarshal)
+		}
+	}
+	keys := make(map[string]struct{}, len(cfg.APIKeys))
+	for _, key := range cfg.APIKeys {
+		if key = strings.TrimSpace(key); key != "" {
+			keys[key] = struct{}{}
+		}
+	}
+	blockedAPIKeys.Store(&keys)
+	return nil
 }
 
 func interceptBeforeAuth(raw []byte) ([]byte, error) {
@@ -163,7 +204,7 @@ func interceptBeforeAuth(raw []byte) ([]byte, error) {
 }
 
 func decide(req pluginapi.RequestInterceptRequest) pluginapi.RequestInterceptResponse {
-	if req.SourceFormat != openAIResponsesFormat || !hasDisableHeader(req.Headers) {
+	if req.SourceFormat != openAIResponsesFormat || (!hasDisableHeader(req.Headers) && !usesBlockedAPIKey(req.Headers)) {
 		return pluginapi.RequestInterceptResponse{}
 	}
 	return pluginapi.RequestInterceptResponse{
@@ -181,6 +222,34 @@ func hasDisableHeader(headers http.Header) bool {
 		}
 	}
 	return false
+}
+
+// Mirrors the header sources of CLIProxyAPI's config API key provider. Keys sent
+// as query parameters are not visible to request interceptors.
+func usesBlockedAPIKey(headers http.Header) bool {
+	keys := blockedAPIKeys.Load()
+	if keys == nil || len(*keys) == 0 {
+		return false
+	}
+	candidates := []string{
+		bearerToken(headers.Get("Authorization")),
+		headers.Get("X-Api-Key"),
+		headers.Get("X-Goog-Api-Key"),
+	}
+	for _, candidate := range candidates {
+		if _, ok := (*keys)[candidate]; ok && candidate != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func bearerToken(header string) string {
+	scheme, token, ok := strings.Cut(header, " ")
+	if !ok || !strings.EqualFold(scheme, "bearer") {
+		return header
+	}
+	return strings.TrimSpace(token)
 }
 
 func okEnvelope(value any) ([]byte, error) {
