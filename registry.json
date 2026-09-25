@@ -27,9 +27,9 @@
     {
       "id": "disable-response-api",
       "name": "Disable Response API",
-      "description": "Rejects OpenAI Responses API requests carrying the WHEXY_CPA_DISABLE_RESPONSE_API header with an empty 404, so clients fall back to another API.",
+      "description": "Rejects OpenAI Responses API requests from configured client API keys, or carrying the WHEXY_CPA_DISABLE_RESPONSE_API header, with an empty 404 so clients fall back to Chat Completions.",
       "author": "Whexy",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "repository": "https://github.com/whexy/whexy-cpa-store",
       "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/disable-response-api",
       "license": "MIT",
@@ -40,9 +40,9 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://github.com/whexy/whexy-cpa-store/releases/download/disable-response-api-v0.1.0/disable-response-api-v0.1.0-linux-amd64.zip",
-            "sha256": "3c24a176e54ec35b0b6c04abf19d37f89e53939514a41a94901bdca292664a85",
-            "size": 3226167
+            "url": "https://github.com/whexy/whexy-cpa-store/releases/download/disable-response-api-v0.2.0/disable-response-api-v0.2.0-linux-amd64.zip",
+            "sha256": "3a72f5869876c53d239b6142f5f1434d7637d4e4c96d828ff6f52a6bddc901af",
+            "size": 3602130
           }
         ]
       }
