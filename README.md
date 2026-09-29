@@ -8,6 +8,7 @@ plugins directly from this repo's GitHub release assets.
 
 - `claude-web-search-router` — routes Claude Code built-in web searches across supported backends.
 - `disable-response-api` — returns an empty 404 for OpenAI Responses API requests from configured client API keys or carrying the `WHEXY_CPA_DISABLE_RESPONSE_API` header, so clients fall back to Chat Completions.
+- `session-credential-guard` — binds opted-in client sessions to their selected credential and turns any credential switch into a 409 migration the client must acknowledge before the session moves.
 - `usage-insights` — records per-call token usage, cache ratios, latency, failures, and quota headers, then estimates equivalent raw API spend from live models.dev pricing.
 
 ## How it works

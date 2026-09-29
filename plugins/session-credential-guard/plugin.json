@@ -1,0 +1,11 @@
+{
+  "id": "session-credential-guard",
+  "name": "Session Credential Guard",
+  "description": "Binds opted-in client sessions to the credential CLIProxyAPI selected for them and turns any later credential switch into an explicit 409 migration the client must acknowledge.",
+  "author": "Whexy",
+  "version": "0.1.0",
+  "repository": "https://github.com/whexy/whexy-cpa-store",
+  "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/session-credential-guard",
+  "license": "MIT",
+  "tags": ["session", "credential", "affinity", "interceptor"]
+}
