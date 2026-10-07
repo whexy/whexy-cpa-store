@@ -64,8 +64,8 @@
             "goos": "linux",
             "goarch": "amd64",
             "url": "https://github.com/whexy/whexy-cpa-store/releases/download/model-capabilities-v0.1.0/model-capabilities-v0.1.0-linux-amd64.zip",
-            "sha256": "18b94c3997ef4a19c74a0a4148851b029d0084830f7975fe75f4c29e23907194",
-            "size": 3641585
+            "sha256": "8e703aea3699bb802b0f022024855925388098fd3cc96eba0f2d82e39d7a60fe",
+            "size": 3641555
           }
         ]
       }
