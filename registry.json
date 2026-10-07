@@ -48,29 +48,6 @@
       }
     },
     {
-      "id": "model-capabilities",
-      "name": "Model Capabilities",
-      "description": "Publishes the live CLIProxyAPI model registry with optional per-model protocol metadata for client integrations.",
-      "author": "Whexy",
-      "version": "0.1.0",
-      "repository": "https://github.com/whexy/whexy-cpa-store",
-      "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/model-capabilities",
-      "license": "MIT",
-      "tags": ["models", "capabilities", "catalog", "openai"],
-      "install": {
-        "type": "direct",
-        "artifacts": [
-          {
-            "goos": "linux",
-            "goarch": "amd64",
-            "url": "https://github.com/whexy/whexy-cpa-store/releases/download/model-capabilities-v0.1.0/model-capabilities-v0.1.0-linux-amd64.zip",
-            "sha256": "8e703aea3699bb802b0f022024855925388098fd3cc96eba0f2d82e39d7a60fe",
-            "size": 3641555
-          }
-        ]
-      }
-    },
-    {
       "id": "usage-insights",
       "name": "Usage Insights",
       "description": "Collects per-call token usage, cache ratios, latency, failures, and quota headers into a local JSONL ledger, then estimates raw API spend from live models.dev pricing.",
