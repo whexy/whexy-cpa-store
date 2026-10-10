@@ -7,6 +7,7 @@ pkgs.mkShell {
     pkgs.go
     pkgs.zip
     pkgs.jq
+    pkgs.nodejs_24
     pkgs.github-cli
   ];
 
