@@ -71,7 +71,7 @@ import (
 
 const (
 	pluginIdentifier = "claude-web-search-router"
-	pluginVersion    = "0.3.0" // x-release-please-version
+	pluginVersion    = "0.3.1" // x-release-please-version
 )
 
 type routeBackend string
