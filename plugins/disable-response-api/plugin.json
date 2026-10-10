@@ -3,7 +3,6 @@
   "name": "Disable Response API",
   "description": "Rejects OpenAI Responses API requests from configured client API keys, or carrying the WHEXY_CPA_DISABLE_RESPONSE_API header, with an empty 404 so clients fall back to Chat Completions.",
   "author": "Whexy",
-  "version": "0.2.0",
   "repository": "https://github.com/whexy/whexy-cpa-store",
   "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/disable-response-api",
   "license": "MIT",

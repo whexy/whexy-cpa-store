@@ -5,3 +5,4 @@ dist/
 .pre-commit-config.yaml
 .direnv/
 result
+node_modules/

@@ -50,7 +50,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.2.0"
+	pluginVersion = "0.2.0" // x-release-please-version
 	// The request interceptor capability has used the same RPC shape since
 	// schema v1; advertising the SDK's latest schema would unnecessarily reject older hosts.
 	pluginSchemaVersion uint32 = 1
