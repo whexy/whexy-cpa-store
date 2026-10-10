@@ -1,0 +1,5 @@
+{
+  "plugins/claude-web-search-router": "0.3.0",
+  "plugins/disable-response-api": "0.2.0",
+  "plugins/usage-insights": "0.3.0"
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "66f63d46a1ea3dd5241db5d344ea0e06817578bb",
+  "release-type": "go",
+  "separate-pull-requests": true,
+  "include-component-in-tag": true,
+  "initial-version": "0.1.0",
+  "bump-minor-pre-major": true,
+  "draft": true,
+  "force-tag-creation": true,
+  "packages": {
+    "plugins/claude-web-search-router": {
+      "component": "claude-web-search-router",
+      "extra-files": ["go/main.go"]
+    },
+    "plugins/disable-response-api": {
+      "component": "disable-response-api",
+      "extra-files": ["go/main.go"]
+    },
+    "plugins/usage-insights": {
+      "component": "usage-insights",
+      "extra-files": ["go/main.go"]
+    }
+  }
+}

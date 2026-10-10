@@ -1,43 +1,118 @@
-# Release pipeline, triggered by plugin-scoped version tags:
-# <plugin-id>-v<version>.
-# 1. nix: run flake checks, verify the selected plugin version, build all
-#    plugins to regenerate the registry, and stage only the selected artifact.
-# 2. release: upload that plugin's zip as a GitHub release asset.
-# 3. update-registry: commit the regenerated registry.json back to main.
+variables:
+  - &github_app
+    GITHUB_APP_ID:
+      from_secret: github_app_id
+    GITHUB_APP_INSTALLATION_ID:
+      from_secret: github_app_installation_id
+    GITHUB_APP_PRIVATE_KEY:
+      from_secret: github_app_private_key
+  # The first Pod binds the local-path workspace; later steps follow its node.
+  - &amd64
+    kubernetes:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+  # Nix compiles every plugin with cgo, which exceeds the default step limits.
+  - &nix_build
+    kubernetes:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+        limits:
+          cpu: "4"
+          memory: 6Gi
+
+# Pull requests are the only validation gate. Default-branch pushes and release
+# tags skip it because the branch ruleset requires ci/woodpecker/pr/woodpecker
+# on an up-to-date branch, so their exact tree already passed; restore
+# validation for those events if that ruleset is relaxed. The registry commits
+# whexy-bot makes through its bypass contain only registry.json.
 when:
+  - event: pull_request
+  - event: push
+    branch: ${CI_REPO_DEFAULT_BRANCH}
   - event: tag
     ref: refs/tags/*-v*
+  - event: manual
+
+labels:
+  platform: linux/amd64
+
+clone:
+  - name: git
+    image: woodpeckerci/plugin-git
+    backend_options: *amd64
+
 steps:
-  nix:
-    # nixos/nix already contains git, which nix needs to read the workspace flake.
-    image: nixos/nix:latest
+  - name: validate
+    image: nixos/nix:2.35.2
+    when:
+      event: [pull_request, manual]
+    backend_options: *nix_build
     commands:
       - echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
-      # The default Docker seccomp profile blocks the namespaces nix uses for
-      # its build sandbox.
+      # The default container seccomp profile blocks the namespaces nix uses
+      # for its build sandbox.
       - nix --option sandbox false flake check --print-build-logs
-      - nix --option sandbox false shell nixpkgs#jq -c ./scripts/dist-plugin.sh "$CI_COMMIT_TAG"
-  release:
-    image: alpine:3.21
-    environment:
-      GH_TOKEN:
-        from_secret: github_token
+
+  - name: test-release
+    image: node:24-bookworm-slim
+    when:
+      event: [pull_request, manual]
+    backend_options: *amd64
     commands:
-      - apk add --no-cache github-cli
-      # Idempotent so the pipeline can be re-run after a later step fails.
-      - gh release view "$CI_COMMIT_TAG" --repo "$CI_REPO" >/dev/null 2>&1 || gh release create "$CI_COMMIT_TAG" --repo "$CI_REPO" --title "$CI_COMMIT_TAG" --generate-notes dist/*.zip
-  update-registry:
-    image: alpine/git
-    environment:
-      GITHUB_TOKEN:
-        from_secret: github_token
+      - npm ci --prefix release --no-audit --no-fund
+      - node --test release/release.test.mjs
+
+  - name: prepare-release
+    image: node:24-bookworm-slim
+    when:
+      event: [push, manual]
+      branch: ${CI_REPO_DEFAULT_BRANCH}
+    backend_options: *amd64
+    environment: *github_app
     commands:
-      - cp registry.json /tmp/registry.json
-      - git config --global user.email "woodpecker-ci@users.noreply.github.com"
-      - git config --global user.name "woodpecker-ci"
-      - git fetch origin main
-      - git checkout main
-      - cp /tmp/registry.json registry.json
-      - git add registry.json
-      - 'git commit -m "chore(registry): update registry.json for $CI_COMMIT_TAG" || echo "registry unchanged"'
-      - git push "https://x-access-token:$GITHUB_TOKEN@github.com/$CI_REPO.git" HEAD:main
+      - npm ci --prefix release --no-audit --no-fund
+      - node release/release-please.mjs
+
+  - name: verify-tag
+    image: node:24-bookworm-slim
+    when:
+      event: tag
+    backend_options: *amd64
+    commands:
+      - node release/plugin-tag.mjs
+
+  - name: build
+    image: nixos/nix:2.35.2
+    when:
+      event: tag
+    backend_options: *nix_build
+    commands:
+      - echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
+      # verify-tag proved the tag is <plugin-id>-v<manifest version>.
+      - nix --option sandbox false build ".#plugins.$${CI_COMMIT_TAG%-v*}" --print-build-logs --out-link plugin
+      - mkdir -p dist
+      - cp -L plugin/*.zip dist/
+
+  - name: publish-release
+    image: node:24-bookworm-slim
+    when:
+      event: tag
+    backend_options: *amd64
+    environment: *github_app
+    commands:
+      - node release/publish-release.mjs
+
+  - name: publish-registry
+    image: node:24-bookworm-slim
+    when:
+      - event: tag
+      - event: manual
+        branch: ${CI_REPO_DEFAULT_BRANCH}
+    backend_options: *amd64
+    environment: *github_app
+    commands:
+      - node release/registry.mjs
