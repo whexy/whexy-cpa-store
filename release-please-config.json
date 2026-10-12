@@ -9,16 +9,8 @@
   "draft": true,
   "force-tag-creation": true,
   "packages": {
-    "plugins/claude-web-search-router": {
-      "component": "claude-web-search-router",
-      "extra-files": ["go/main.go"]
-    },
     "plugins/disable-response-api": {
       "component": "disable-response-api",
-      "extra-files": ["go/main.go"]
-    },
-    "plugins/usage-insights": {
-      "component": "usage-insights",
       "extra-files": ["go/main.go"]
     }
   }

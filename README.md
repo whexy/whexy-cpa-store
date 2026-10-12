@@ -6,9 +6,7 @@ plugins directly from this repo's GitHub release assets.
 
 ## Plugins
 
-- `claude-web-search-router` — routes Claude Code built-in web searches across supported backends.
 - `disable-response-api` — returns an empty 404 for OpenAI Responses API requests from configured client API keys or carrying the `WHEXY_CPA_DISABLE_RESPONSE_API` header, so clients fall back to Chat Completions.
-- `usage-insights` — records per-call token usage, cache ratios, latency, failures, and quota headers, then estimates equivalent raw API spend from live models.dev pricing.
 
 ## How it works
 
@@ -116,10 +114,10 @@ URL of the registry it came from and stops offering updates when it changes.
 ## Local development
 
 ```bash
-nix develop                          # go, node, jq, gh + pre-commit hooks
-nix fmt                              # treefmt: nixfmt, gofmt, shfmt, prettier
-nix flake check                      # lint, registry check, build + test every plugin
-nix build .#plugins.usage-insights   # one plugin's release zip in ./result
+nix develop                                # go, node, jq, gh + pre-commit hooks
+nix fmt                                    # treefmt: nixfmt, gofmt, shfmt, prettier
+nix flake check                            # lint, registry check, build + test every plugin
+nix build .#plugins.disable-response-api   # one plugin's release zip in ./result
 npm ci --prefix release && node --test release/release.test.mjs
 ```
 
