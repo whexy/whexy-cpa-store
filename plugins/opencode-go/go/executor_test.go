@@ -307,6 +307,49 @@ func TestExecutorCustomPrefix(t *testing.T) {
 	}
 }
 
+// The executor resolves the same IDs in both modes; which of them clients
+// reach is decided by the IDs model.for_auth registers. With the prefix
+// disabled a prefixed ID arrives only from a kept Bare ID alias, which CPA
+// resolves to the alias's prefixed name for this credential.
+func TestExecutorRoutesPrefixedAndBareIDsPerMode(t *testing.T) {
+	on := settings{BaseURL: defaultBaseURL, ModelPrefix: "go"}
+	off := on
+	off.DisablePrefix = true
+	tests := []struct {
+		name   string
+		cfg    settings
+		model  string
+		served bool
+	}{
+		{"prefix on, prefixed", on, "go/deepseek-v4-flash", true},
+		{"prefix on, bare", on, "deepseek-v4-flash", true},
+		{"prefix on, other prefix", on, "opencode-go/deepseek-v4-flash", false},
+		{"prefix off, bare", off, "deepseek-v4-flash", true},
+		{"prefix off, bare with suffix", off, "deepseek-v4-flash(high)", true},
+		{"prefix off, alias target", off, "go/deepseek-v4-flash", true},
+		{"prefix off, other prefix", off, "opencode-go/deepseek-v4-flash", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useSettings(t, tt.cfg)
+			useTestCatalog(t)
+			gateway := installFakeGateway(t, fixtureGateway(t))
+			raw, _ := executorExecute(testCall{Source: "openai", Model: tt.model, Payload: clientPayload("openai", tt.model, false)}.raw(t))
+			env := decodeEnvelope(t, raw)
+			sent := gateway.inferenceRequests()
+			if !tt.served {
+				if env.OK || env.Error.HTTPStatus != http.StatusNotFound || len(sent) != 0 {
+					t.Fatalf("envelope %+v after %d upstream requests", env.Error, len(sent))
+				}
+				return
+			}
+			if !env.OK || len(sent) != 1 || gjson.GetBytes(sent[0].Body, "model").String() != "deepseek-v4-flash" {
+				t.Fatalf("envelope %+v, sent %d", env.Error, len(sent))
+			}
+		})
+	}
+}
+
 func TestExecutorUnknownModel(t *testing.T) {
 	useSettings(t, defaultSettings())
 	useTestCatalog(t)

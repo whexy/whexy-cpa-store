@@ -208,10 +208,10 @@ func endpointFor(cfg settings, protocol sdktranslator.Format, catalogBase string
 // bare ID for a prefixed auth unless force-model-prefix is on, and a bare ID
 // that a native provider serves would share its traffic.
 func exposedModelID(cfg settings, upstreamID string) string {
-	if cfg.ModelPrefix == "" {
+	if cfg.prefix() == "" {
 		return upstreamID
 	}
-	return cfg.ModelPrefix + "/" + upstreamID
+	return cfg.prefix() + "/" + upstreamID
 }
 
 func (m catalogModel) route(cfg settings) modelRoute {
@@ -233,6 +233,9 @@ func (m catalogModel) route(cfg settings) modelRoute {
 func (c catalog) modelInfos(cfg settings) []pluginapi.ModelInfo {
 	out := make([]pluginapi.ModelInfo, 0, len(c.Models))
 	for _, model := range c.Models {
+		if cfg.modelDisabled(model.UpstreamID) {
+			continue
+		}
 		inputLimit := model.InputLimit
 		if inputLimit == 0 {
 			inputLimit = model.ContextLength
@@ -255,8 +258,12 @@ func (c catalog) modelInfos(cfg settings) []pluginapi.ModelInfo {
 	return out
 }
 
-// find resolves a requested model ID: the exposed ID, or the bare Go ID,
-// optionally with a CPA thinking suffix such as "(high)".
+// find resolves a requested model ID: the prefixed or the bare Go ID,
+// optionally with a CPA thinking suffix such as "(high)". The prefixed form
+// resolves with disable_prefix on as well: CPA then registers bare IDs only,
+// so it never routes a client's prefixed request here, but a Bare ID alias
+// kept from the prefixed mode still makes CPA hand this executor the
+// alias's prefixed name for a request of the bare ID.
 func (c catalog) find(cfg settings, model string) (catalogModel, bool) {
 	model = strings.TrimSpace(model)
 	if open := strings.LastIndex(model, "("); open > 0 && strings.HasSuffix(model, ")") {
@@ -402,10 +409,13 @@ func (c catalog) fingerprint() string {
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
+// exposedIDs are the IDs model.for_auth registers for the catalog.
 func (c catalog) exposedIDs(cfg settings) []string {
 	ids := make([]string, 0, len(c.Models))
 	for _, model := range c.Models {
-		ids = append(ids, exposedModelID(cfg, model.UpstreamID))
+		if !cfg.modelDisabled(model.UpstreamID) {
+			ids = append(ids, exposedModelID(cfg, model.UpstreamID))
+		}
 	}
 	return ids
 }
@@ -447,12 +457,44 @@ type rpcAuthModelRequest struct {
 	HostCallbackID string `json:"host_callback_id,omitempty"`
 }
 
+// legacyExclusions are the Go model IDs that exact entries of CPA's
+// oauth-excluded-models name with the configured or default prefix, which
+// is how 0.2.0 disabled a model. CPA matches entries against registered
+// IDs, so these stop applying once disable_prefix drops the prefix; the
+// page moves them into disabled_models, and until it has, the plugin
+// applies them itself.
+func legacyExclusions(cfg settings, excluded map[string][]string) []string {
+	if !cfg.DisablePrefix {
+		return nil
+	}
+	var out []string
+	for provider, entries := range excluded {
+		if !strings.EqualFold(strings.TrimSpace(provider), providerKey) {
+			continue
+		}
+		for _, entry := range entries {
+			entry = strings.TrimSpace(entry)
+			if strings.Contains(entry, "*") {
+				continue
+			}
+			for _, prefix := range []string{cfg.ModelPrefix, defaultModelPrefix} {
+				if head := len(prefix) + 1; len(entry) > head && strings.EqualFold(entry[:head], prefix+"/") {
+					out = append(out, entry[head:])
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
 func handleModelsForAuth(raw []byte) ([]byte, error) {
 	var req rpcAuthModelRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode model request: %w", errUnmarshal)
 	}
 	cfg := currentSettings()
+	cfg = cfg.withDisabled(legacyExclusions(cfg, req.Host.ExcludedModels))
 	cred, errCred := resolveCredential(req.StorageJSON, req.Attributes, req.Metadata)
 	var expired *loginExpiredError
 	if errors.As(errCred, &expired) {

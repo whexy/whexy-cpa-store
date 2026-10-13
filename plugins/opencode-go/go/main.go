@@ -62,6 +62,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -130,16 +131,24 @@ type registrationCapability struct {
 type settings struct {
 	BaseURL string
 	// ConsoleURL is empty unless configured; consoleURL derives it.
-	ConsoleURL  string
-	ModelPrefix string
-	UserAgent   string
+	ConsoleURL string
+	// ModelPrefix is the configured prefix; prefix says whether IDs carry it.
+	ModelPrefix   string
+	DisablePrefix bool
+	// DisabledModels are Go model IDs the plugin keeps out of CPA. The plugin
+	// owns this list because CPA's oauth-excluded-models matches registered
+	// IDs, whose form depends on DisablePrefix.
+	DisabledModels []string
+	UserAgent      string
 }
 
 type rawSettings struct {
-	BaseURL     string `yaml:"base_url"`
-	ConsoleURL  string `yaml:"console_url"`
-	ModelPrefix string `yaml:"model_prefix"`
-	UserAgent   string `yaml:"user_agent"`
+	BaseURL        string   `yaml:"base_url"`
+	ConsoleURL     string   `yaml:"console_url"`
+	ModelPrefix    string   `yaml:"model_prefix"`
+	DisablePrefix  bool     `yaml:"disable_prefix"`
+	DisabledModels []string `yaml:"disabled_models"`
+	UserAgent      string   `yaml:"user_agent"`
 }
 
 var currentConfig atomic.Pointer[settings]
@@ -153,6 +162,32 @@ func currentSettings() settings {
 
 func defaultSettings() settings {
 	return settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix}
+}
+
+// prefix is the prefix every exposed model ID carries, empty while
+// disable_prefix is on.
+func (s settings) prefix() string {
+	if s.DisablePrefix {
+		return ""
+	}
+	return s.ModelPrefix
+}
+
+func (s settings) modelDisabled(upstreamID string) bool {
+	for _, id := range s.DisabledModels {
+		if strings.EqualFold(id, upstreamID) {
+			return true
+		}
+	}
+	return false
+}
+
+// withDisabled returns a copy of s that also disables ids.
+func (s settings) withDisabled(ids []string) settings {
+	if len(ids) > 0 {
+		s.DisabledModels = append(slices.Clip(s.DisabledModels), ids...)
+	}
+	return s
 }
 
 // userAgent is the User-Agent for requests the plugin originates; the
@@ -305,7 +340,8 @@ func pluginRegistration() registration {
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "base_url", Type: pluginapi.ConfigFieldTypeString, Description: "OpenCode Go gateway base URL. Default " + defaultBaseURL + "."},
 				{Name: "console_url", Type: pluginapi.ConfigFieldTypeString, Description: "OpenCode Console base URL, used for login, token refresh and the model catalog. Default: the base_url host followed by /console, which is " + defaultConsoleURL + " for the default base_url."},
-				{Name: "model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every model ID, as in opencode-go/kimi-k3. Default " + defaultModelPrefix + ". To share a bare ID such as deepseek-v4-pro with another provider, turn on Bare ID for that model on the OpenCode Go page."},
+				{Name: "model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every model ID, as in opencode-go/kimi-k3. Default " + defaultModelPrefix + ". To share a bare ID such as deepseek-v4-pro with another provider, turn on Bare ID for that model on the OpenCode Go page. disable_prefix overrides this setting."},
+				{Name: "disable_prefix", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Serve every model under its bare ID only, as in kimi-k3, and ignore model_prefix. A bare ID shares routing with every other provider that serves the same ID, so disable the models you do not want on the OpenCode Go page."},
 				{Name: "user_agent", Type: pluginapi.ConfigFieldTypeString, Description: "User-Agent sent upstream when the client sends none. Default whexy-cpa-opencode-go/" + pluginVersion + "."},
 			},
 		},
@@ -364,6 +400,12 @@ func parseSettings(configYAML []byte) (settings, error) {
 			return settings{}, fmt.Errorf("model_prefix must not contain spaces, parentheses or *, got %q", prefix)
 		}
 		cfg.ModelPrefix = prefix
+	}
+	cfg.DisablePrefix = raw.DisablePrefix
+	for _, id := range raw.DisabledModels {
+		if id = strings.TrimSpace(id); id != "" && !cfg.modelDisabled(id) {
+			cfg.DisabledModels = append(cfg.DisabledModels, id)
+		}
 	}
 	cfg.UserAgent = strings.TrimSpace(raw.UserAgent)
 	return cfg, nil

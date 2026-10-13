@@ -109,6 +109,7 @@ func TestRoutes(t *testing.T) {
 		{"custom base", settings{BaseURL: "http://mirror.test/go", ModelPrefix: "go"}, "qwen3.8-max", "http://mirror.test/go/anthropic/v1/messages", "go/qwen3.8-max"},
 		{"non-Go catalog base", defaultSettings(), "elsewhere", "https://opencode.ai/inference/go/openai/v1/chat/completions", "opencode-go/elsewhere"},
 		{"no prefix", settings{BaseURL: defaultBaseURL}, "kimi-k3", "https://opencode.ai/inference/go/openai/v1/chat/completions", "kimi-k3"},
+		{"prefix disabled", settings{BaseURL: defaultBaseURL, ModelPrefix: "go", DisablePrefix: true}, "kimi-k3", "https://opencode.ai/inference/go/openai/v1/chat/completions", "kimi-k3"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -139,6 +140,22 @@ func TestCatalogFindAcceptsExposedBareAndSuffixedIDs(t *testing.T) {
 	}
 }
 
+// With disable_prefix on, CPA registers bare IDs only and refuses a
+// client's prefixed request itself; the prefixed form still resolves
+// because a kept Bare ID alias hands it to the executor.
+func TestCatalogFindWithPrefixDisabled(t *testing.T) {
+	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	cfg := settings{BaseURL: defaultBaseURL, ModelPrefix: "go", DisablePrefix: true}
+	for _, requested := range []string{"kimi-k3", "kimi-k3(high)", "go/kimi-k3"} {
+		if model, ok := cat.find(cfg, requested); !ok || model.UpstreamID != "kimi-k3" {
+			t.Fatalf("%q -> %+v %v", requested, model, ok)
+		}
+	}
+	if _, ok := cat.find(cfg, "opencode-go/kimi-k3"); ok {
+		t.Fatal("a prefix other than the configured one resolved")
+	}
+}
+
 func TestModelInfos(t *testing.T) {
 	cat, _ := parseCatalog(readFixture(t, "config.json"))
 	infos := cat.modelInfos(defaultSettings())
@@ -159,6 +176,39 @@ func TestModelInfos(t *testing.T) {
 	}
 	if strings.Join(kimi.SupportedInputModalities, ",") != "text,image,video" || strings.Join(kimi.SupportedOutputModalities, ",") != "text" {
 		t.Fatalf("kimi modalities = %+v", kimi)
+	}
+}
+
+func TestModelInfosAndExposedIDsPerMode(t *testing.T) {
+	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	all := "claude-haiku-5-5,deepseek-v4-flash,elsewhere,gpt-6-luna,kimi-k3,longcat-2.5-preview-free,qwen3.8-max"
+	prefixed := "opencode-go/" + strings.ReplaceAll(all, ",", ",opencode-go/")
+	disabled := []string{"KIMI-K3", "gpt-6-luna", "not-in-catalog"}
+	tests := []struct {
+		name string
+		cfg  settings
+		want string
+	}{
+		{"prefixed", defaultSettings(), prefixed},
+		{"bare", settings{BaseURL: defaultBaseURL, ModelPrefix: "go", DisablePrefix: true}, all},
+		{"prefixed with disabled models", settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix, DisabledModels: disabled},
+			"opencode-go/claude-haiku-5-5,opencode-go/deepseek-v4-flash,opencode-go/elsewhere,opencode-go/longcat-2.5-preview-free,opencode-go/qwen3.8-max"},
+		{"bare with disabled models", settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix, DisablePrefix: true, DisabledModels: disabled},
+			"claude-haiku-5-5,deepseek-v4-flash,elsewhere,longcat-2.5-preview-free,qwen3.8-max"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ids []string
+			for _, info := range cat.modelInfos(tt.cfg) {
+				ids = append(ids, info.ID)
+			}
+			if strings.Join(ids, ",") != tt.want {
+				t.Fatalf("model infos = %v\nwant %s", ids, tt.want)
+			}
+			if got := strings.Join(cat.exposedIDs(tt.cfg), ","); got != tt.want {
+				t.Fatalf("exposed IDs = %s\nwant %s", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -277,6 +327,47 @@ func TestModelsForAuthThroughHost(t *testing.T) {
 	route, ok := lookupModel("opencode-go/gpt-6-luna", keyIDFor(testKeyB))
 	if !ok || route.Protocol != sdktranslator.FormatOpenAIResponse || route.UpstreamID != "gpt-6-luna" {
 		t.Fatalf("lookup = %+v %v", route, ok)
+	}
+}
+
+// model.for_auth drops disabled_models in both modes. With the prefix
+// disabled it also drops the models 0.2.0 disabled through exact prefixed
+// oauth-excluded-models entries, which CPA no longer matches; with the prefix
+// on, CPA applies those entries itself.
+func TestModelsForAuthDropsDisabledModels(t *testing.T) {
+	useTestCatalog(t)
+	excluded := map[string][]string{
+		" OpenCode-Go ": {"opencode-go/KIMI-K3", "go/qwen3.8-max", "opencode-go/claude-*", "deepseek-v4-flash", "opencode-go/"},
+		"codex":         {"opencode-go/elsewhere"},
+	}
+	registered := func(cfg settings) string {
+		t.Helper()
+		useSettings(t, cfg)
+		raw, errHandle := handleMethod(pluginabi.MethodModelForAuth, mustJSON(t, rpcAuthModelRequest{AuthModelRequest: pluginapi.AuthModelRequest{
+			StorageJSON: []byte(`{"type":"opencode-go","api_key":"` + testKeyA + `"}`),
+			Host:        pluginapi.HostConfigSummary{ExcludedModels: excluded},
+		}}))
+		if errHandle != nil {
+			t.Fatal(errHandle)
+		}
+		var ids []string
+		for _, model := range decodeResult[pluginapi.ModelResponse](t, raw).Models {
+			ids = append(ids, model.ID)
+		}
+		reg, _ := catalogs.registeredFor(keyIDFor(testKeyA))
+		if strings.Join(reg.ids, ",") != strings.Join(ids, ",") {
+			t.Fatalf("recorded %v, registered %v", reg.ids, ids)
+		}
+		return strings.Join(ids, ",")
+	}
+	on := settings{BaseURL: defaultBaseURL, ModelPrefix: "go", DisabledModels: []string{"gpt-6-luna"}}
+	if got := registered(on); got != "go/claude-haiku-5-5,go/deepseek-v4-flash,go/elsewhere,go/kimi-k3,go/longcat-2.5-preview-free,go/qwen3.8-max" {
+		t.Fatalf("prefix on: %s", got)
+	}
+	off := on
+	off.DisablePrefix = true
+	if got := registered(off); got != "claude-haiku-5-5,deepseek-v4-flash,elsewhere,longcat-2.5-preview-free" {
+		t.Fatalf("prefix off: %s", got)
 	}
 }
 

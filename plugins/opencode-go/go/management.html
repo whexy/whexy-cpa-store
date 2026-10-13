@@ -768,13 +768,14 @@
                   <th class="num">Context</th>
                   <th
                     class="toggle"
+                    id="bare-head"
                     title="Also list the model under its bare ID, such as deepseek-v4-pro. Every provider serving that ID shares its requests, by priority and weight."
                   >
                     Bare ID
                   </th>
                   <th
                     class="toggle"
-                    title="Remove the model from CLIProxyAPI. Stored in the opencode-go entry of the OAuth model disablement settings."
+                    title="Remove the model from CLIProxyAPI. Stored in the plugin setting disabled_models."
                   >
                     Disabled
                   </th>
@@ -829,8 +830,9 @@
     <script>
       "use strict";
 
-      // Edits of CLIProxyAPI's provider-keyed OAuth config maps. This block
-      // touches no DOM, so testdata/page_test.mjs runs it under node.
+      // Edits of CLIProxyAPI's provider-keyed OAuth config maps and of the
+      // plugin's own config node. This block touches no DOM, so
+      // testdata/page_test.mjs runs it under node.
       const PROVIDER = "opencode-go";
 
       const sameID = (a, b) =>
@@ -930,20 +932,89 @@
         );
       }
 
-      // withExcluded adds or removes a model's own entry; rules stay.
-      function withExcluded(excluded, id, on) {
-        const rest = excluded.filter(
-          (pattern) => isRule(pattern) || !sameID(pattern, id),
-        );
-        return on ? [...rest, id] : rest;
-      }
-
       function ruleFor(excluded, id) {
         return (
           excluded.find(
             (pattern) => isRule(pattern) && matchRule(pattern, id),
           ) || ""
         );
+      }
+
+      // prefixedRule says a rule is written against prefixed IDs, so it
+      // matches nothing while the prefix is disabled.
+      function prefixedRule(rule, prefixes) {
+        const lower = String(rule).trim().toLowerCase();
+        return prefixes.some((prefix) =>
+          lower.startsWith(prefix.toLowerCase() + "/"),
+        );
+      }
+
+      // stringList reads a config list of strings, dropping anything else.
+      function stringList(value) {
+        if (!Array.isArray(value)) return [];
+        return value
+          .filter((item) => typeof item === "string" && item.trim())
+          .map((item) => item.trim());
+      }
+
+      const hasModel = (ids, id) => ids.some((other) => sameID(other, id));
+
+      // withDisabled adds or removes Go model IDs in disabled_models.
+      function withDisabled(disabled, ids, on) {
+        if (!on) return disabled.filter((id) => !hasModel(ids, id));
+        const out = [...disabled];
+        for (const id of ids) if (!hasModel(out, id)) out.push(id);
+        return out;
+      }
+
+      // disabledWrite is the request that stores list as disabled_models in
+      // the plugin's config node, or null when nothing changes. PATCH
+      // merges that one key, so the node's other settings stay as stored.
+      function disabledWrite(node, list) {
+        const current =
+          node && typeof node === "object" ? node.disabled_models : undefined;
+        if (list.length === 0) {
+          return current === undefined
+            ? null
+            : { method: "DELETE", path: "/disabled_models" };
+        }
+        if (JSON.stringify(current) === JSON.stringify(list)) return null;
+        return { method: "PATCH", path: "", body: { disabled_models: list } };
+      }
+
+      // modelPrefixes are the prefixes an excluded-models entry written by
+      // 0.2.0 can carry: the configured model_prefix and the default.
+      function modelPrefixes(configured) {
+        const own = String(configured ?? "")
+          .trim()
+          .replace(/^\/+|\/+$/g, "");
+        return own && !sameID(own, PROVIDER) ? [own, PROVIDER] : [PROVIDER];
+      }
+
+      // namedModel is the Go model an exact excluded-models entry names,
+      // bare or with one of prefixes, or "" for a rule or any other entry.
+      function namedModel(entry, ids, prefixes) {
+        if (isRule(entry)) return "";
+        return (
+          ids.find(
+            (id) =>
+              sameID(entry, id) ||
+              prefixes.some((prefix) => sameID(entry, prefix + "/" + id)),
+          ) || ""
+        );
+      }
+
+      // migration splits the provider's excluded-models entries: exact
+      // entries naming a Go model move into disabled_models, the rest stay.
+      function migration(excluded, ids, prefixes) {
+        const moved = [];
+        const kept = [];
+        for (const entry of excluded) {
+          const id = namedModel(entry, ids, prefixes);
+          if (!id) kept.push(entry);
+          else if (!moved.includes(id)) moved.push(id);
+        }
+        return { moved, kept };
       }
 
       function addServedBy(into, id, provider) {
@@ -1017,6 +1088,7 @@
       const CPA = BASE + "/v8/management";
       const ALIAS_MAP = "/config/oauth/model-alias";
       const EXCLUDED_MAP = "/config/oauth/excluded-models";
+      const PLUGIN_CONFIG = "/config/plugins/configs/" + PROVIDER;
       const SESSION_KEY = "opencode-go.management-key";
       const REJECTED_KEY = "opencode-go.rejected-mc-auth";
       const MC_AUTH_KEY = "cli-proxy-auth";
@@ -1898,11 +1970,14 @@
       });
 
       // Models: the catalog of the first working credential, with this
-      // provider's entries of CPA's model alias and disablement maps.
+      // provider's entries of CPA's model alias and disablement maps and the
+      // plugin's disabled_models.
       const models = {
         view: null,
         aliases: [],
         excluded: [],
+        disabled: [],
+        prefixes: [PROVIDER],
         configLoaded: false,
         configError: "",
         servedBy: null,
@@ -1918,8 +1993,13 @@
             Promise.all([
               cpa("GET", ALIAS_MAP, undefined, {}),
               cpa("GET", EXCLUDED_MAP, undefined, {}),
+              cpa("GET", PLUGIN_CONFIG, undefined, {}),
             ]).then(
-              ([aliasMap, excludedMap]) => ({ aliasMap, excludedMap }),
+              ([aliasMap, excludedMap, own]) => ({
+                aliasMap,
+                excludedMap,
+                own,
+              }),
               (err) => {
                 if (err instanceof AuthError) throw err;
                 return { error: err.message };
@@ -1932,6 +2012,8 @@
           if (!maps.error) {
             models.aliases = channelEntries(maps.aliasMap);
             models.excluded = channelEntries(maps.excludedMap).map(String);
+            models.disabled = stringList(maps.own && maps.own.disabled_models);
+            models.prefixes = modelPrefixes(maps.own && maps.own.model_prefix);
           }
         } catch (err) {
           if (err instanceof AuthError) return;
@@ -1943,7 +2025,51 @@
           models.notice = { tone: "error", text: err.message };
         }
         renderModels();
+        if (models.configLoaded) await migrateExclusions();
         if (models.view.models.length > 0 && !models.servedBy) loadServedBy();
+      }
+
+      // migrateExclusions moves the Disabled entries 0.2.0 kept in CPA's
+      // oauth-excluded-models, which match only the IDs of one prefix mode,
+      // into disabled_models, which applies in both. disabled_models is
+      // written first, so a failure between the writes leaves a model
+      // disabled twice rather than enabled.
+      async function migrateExclusions() {
+        const ids = models.view.models.map((model) => model.upstream_id);
+        if (migration(models.excluded, ids, models.prefixes).moved.length === 0)
+          return;
+        await queued(async () => {
+          const latest = channelEntries(
+            await cpa("GET", EXCLUDED_MAP, undefined, {}),
+          ).map(String);
+          const { moved } = migration(latest, ids, models.prefixes);
+          if (moved.length === 0) return;
+          models.disabled = await editDisabled((list) =>
+            withDisabled(list, moved, true),
+          );
+          const kept = await editChannel(
+            EXCLUDED_MAP,
+            (list) => migration(list.map(String), moved, models.prefixes).kept,
+          );
+          models.excluded = kept.map(String);
+          models.notice = {
+            tone: "ok",
+            text:
+              "Moved " +
+              moved.length +
+              (moved.length === 1 ? " disabled model" : " disabled models") +
+              " from OAuth Model Disablement into the plugin setting disabled_models.",
+          };
+        }).catch((err) => {
+          if (!(err instanceof AuthError))
+            models.notice = {
+              tone: "error",
+              text:
+                "Could not move the disabled models into the plugin settings: " +
+                err.message,
+            };
+        });
+        renderModels();
       }
 
       // loadServedBy finds other providers that register a model's bare ID:
@@ -1985,6 +2111,10 @@
         renderModels();
       }
 
+      const BARE_TITLE = $("bare-head").title;
+      const PREFIX_OFF =
+        "disable_prefix is on in the plugin settings, so every model is served under its bare ID only.";
+
       function checkbox(checked, label, onchange, disabled, title) {
         const box = h("input", {
           type: "checkbox",
@@ -1999,9 +2129,15 @@
 
       function modelRow(model) {
         const locked = models.busy.has(model.id) || !models.configLoaded;
-        const rule = ruleFor(models.excluded, model.id);
-        const disabled = Boolean(rule) || isExcluded(models.excluded, model.id);
-        const bare = hasBareID(models.aliases, model);
+        const prefixOff = Boolean(models.view.disable_prefix);
+        // CPA's own entries still apply to the registered IDs: rules, and an
+        // exact entry only until the migration has moved it.
+        const rule =
+          ruleFor(models.excluded, model.id) ||
+          (isExcluded(models.excluded, model.id) ? model.id : "");
+        const disabled =
+          Boolean(rule) || hasModel(models.disabled, model.upstream_id);
+        const bare = prefixOff || hasBareID(models.aliases, model);
         const served = [
           ...((models.servedBy &&
             models.servedBy.get(model.upstream_id.toLowerCase())) ||
@@ -2043,12 +2179,13 @@
           h("td", { class: "num", title: limits }, tokens(model.context)),
           h(
             "td",
-            { class: "toggle" },
+            { class: "toggle", title: prefixOff ? PREFIX_OFF : null },
             checkbox(
               bare,
               "Bare ID " + model.upstream_id,
               (on) => toggleBare(model, on),
-              locked,
+              locked || prefixOff,
+              prefixOff ? PREFIX_OFF : null,
             ),
           ),
           h(
@@ -2059,7 +2196,11 @@
               "Disable " + model.id,
               (on) => toggleDisabled(model, on),
               locked || Boolean(rule),
-              rule ? "Disabled by rule " + rule : null,
+              rule
+                ? (isRule(rule) ? "Disabled by rule " : "Disabled by entry ") +
+                    rule +
+                    " in OAuth Model Disablement"
+                : null,
             ),
           ),
         );
@@ -2094,6 +2235,7 @@
             ),
           );
         }
+        if (view.disable_prefix) out.push(note("hint", PREFIX_OFF));
         const pending = [];
         if (view.unregistered.length > 0)
           pending.push("new " + view.unregistered.join(", "));
@@ -2116,6 +2258,13 @@
         const rules = models.excluded.filter(isRule);
         if (rules.length === 0) return [];
         const out = rules.map((rule) => {
+          if (models.view.disable_prefix && prefixedRule(rule, models.prefixes))
+            return note(
+              "hint",
+              "Rule ",
+              h("code", {}, rule),
+              " has no effect while the prefix is disabled.",
+            );
           const matched = models.view.models
             .filter((model) => matchRule(rule, model.id))
             .map((model) => model.upstream_id);
@@ -2154,6 +2303,7 @@
         button.textContent = models.refreshing
           ? "Refreshing…"
           : "Refresh models";
+        $("bare-head").title = view.disable_prefix ? PREFIX_OFF : BARE_TITLE;
         $("models-notices").replaceChildren(...modelNotices());
         $("models-rules").replaceChildren(...ruleNotes());
         $("models-body").replaceChildren(...view.models.map(modelRow));
@@ -2200,12 +2350,20 @@
         });
       }
 
+      async function editDisabled(edit) {
+        const node = await cpa("GET", PLUGIN_CONFIG, undefined, {});
+        const next = edit(stringList(node && node.disabled_models));
+        const write = disabledWrite(node, next);
+        if (write)
+          await cpa(write.method, PLUGIN_CONFIG + write.path, write.body);
+        return next;
+      }
+
       function toggleDisabled(model, on) {
         return toggleModel(model, async () => {
-          const next = await editChannel(EXCLUDED_MAP, (list) =>
-            withExcluded(list.map(String), model.id, on),
+          models.disabled = await editDisabled((list) =>
+            withDisabled(list, [model.upstream_id], on),
           );
-          models.excluded = next.map(String);
         });
       }
 

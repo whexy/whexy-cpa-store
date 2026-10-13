@@ -66,24 +66,105 @@ test("Bare ID refuses an alias another model already uses", () => {
   );
 });
 
-test("Disabled adds and removes the exact ID and keeps rules", () => {
-  const withExcluded = fn("withExcluded");
+test("an exact entry is never a rule", () => {
   const isExcluded = fn("isExcluded");
-  const list = ["opencode-go/claude-*", "opencode-go/kimi-k3"];
-  const on = plain(withExcluded(list, deepseek.id, true));
-  assert.deepEqual(on, [...list, deepseek.id]);
-  assert.equal(isExcluded(on, deepseek.id), true);
-  assert.deepEqual(plain(withExcluded(on, deepseek.id, false)), list);
-  assert.deepEqual(
-    plain(withExcluded(["OPENCODE-GO/DEEPSEEK-V4-PRO"], deepseek.id, false)),
-    [],
-  );
-  // A rule is never an exact entry, even when it would match.
+  assert.equal(isExcluded(["OPENCODE-GO/DEEPSEEK-V4-PRO"], deepseek.id), true);
   assert.equal(isExcluded(["opencode-go/deepseek-*"], deepseek.id), false);
+});
+
+test("Disabled adds and removes Go model IDs once", () => {
+  const withDisabled = fn("withDisabled");
+  const list = ["kimi-k3", "glm-5.3"];
+  assert.deepEqual(plain(withDisabled(list, ["deepseek-v4-pro"], true)), [
+    "kimi-k3",
+    "glm-5.3",
+    "deepseek-v4-pro",
+  ]);
+  assert.deepEqual(plain(withDisabled(list, ["KIMI-K3", "x"], true)), [
+    "kimi-k3",
+    "glm-5.3",
+    "x",
+  ]);
+  assert.deepEqual(plain(withDisabled(list, ["KIMI-K3"], false)), ["glm-5.3"]);
+  assert.deepEqual(plain(fn("stringList")([" a ", "", 3, null, "b"])), [
+    "a",
+    "b",
+  ]);
+  assert.deepEqual(plain(fn("stringList")("kimi-k3")), []);
+});
+
+test("disabled_models writes touch only that key", () => {
+  const disabledWrite = fn("disabledWrite");
+  const node = { enabled: true, model_prefix: "go", disabled_models: ["a"] };
+  assert.deepEqual(plain(disabledWrite(node, ["a", "b"])), {
+    method: "PATCH",
+    path: "",
+    body: { disabled_models: ["a", "b"] },
+  });
+  assert.equal(disabledWrite(node, ["a"]), null);
+  assert.deepEqual(plain(disabledWrite(node, [])), {
+    method: "DELETE",
+    path: "/disabled_models",
+  });
+  assert.equal(disabledWrite({ enabled: true }, []), null);
+  assert.equal(disabledWrite({}, []), null);
+  assert.deepEqual(plain(disabledWrite({}, ["a"])), {
+    method: "PATCH",
+    path: "",
+    body: { disabled_models: ["a"] },
+  });
+});
+
+test("prefixes are the configured one and the default", () => {
+  const modelPrefixes = fn("modelPrefixes");
+  assert.deepEqual(plain(modelPrefixes(undefined)), ["opencode-go"]);
+  assert.deepEqual(plain(modelPrefixes(" /go/ ")), ["go", "opencode-go"]);
+  assert.deepEqual(plain(modelPrefixes("OpenCode-Go")), ["opencode-go"]);
+  assert.deepEqual(plain(modelPrefixes(null)), ["opencode-go"]);
+});
+
+test("migration moves exact entries naming a Go model and keeps the rest", () => {
+  const migration = fn("migration");
+  const ids = ["kimi-k3", "glm-5.3", "deepseek-v4-pro", "claude-haiku-5-5"];
+  const prefixes = ["go", "opencode-go"];
+  const excluded = [
+    "go/kimi-k3",
+    "OPENCODE-GO/GLM-5.3",
+    "deepseek-v4-pro",
+    "opencode-go/claude-*",
+    "go/kimi-k3",
+    "other/claude-haiku-5-5",
+    "opencode-go/retired-model",
+    "gpt-6",
+  ];
+  assert.deepEqual(plain(migration(excluded, ids, prefixes)), {
+    moved: ["kimi-k3", "glm-5.3", "deepseek-v4-pro"],
+    kept: [
+      "opencode-go/claude-*",
+      "other/claude-haiku-5-5",
+      "opencode-go/retired-model",
+      "gpt-6",
+    ],
+  });
+  // The second write removes only what the first one disabled.
   assert.deepEqual(
-    plain(withExcluded(["opencode-go/*"], "opencode-go/*", false)),
-    ["opencode-go/*"],
+    plain(migration(excluded, ["kimi-k3"], prefixes).kept),
+    excluded.filter((entry) => !/kimi-k3$/.test(entry)),
   );
+  assert.deepEqual(plain(migration([], ids, prefixes)), {
+    moved: [],
+    kept: [],
+  });
+});
+
+test("prefixed rules are recognized for the disabled-prefix note", () => {
+  const prefixedRule = fn("prefixedRule");
+  const prefixes = ["go", "opencode-go"];
+  assert.equal(prefixedRule("opencode-go/claude-*", prefixes), true);
+  assert.equal(prefixedRule(" GO/kimi-* ", prefixes), true);
+  assert.equal(prefixedRule("claude-*", prefixes), false);
+  assert.equal(prefixedRule("*/claude-*", prefixes), false);
+  assert.equal(prefixedRule("gopher/*", prefixes), false);
 });
 
 test("rules match like CPA's matchWildcard", () => {

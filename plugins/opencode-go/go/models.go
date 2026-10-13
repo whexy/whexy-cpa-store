@@ -222,9 +222,12 @@ type modelView struct {
 }
 
 // modelsView is the catalog of the first credential that can read it.
+// Models lists disabled models too; Unregistered and Unlisted leave them out.
 type modelsView struct {
 	Credential string `json:"credential,omitempty"`
 	FetchedAt  string `json:"fetched_at,omitempty"`
+	// DisablePrefix says the model IDs are bare because disable_prefix is on.
+	DisablePrefix bool `json:"disable_prefix"`
 	// Error says why no live catalog could be read; Models then holds the
 	// last list this process read.
 	Error  string      `json:"error,omitempty"`
@@ -246,12 +249,12 @@ func handleListModels(h host, _ pluginapi.ManagementRequest) (int, any, error) {
 	if errLoad != nil {
 		return 0, nil, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
 	}
-	view := modelsView{Models: []modelView{}, Unregistered: []string{}, Unlisted: []string{}}
+	cfg := currentSettings()
+	view := modelsView{DisablePrefix: cfg.DisablePrefix, Models: []modelView{}, Unregistered: []string{}, Unlisted: []string{}}
 	creds := usableCredentials(files)
 	if len(creds) == 0 {
 		return http.StatusOK, view, nil
 	}
-	cfg := currentSettings()
 	var chosen storedCredential
 	var cat catalog
 	var failures []string

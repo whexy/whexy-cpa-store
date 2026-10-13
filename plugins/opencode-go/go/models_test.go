@@ -211,6 +211,28 @@ func TestManagementListModels(t *testing.T) {
 	}
 }
 
+// With the prefix disabled the page gets bare IDs and the mode; disabled
+// models stay listed but are not expected among the registered ones.
+func TestManagementListModelsWithPrefixDisabled(t *testing.T) {
+	fx := newManagementFixture(t, map[string]string{"opencode-go.json": `{"type":"opencode-go","api_key":"` + testKeyA + `"}`})
+	cfg := settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix, DisablePrefix: true, DisabledModels: []string{"kimi-k3"}}
+	useSettings(t, cfg)
+	fx.registerAll()
+	view := decodeBodyAs[modelsView](t, fx.call(http.MethodGet, modelsPath, nil, nil))
+	if !view.DisablePrefix || len(view.Models) != 7 || len(view.Unregistered)+len(view.Unlisted) != 0 {
+		t.Fatalf("view = %+v", view)
+	}
+	for _, model := range view.Models {
+		if model.ID != model.UpstreamID {
+			t.Fatalf("model %+v is not bare", model)
+		}
+	}
+	reg, _ := catalogs.registeredFor(keyIDFor(testKeyA))
+	if slices.Contains(reg.ids, "kimi-k3") || !slices.Contains(reg.ids, "deepseek-v4-flash") {
+		t.Fatalf("registered = %v", reg.ids)
+	}
+}
+
 func TestManagementRefreshModels(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{
 		testLoginName:      string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"priority": 4})),

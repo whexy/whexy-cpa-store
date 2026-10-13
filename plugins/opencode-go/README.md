@@ -67,20 +67,23 @@ key or a token. Failures answer `{"error": "<message>"}`.
 - `PUT /routing` with `{"priority": 5, "weight": 2}`: writes both into every
   OpenCode Go auth file; `null` restores the default.
 
-Bare ID and Disabled are CLIProxyAPI settings, which the page edits through
-`/v8/management/config/oauth/model-alias/opencode-go` and
-`/v8/management/config/oauth/excluded-models/opencode-go`.
+Bare ID is a CLIProxyAPI setting, which the page edits through
+`/v8/management/config/oauth/model-alias/opencode-go`. Disabled is the
+plugin setting `disabled_models`, which the page edits through
+`/v8/management/config/plugins/configs/opencode-go`.
 
 </details>
 
 ## Models
 
 The OpenCode Go page lists the models of the workspace's OpenCode catalog.
-Every ID carries the `opencode-go/` prefix, so Go never takes requests meant
-for another provider that serves the same model, such as `kimi-k3` through
-Kimi. **Disabled** removes a model from CLIProxyAPI; the page also lists the
-wildcard rules of Management Center's OAuth Model Disablement page that match
-Go models.
+By default every ID carries the `opencode-go/` prefix, so Go never takes
+requests meant for another provider that serves the same model, such as
+`kimi-k3` through Kimi. **Disabled** removes a model from CLIProxyAPI, with
+the prefix on or off, and is stored in the plugin setting `disabled_models`.
+The page also lists the wildcard rules of Management Center's OAuth Model
+Disablement page that match Go models; a rule written with the prefix, such
+as `opencode-go/claude-*`, matches nothing while `disable_prefix` is on.
 
 The plugin reads the catalog again every three hours and on **Refresh
 models**, and CLIProxyAPI then lists the models OpenCode added and drops those
@@ -115,6 +118,10 @@ oauth:
         fork: true
 ```
 
+To serve every Go model under its bare ID instead, turn on `disable_prefix`
+in the plugin settings. Each model then shares routing with every provider
+of the same ID, so disable the ones you do not want on the page.
+
 ## Settings
 
 All optional, under `plugins.configs.opencode-go` or in the plugin's
@@ -124,6 +131,10 @@ configuration form in Management Center:
 - `console_url`: OpenCode Console base URL, for login, token refresh and the
   model catalog. Default: the `base_url` host followed by `/console`.
 - `model_prefix`: prefix of every model ID. Default `opencode-go`.
+- `disable_prefix`: serve every model under its bare ID only, ignoring
+  `model_prefix`. Default off.
+- `disabled_models`: bare Go model IDs kept out of CLIProxyAPI, such as
+  `[kimi-k3]`. The page's Disabled toggles edit it; the form does not show it.
 - `user_agent`: sent upstream when the client sends none. Default
   `whexy-cpa-opencode-go/<version>`.
 
