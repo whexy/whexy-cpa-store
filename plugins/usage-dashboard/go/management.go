@@ -22,6 +22,8 @@ const (
 	logoPath = "/v0/resource/plugins/" + pluginID + "/logo.svg"
 	// summaryPath is the authenticated route the page reads.
 	summaryPath = "/v0/management/" + pluginID + "/summary"
+	// pricesPath reads and replaces the prices set on the page.
+	pricesPath = "/v0/management/" + pluginID + "/prices"
 )
 
 //go:embed dashboard.html
@@ -59,11 +61,23 @@ type resourceRoute struct {
 
 func managementRegister(_ []byte) ([]byte, error) {
 	return okEnvelope(managementRegistration{
-		Routes: []managementRoute{{
-			Method:      http.MethodGet,
-			Path:        summaryPath,
-			Description: "Usage totals, per-group series and per-model rows: ?range=24h|7d|30d|90d&group=family|account&tz=<IANA zone>.",
-		}},
+		Routes: []managementRoute{
+			{
+				Method:      http.MethodGet,
+				Path:        summaryPath,
+				Description: "Usage totals, per-group series and per-model rows: ?range=24h|7d|30d|90d&group=family|account&tz=<IANA zone>.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        pricesPath,
+				Description: "Every model in retained usage with its custom and models.dev price.",
+			},
+			{
+				Method:      http.MethodPut,
+				Path:        pricesPath,
+				Description: `Replace the custom prices: {"models":{"<model>":{"input":..,"output":..,"cache_read":..,"cache_write":..}}}, USD per million tokens.`,
+			},
+		},
 		Resources: []resourceRoute{
 			{Path: pagePath, Menu: menuLabel, Description: "Token usage and estimated cost by model family or account."},
 			{Path: logoPath, Description: displayName + " logo."},
@@ -115,8 +129,33 @@ func routeManagement(req pluginapi.ManagementRequest) pluginapi.ManagementRespon
 			return managementJSON(http.StatusBadRequest, map[string]string{"error": errReport.Error()})
 		}
 		return managementJSON(http.StatusOK, report)
+	case method == http.MethodGet && req.Path == pricesPath:
+		return priceListResponse()
+	case method == http.MethodPut && req.Path == pricesPath:
+		var body struct {
+			Models map[string]customPriceInput `json:"models"`
+		}
+		if errUnmarshal := json.Unmarshal(req.Body, &body); errUnmarshal != nil || body.Models == nil {
+			return managementJSON(http.StatusBadRequest, map[string]string{"error": `body must be {"models": {"<model>": {"input": .., "output": ..}}}`})
+		}
+		models, errValidate := validateCustomPrices(body.Models)
+		if errValidate != nil {
+			return managementJSON(http.StatusBadRequest, map[string]string{"error": errValidate.Error()})
+		}
+		if errSave := customPrices.save(models); errSave != nil {
+			return managementJSON(http.StatusInternalServerError, map[string]string{"error": errSave.Error()})
+		}
+		return priceListResponse()
 	}
 	return managementJSON(http.StatusNotFound, map[string]string{"error": "no " + displayName + " route " + method + " " + req.Path})
+}
+
+func priceListResponse() pluginapi.ManagementResponse {
+	list, errList := priceList()
+	if errList != nil {
+		return managementJSON(http.StatusServiceUnavailable, map[string]string{"error": errList.Error()})
+	}
+	return managementJSON(http.StatusOK, list)
 }
 
 func managementJSON(status int, body any) pluginapi.ManagementResponse {

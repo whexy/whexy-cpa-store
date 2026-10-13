@@ -47,6 +47,19 @@ Cost is estimated at the time of viewing from the
 `prices.json` in the same directory. Prices are the base rates; long-context
 tiers are not applied. Models missing from models.dev show no cost.
 
+## Custom prices
+
+The tag button on the Usage page sets your own price for a model, in USD per
+million tokens. It lists every model in the kept usage, unpriced ones first,
+with the models.dev rates as placeholders. A custom price replaces the
+models.dev price for that exact model ID, so `opencode-go/kimi-k3` and
+`kimi-k3` are priced separately, and it applies to all kept usage, past and
+future. Blank cache rates use the input rate; `0` is free. Clearing a price
+returns the model to models.dev.
+
+Custom prices are kept as `custom-prices.json` beside the usage files and
+apply even with `pricing: false`.
+
 ## Settings
 
 All optional, under `plugins.configs.usage-dashboard` or in the plugin's
@@ -67,11 +80,20 @@ configuration form in Management Center:
   ```
 
 <details>
-<summary>Management API route behind the page</summary>
+<summary>Management API routes behind the page</summary>
+
+All take the management key as `Authorization: Bearer <key>`.
 
 `GET /v0/management/usage-dashboard/summary?range=24h|7d|30d|90d&group=family|account&tz=<IANA zone>`
-takes the management key as `Authorization: Bearer <key>` and answers the
-totals, one series per group, per-model rows and per-point rows for the
-range. Day ranges end with today in `tz`.
+answers the totals, one series per group, per-model rows and per-point rows
+for the range. Day ranges end with today in `tz`.
+
+`GET /v0/management/usage-dashboard/prices` lists every model in the kept
+usage with its processed tokens, custom price and models.dev price.
+
+`PUT /v0/management/usage-dashboard/prices` replaces all custom prices with
+the body
+`{"models": {"<model>": {"input": 0.6, "output": 2.5, "cache_read": 0.15}}}`;
+`cache_read` and `cache_write` are optional.
 
 </details>

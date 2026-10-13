@@ -633,6 +633,168 @@
         color: var(--text-tertiary);
       }
 
+      .button {
+        padding: 7px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text-primary);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .button:hover {
+        border-color: var(--border-hover);
+      }
+
+      .button.primary {
+        border-color: transparent;
+        background: var(--text-primary);
+        color: var(--bg-page);
+        font-weight: 600;
+      }
+
+      .button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+
+      .text-button {
+        align-self: flex-start;
+        padding: 4px 0;
+        border: 0;
+        background: none;
+        color: var(--s1);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .prices {
+        width: min(900px, calc(100vw - 32px));
+        max-height: calc(100vh - 100px);
+        margin: 84px auto 16px;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg-page);
+        color: var(--text-primary);
+        box-shadow: var(--shadow);
+      }
+
+      .prices::backdrop {
+        background: rgb(0 0 0 / 0.3);
+      }
+
+      .prices form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-height: calc(100vh - 102px);
+        padding: 20px 22px;
+      }
+
+      .prices h2 {
+        margin: 0;
+      }
+
+      .prices header p {
+        margin: 4px 0 0;
+        font-size: 13px;
+      }
+
+      .prices-scroll {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        scrollbar-color: var(--border-hover) transparent;
+      }
+
+      .price-table th,
+      .price-table td {
+        width: auto;
+        padding: 7px 0 7px 10px;
+        color: inherit;
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .price-table th {
+        color: var(--text-secondary);
+      }
+
+      .price-table th:first-child,
+      .price-table td:first-child {
+        padding-left: 0;
+      }
+
+      .price-table th:last-child,
+      .price-table td:last-child {
+        width: 42px;
+      }
+
+      .price-table input {
+        width: 88px;
+        padding: 6px 8px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--bg-input);
+        color: var(--text-primary);
+        font: inherit;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .price-table td:first-child input {
+        width: 100%;
+        min-width: 200px;
+      }
+
+      .price-table input:hover {
+        border-color: var(--border-hover);
+      }
+
+      .price-table input[aria-invalid="true"] {
+        border-color: var(--error-text);
+      }
+
+      .price-model {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .price-table small {
+        color: var(--text-secondary);
+        font-size: 12px;
+      }
+
+      .price-table small.warn {
+        color: var(--warn-text);
+      }
+
+      .price-error {
+        margin: 0;
+        color: var(--error-text);
+      }
+
+      .prices footer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+      }
+
+      .prices footer .muted {
+        flex: 1 1 220px;
+      }
+
+      .prices footer .actions {
+        display: flex;
+        gap: 10px;
+        margin-left: auto;
+      }
+
       @media (max-width: 820px) {
         .overview {
           grid-template-columns: 1fr;
@@ -653,6 +815,28 @@
         <span class="spacer"></span>
         <div class="seg" id="metric" role="group" aria-label="Measure"></div>
         <div class="seg" id="range" role="group" aria-label="Range"></div>
+        <button
+          class="icon-button"
+          id="prices-open"
+          type="button"
+          aria-label="Custom prices"
+          title="Custom prices"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path
+              d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"
+            />
+            <path d="M7 7h.01" />
+          </svg>
+        </button>
         <button
           class="icon-button"
           id="refresh"
@@ -734,6 +918,50 @@
         </section>
       </div>
     </main>
+
+    <dialog class="prices" id="prices" aria-labelledby="prices-title">
+      <form id="prices-form" novalidate>
+        <header>
+          <h2 id="prices-title">Custom prices</h2>
+          <p class="muted">
+            USD per million tokens for the exact model ID, used instead of
+            models.dev for all usage, past and future.
+          </p>
+        </header>
+        <div class="prices-scroll">
+          <table class="price-table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Input</th>
+                <th>Output</th>
+                <th>Cache read</th>
+                <th>Cache write</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="price-rows"></tbody>
+          </table>
+        </div>
+        <button type="button" class="text-button" id="prices-add">
+          Add model
+        </button>
+        <p class="price-error" id="prices-error" role="alert" hidden></p>
+        <footer>
+          <span class="muted"
+            >Blank cache rates use the input rate. 0 is free.</span
+          >
+          <span class="actions">
+            <button type="button" class="button" id="prices-discard">
+              Discard
+            </button>
+            <button type="submit" class="button primary" id="prices-save">
+              Save changes
+            </button>
+          </span>
+        </footer>
+      </form>
+    </dialog>
     <script>
       "use strict";
 
@@ -903,12 +1131,16 @@
 
       class AuthError extends Error {}
 
-      async function api(path) {
+      async function api(path, body) {
         if (!auth.key) throw new AuthError("No management key.");
+        const headers = { Authorization: "Bearer " + auth.key };
+        if (body !== undefined) headers["Content-Type"] = "application/json";
         let response;
         try {
           response = await fetch(API + path, {
-            headers: { Authorization: "Bearer " + auth.key },
+            method: body === undefined ? "GET" : "PUT",
+            headers,
+            body: body === undefined ? undefined : JSON.stringify(body),
             cache: "no-store",
             credentials: "omit",
           });
@@ -1596,7 +1828,9 @@
           ["Output", compact(t.output)],
           [
             "Cache savings",
-            report.pricing.enabled ? usd(t.cache_savings) : "—",
+            report.pricing.enabled || report.pricing.custom
+              ? usd(t.cache_savings)
+              : "—",
           ],
         ];
         $("tiles").replaceChildren(
@@ -1714,18 +1948,23 @@
               );
             }
             const cost = row.priced
-              ? usd(row.item.cost)
+              ? h(
+                  "span",
+                  { title: row.item.custom_priced ? "Custom price." : null },
+                  usd(row.item.cost),
+                )
               : row.item.cost > 0
                 ? h(
                     "span",
-                    { title: "Part of this usage has no models.dev price." },
+                    { title: "Part of this usage has no price." },
                     usd(row.item.cost) + "*",
                   )
                 : h(
                     "span",
                     {
                       class: "unpriced",
-                      title: "No models.dev price for this model.",
+                      title:
+                        "No price for this model. Set one under Custom prices.",
                     },
                     "—",
                   );
@@ -1741,6 +1980,234 @@
           }),
         );
       }
+
+      // Custom prices: every model in retained usage. A row with any rate
+      // filled in is a custom price; a blank row keeps the models.dev price,
+      // shown as the placeholder.
+      const RATE_FIELDS = [
+        ["input", "Input"],
+        ["output", "Output"],
+        ["cache_read", "Cache read"],
+        ["cache_write", "Cache write"],
+      ];
+      let priceRows = [];
+
+      function showPriceError(text) {
+        $("prices-error").textContent = text || "";
+        $("prices-error").hidden = !text;
+      }
+
+      function rowIsSet(row) {
+        return Object.values(row.inputs).some((input) => input.value.trim());
+      }
+
+      function refreshPriceRow(row) {
+        const set = rowIsSet(row);
+        const catalog = !set && row.catalog;
+        for (const [key] of RATE_FIELDS) {
+          const cache = key.startsWith("cache_");
+          row.inputs[key].placeholder = catalog
+            ? String(catalog[key] ?? catalog.input)
+            : cache
+              ? "Input rate"
+              : "";
+        }
+        row.clear.hidden = !set && !row.added;
+      }
+
+      function priceRow(m) {
+        const row = {
+          model: m ? m.model : "",
+          catalog: m && m.catalog,
+          added: !m,
+          inputs: {},
+        };
+        const cells = [];
+        if (m) {
+          const status = m.custom
+            ? "Custom"
+            : m.catalog
+              ? "models.dev"
+              : "Unpriced";
+          cells.push(
+            h(
+              "td",
+              {},
+              h("div", { class: "price-model", title: m.model }, m.model),
+              h(
+                "small",
+                { class: status === "Unpriced" ? "warn" : null },
+                status + " · " + compact(m.processed) + " tokens",
+              ),
+            ),
+          );
+        } else {
+          row.idInput = h("input", {
+            type: "text",
+            placeholder: "Model ID",
+            "aria-label": "Model ID",
+            autocomplete: "off",
+            spellcheck: "false",
+          });
+          cells.push(h("td", {}, row.idInput));
+        }
+        for (const [key, label] of RATE_FIELDS) {
+          const input = h("input", {
+            type: "text",
+            inputmode: "decimal",
+            autocomplete: "off",
+            "aria-label": label + " price" + (m ? " for " + m.model : ""),
+          });
+          if (m && m.custom && m.custom[key] !== undefined)
+            input.value = String(m.custom[key]);
+          input.addEventListener("input", () => refreshPriceRow(row));
+          row.inputs[key] = input;
+          cells.push(h("td", {}, input));
+        }
+        row.clear = h(
+          "button",
+          {
+            type: "button",
+            class: "icon-button",
+            "aria-label": m
+              ? "Clear the custom price for " + m.model
+              : "Remove",
+            title: m ? "Clear" : "Remove",
+          },
+          "×",
+        );
+        const tr = h("tr", {}, ...cells, h("td", {}, row.clear));
+        row.clear.addEventListener("click", () => {
+          if (row.added) {
+            tr.remove();
+            priceRows = priceRows.filter((other) => other !== row);
+            return;
+          }
+          for (const input of Object.values(row.inputs)) {
+            input.value = "";
+            input.removeAttribute("aria-invalid");
+          }
+          refreshPriceRow(row);
+        });
+        priceRows.push(row);
+        refreshPriceRow(row);
+        return tr;
+      }
+
+      // collectPrices returns the PUT body's models, or null after marking
+      // what is wrong.
+      function collectPrices() {
+        const models = {};
+        const errors = [];
+        let first = null;
+        const flag = (input, message) => {
+          input.setAttribute("aria-invalid", "true");
+          errors.push(message);
+          first = first || input;
+        };
+        for (const row of priceRows) {
+          const inputs = Object.values(row.inputs);
+          if (row.idInput) inputs.push(row.idInput);
+          for (const input of inputs) input.removeAttribute("aria-invalid");
+          if (!rowIsSet(row)) continue;
+          const model = row.added ? row.idInput.value.trim() : row.model;
+          if (!model) {
+            flag(row.idInput, "A new row has no model ID.");
+            continue;
+          }
+          if (models[model]) {
+            flag(row.idInput || row.inputs.input, model + " is priced twice.");
+            continue;
+          }
+          const price = {};
+          for (const [key, label] of RATE_FIELDS) {
+            const text = row.inputs[key].value.trim();
+            const name = model + ": " + label.toLowerCase() + " price";
+            if (!text) {
+              if (!key.startsWith("cache_"))
+                flag(row.inputs[key], name + " is required.");
+              continue;
+            }
+            const value = Number(text);
+            if (!Number.isFinite(value) || value < 0) {
+              flag(row.inputs[key], name + " must be a number, 0 or more.");
+              continue;
+            }
+            price[key] = value;
+          }
+          models[model] = price;
+        }
+        if (!errors.length) return models;
+        showPriceError(
+          errors[0] +
+            (errors.length > 1 ? " " + (errors.length - 1) + " more." : ""),
+        );
+        first.focus();
+        return null;
+      }
+
+      function closePrices() {
+        $("prices").close();
+        $("price-rows").replaceChildren();
+        priceRows = [];
+      }
+
+      $("prices-open").addEventListener("click", async () => {
+        if (!auth.key) Object.assign(auth, resolveKey());
+        let data;
+        try {
+          data = await api("/prices");
+        } catch (err) {
+          if (err instanceof AuthError) showAuth(err.message);
+          else showNotice(err.message, true);
+          return;
+        }
+        const unpriced = (m) => (!m.custom && !m.catalog ? 1 : 0);
+        const models = data.models
+          .slice()
+          .sort(
+            (a, b) =>
+              unpriced(b) - unpriced(a) ||
+              b.processed - a.processed ||
+              a.model.localeCompare(b.model),
+          );
+        priceRows = [];
+        showPriceError("");
+        $("price-rows").replaceChildren(...models.map((m) => priceRow(m)));
+        if (!models.length) $("price-rows").append(priceRow(null));
+        $("prices").showModal();
+      });
+
+      $("prices-add").addEventListener("click", () => {
+        const tr = priceRow(null);
+        $("price-rows").append(tr);
+        priceRows[priceRows.length - 1].idInput.focus();
+      });
+
+      $("prices-discard").addEventListener("click", closePrices);
+      $("prices").addEventListener("cancel", (event) => {
+        event.preventDefault();
+        closePrices();
+      });
+
+      $("prices-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const models = collectPrices();
+        if (!models) return;
+        $("prices-save").disabled = true;
+        try {
+          await api("/prices", { models });
+          closePrices();
+          load();
+        } catch (err) {
+          if (err instanceof AuthError) {
+            closePrices();
+            showAuth(err.message);
+          } else showPriceError(err.message);
+        } finally {
+          $("prices-save").disabled = false;
+        }
+      });
 
       renderControls();
       load();

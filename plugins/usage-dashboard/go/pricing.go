@@ -307,6 +307,8 @@ type pricingStatus struct {
 	Source    string     `json:"source,omitempty"`
 	FetchedAt *time.Time `json:"fetched_at,omitempty"`
 	Error     string     `json:"error,omitempty"`
+	// Custom counts the prices set on the page.
+	Custom int `json:"custom"`
 }
 
 func (p *pricing) current() (*priceCatalog, pricingStatus) {

@@ -147,6 +147,7 @@ func startRuntime(cfg settings) error {
 		current.Store(fresh)
 	}
 	prices.configure(cfg.PricingURL, cfg.DataDir)
+	customPrices.configure(cfg.DataDir)
 	backgroundOnce.Do(func() {
 		startBackground(func(ctx context.Context) {
 			ticker := time.NewTicker(flushInterval)

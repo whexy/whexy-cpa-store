@@ -133,6 +133,8 @@ type modelView struct {
 	Family string `json:"family"`
 	Color  int    `json:"color"`
 	Priced bool   `json:"priced"`
+	// CustomPriced means a price set on the page overrides the catalog.
+	CustomPriced bool `json:"custom_priced"`
 	totalsView
 }
 
@@ -170,6 +172,7 @@ type reportInputs struct {
 	Accounts  map[string]accountInfo
 	Live      map[string]accountInfo
 	Catalog   *priceCatalog
+	Custom    map[string]price
 	Rules     []familyRule
 	Retention int
 }
@@ -259,7 +262,10 @@ func buildReport(spec rangeSpec, groupBy string, loc *time.Location, in reportIn
 		if cached, hit := priceCache[key]; hit {
 			return cached.p, cached.ok
 		}
-		p, ok := in.Catalog.lookup(r.Key.Provider, r.Key.Model, family)
+		p, ok := in.Custom[r.Key.Model]
+		if !ok {
+			p, ok = in.Catalog.lookup(r.Key.Provider, r.Key.Model, family)
+		}
 		priceCache[key] = struct {
 			p  price
 			ok bool
@@ -369,7 +375,7 @@ func buildReport(spec rangeSpec, groupBy string, loc *time.Location, in reportIn
 	})
 	for model, agg := range models {
 		family := familyOf(model)
-		report.Models = append(report.Models, modelView{Model: model, Family: family, Color: familySlotFor(family, groupBy, colors), Priced: modelPriced[model], totalsView: agg.view()})
+		report.Models = append(report.Models, modelView{Model: model, Family: family, Color: familySlotFor(family, groupBy, colors), Priced: modelPriced[model], CustomPriced: hasCustom(in.Custom, model), totalsView: agg.view()})
 	}
 	sort.Slice(report.Models, func(i, j int) bool {
 		if report.Models[i].Processed != report.Models[j].Processed {
@@ -381,6 +387,11 @@ func buildReport(spec rangeSpec, groupBy string, loc *time.Location, in reportIn
 		report.Points = append(report.Points, pointView{Point: point, totalsView: pointAggs[i].view()})
 	}
 	return report
+}
+
+func hasCustom(custom map[string]price, model string) bool {
+	_, ok := custom[model]
+	return ok
 }
 
 // familySlotFor colours a model row by its family when the page groups by
@@ -494,6 +505,8 @@ func summary(query reportQuery) (reportView, error) {
 	}
 	catalog, pricingState := prices.current()
 	in.Catalog = catalog
+	in.Custom = customPrices.current()
+	pricingState.Custom = len(in.Custom)
 	report := buildReport(spec, groupBy, loc, in)
 	report.Pricing = pricingState
 	report.Store = active.status()
