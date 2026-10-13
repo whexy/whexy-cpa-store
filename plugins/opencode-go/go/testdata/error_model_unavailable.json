@@ -1,0 +1,6 @@
+{
+  "error": {
+    "type": "server_error",
+    "message": "Upstream request failed: Model is unavailable."
+  }
+}

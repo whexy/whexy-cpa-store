@@ -1,0 +1,7 @@
+{
+  "type": "error",
+  "error": {
+    "type": "permission_error",
+    "message": "This API key can't call models"
+  }
+}

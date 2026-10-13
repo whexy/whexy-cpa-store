@@ -1,0 +1,4 @@
+{
+  "type": "error",
+  "error": { "type": "GoUsageLimitError", "message": "Usage limit reached." }
+}

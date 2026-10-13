@@ -1,0 +1,34 @@
+{
+  "id": "resp_reasoning_fixture",
+  "object": "response",
+  "created_at": 1791849374,
+  "status": "completed",
+  "model": "gpt-6-luna",
+  "output": [
+    {
+      "id": "rs_reasoning_fixture",
+      "type": "reasoning",
+      "encrypted_content": "gAAAAABfixtureEncryptedReasoning",
+      "summary": [
+        {
+          "type": "summary_text",
+          "text": "Checking the instruction before answering."
+        }
+      ]
+    },
+    {
+      "id": "msg_reasoning_fixture",
+      "type": "message",
+      "status": "completed",
+      "role": "assistant",
+      "content": [{ "type": "output_text", "text": "OK", "annotations": [] }]
+    }
+  ],
+  "usage": {
+    "input_tokens": 9,
+    "output_tokens": 20,
+    "total_tokens": 29,
+    "input_tokens_details": { "cached_tokens": 0 },
+    "output_tokens_details": { "reasoning_tokens": 12 }
+  }
+}

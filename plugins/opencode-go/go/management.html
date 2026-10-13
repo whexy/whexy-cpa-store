@@ -1,0 +1,1395 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>OpenCode Go keys</title>
+    <style>
+      :root {
+        --bg-page: #faf9f5;
+        --bg-card: #f0eee8;
+        --bg-subtle: #e9e6df;
+        --bg-input: #faf9f5;
+        --text-primary: #2d2a26;
+        --text-secondary: #6d6760;
+        --text-tertiary: #a29c95;
+        --text-quaternary: #c0bab3;
+        --border: #e3e1db;
+        --border-hover: #cecac4;
+        --primary: #8b8680;
+        --primary-hover: #7f7a74;
+        --primary-contrast: #ffffff;
+        --error: #c65746;
+        --error-text: #b04a3b;
+        --ok-text: #065f46;
+        --ok-badge-bg: #d1fae5;
+        --ok-badge-border: #6ee7b7;
+        --bad-badge-bg: rgba(198, 87, 70, 0.14);
+        --bad-badge-text: #8a3a30;
+        --bad-badge-border: rgba(198, 87, 70, 0.35);
+        --warn-badge-bg: color-mix(in srgb, #d97706 10%, transparent);
+        --warn-badge-text: #92400e;
+        --warn-badge-border: color-mix(in srgb, #d97706 30%, transparent);
+        --meter-high: #10b981;
+        --meter-medium: #e0aa14;
+        --meter-low: #c65746;
+        --shadow: 0 1px 2px 0 rgb(0 0 0 / 0.08);
+        --font-sans:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+          "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+          sans-serif;
+        --font-mono:
+          ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
+          "Fira Code", Menlo, Consolas, "Liberation Mono", monospace;
+        color-scheme: light;
+      }
+
+      [data-theme="white"] {
+        --bg-page: #ffffff;
+        --bg-card: #ffffff;
+        --bg-subtle: #f6f6f6;
+        --bg-input: #ffffff;
+        --border: #e5e5e5;
+        --border-hover: #cccccc;
+      }
+
+      [data-theme="dark"] {
+        --bg-page: #151412;
+        --bg-card: #1d1b18;
+        --bg-subtle: #262320;
+        --bg-input: #151412;
+        --text-primary: #f6f4f1;
+        --text-secondary: #c9c3bb;
+        --text-tertiary: #9c958d;
+        --text-quaternary: #6f6962;
+        --border: #3a3530;
+        --border-hover: #5a544d;
+        --primary-hover: #9a948e;
+        --error-text: #f1b0a6;
+        --ok-text: #6ee7b7;
+        --ok-badge-bg: rgba(6, 78, 59, 0.3);
+        --ok-badge-border: #059669;
+        --bad-badge-bg: rgba(198, 87, 70, 0.24);
+        --bad-badge-text: #f1b0a6;
+        --bad-badge-border: rgba(198, 87, 70, 0.5);
+        --warn-badge-bg: color-mix(in srgb, #f59e0b 14%, transparent);
+        --warn-badge-text: #fcd34d;
+        --warn-badge-border: color-mix(in srgb, #f59e0b 38%, transparent);
+        --meter-high: #0fae78;
+        --meter-medium: #ffd862;
+        --meter-low: #cf4b3a;
+        --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3);
+        color-scheme: dark;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: var(--bg-page);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      /* Management Center floats its toolbar (and, when narrow, its menu
+         button) over the top 76px of the frame. */
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 84px clamp(16px, 3vw, 32px) 48px;
+      }
+
+      a {
+        color: inherit;
+        text-underline-offset: 2px;
+      }
+
+      code {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .bar-actions {
+        display: flex;
+        gap: 8px;
+        margin-left: auto;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 8px 12px;
+        background: var(--bg-subtle);
+        color: var(--text-primary);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          background-color 150ms ease,
+          border-color 150ms ease,
+          color 150ms ease;
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .btn-sm {
+        padding: 5px 9px;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: var(--primary-contrast);
+      }
+
+      .btn-primary:not(:disabled):hover {
+        background: var(--primary-hover);
+        border-color: var(--primary-hover);
+      }
+
+      .btn-ghost {
+        background: transparent;
+        color: var(--text-secondary);
+      }
+
+      .btn-ghost:not(:disabled):hover {
+        background: var(--bg-subtle);
+        color: var(--text-primary);
+      }
+
+      .btn-danger {
+        color: var(--error-text);
+      }
+
+      .btn-danger-solid {
+        background: var(--error);
+        border-color: var(--error);
+        color: #ffffff;
+      }
+
+      [data-theme="dark"] .btn-ghost:not(.btn-danger) {
+        color: var(--text-primary);
+      }
+
+      .btn:focus-visible,
+      a:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+      }
+
+      .input {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: var(--bg-input);
+        color: var(--text-primary);
+        font: inherit;
+        transition:
+          border-color 150ms ease,
+          box-shadow 150ms ease;
+      }
+
+      .input::placeholder {
+        color: var(--text-tertiary);
+      }
+
+      .input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(139, 134, 128, 0.18);
+      }
+
+      .input-mono {
+        font-family: var(--font-mono);
+        font-size: 13px;
+      }
+
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 16px 18px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .hint {
+        margin: 0;
+        color: var(--text-tertiary);
+        font-size: 13px;
+      }
+
+      .error {
+        margin: 0;
+        color: var(--error-text);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .ok-text {
+        color: var(--ok-text);
+      }
+
+      .auth {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-width: 420px;
+      }
+
+      .auth .row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .add {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+        gap: 12px;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+
+      .add .row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .add .error {
+        grid-column: 1 / -1;
+      }
+
+      .empty {
+        margin: 8px 0 16px;
+        color: var(--text-secondary);
+      }
+
+      .keys {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .key {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .key-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 10px;
+      }
+
+      .key-head .input {
+        flex: 1 1 220px;
+        width: auto;
+      }
+
+      .name {
+        min-width: 0;
+        font-size: 15px;
+        font-weight: 650;
+        overflow-wrap: anywhere;
+      }
+
+      .name-masked {
+        font-family: var(--font-mono);
+        font-size: 14px;
+      }
+
+      .is-disabled .name,
+      .is-disabled .usage {
+        opacity: 0.55;
+      }
+
+      .key-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px;
+        margin-left: auto;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 1px 8px;
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .badge-ok {
+        background: var(--ok-badge-bg);
+        border-color: var(--ok-badge-border);
+        color: var(--ok-text);
+      }
+
+      .badge-bad {
+        background: var(--bad-badge-bg);
+        border-color: var(--bad-badge-border);
+        color: var(--bad-badge-text);
+      }
+
+      .badge-warn {
+        background: var(--warn-badge-bg);
+        border-color: var(--warn-badge-border);
+        color: var(--warn-badge-text);
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px 14px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .notice {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+      }
+
+      .notice:empty,
+      .runtime-message:empty {
+        display: none;
+      }
+
+      .usage {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px 20px;
+      }
+
+      .usage > .error {
+        grid-column: 1 / -1;
+      }
+
+      .meter-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 13px;
+      }
+
+      .meter-name {
+        font-weight: 600;
+      }
+
+      .meter-value {
+        font-weight: 650;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .meter-value.is-bad {
+        color: var(--error-text);
+      }
+
+      .track {
+        height: 6px;
+        margin: 6px 0 4px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+        overflow: hidden;
+      }
+
+      .fill {
+        width: 0;
+        height: 100%;
+        border-radius: 999px;
+        transition: width 360ms cubic-bezier(0.23, 1, 0.32, 1);
+      }
+
+      .fill-high {
+        background: var(--meter-high);
+      }
+
+      .fill-medium {
+        background: var(--meter-medium);
+      }
+
+      .fill-low {
+        background: var(--meter-low);
+      }
+
+      .reset {
+        color: var(--text-quaternary);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .reset-relative {
+        color: var(--text-tertiary);
+      }
+
+      .reset-relative::before {
+        content: "·";
+        margin: 0 4px;
+        color: var(--text-quaternary);
+      }
+
+      @media (max-width: 640px) {
+        .add,
+        .usage {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .key-actions {
+          margin-left: 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .fill,
+        .btn,
+        .input {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="bar">
+        <h1>OpenCode Go keys</h1>
+        <div class="bar-actions" id="bar-actions" hidden>
+          <button class="btn btn-ghost" id="reload" type="button">
+            Reload
+          </button>
+          <button class="btn btn-primary" id="add-open" type="button">
+            Add key
+          </button>
+        </div>
+      </div>
+
+      <form class="card auth" id="auth" hidden>
+        <label class="field">
+          Management key
+          <input
+            class="input"
+            id="auth-key"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+        </label>
+        <p class="hint">Kept in this tab only.</p>
+        <p class="error" id="auth-error" hidden></p>
+        <div class="row">
+          <button class="btn btn-primary" id="auth-submit" type="submit">
+            Continue
+          </button>
+        </div>
+      </form>
+
+      <div id="content" hidden>
+        <p class="error" id="page-error" hidden></p>
+
+        <p class="empty" id="empty" hidden>
+          No keys yet. Add a service-account key (<code>oc_sk_…</code>) from the
+          OpenCode workspace that holds the Go subscription.
+          <a
+            href="https://opencode.ai/v2/docs/console/go/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >OpenCode Go docs</a
+          >
+        </p>
+
+        <form class="card add" id="add" hidden>
+          <label class="field">
+            Label
+            <input
+              class="input"
+              id="add-label"
+              maxlength="64"
+              placeholder="Optional"
+              autocomplete="off"
+            />
+          </label>
+          <label class="field">
+            Key
+            <input
+              class="input input-mono"
+              id="add-key"
+              type="password"
+              placeholder="oc_sk_…"
+              autocomplete="new-password"
+              spellcheck="false"
+              required
+            />
+          </label>
+          <div class="row">
+            <button class="btn btn-primary" id="add-submit" type="submit">
+              Add
+            </button>
+            <button class="btn btn-ghost" id="add-cancel" type="button">
+              Cancel
+            </button>
+          </div>
+          <p class="error" id="add-error" hidden></p>
+        </form>
+
+        <p class="hint" id="loading">Loading…</p>
+        <ul class="keys" id="keys"></ul>
+      </div>
+    </main>
+    <script>
+      "use strict";
+
+      // The page is served at <base>/v0/resource/plugins/opencode-go/index.html,
+      // where <base> is empty unless a reverse proxy adds a path prefix.
+      const API =
+        location.pathname.replace(
+          /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
+          "",
+        ) + "/v0/management/opencode-go";
+      const SESSION_KEY = "opencode-go.management-key";
+      const REJECTED_KEY = "opencode-go.rejected-mc-auth";
+      const MC_AUTH_KEY = "cli-proxy-auth";
+      const MC_THEME_KEY = "cli-proxy-theme";
+      const USAGE_CONCURRENCY = 3;
+      const SOURCE_FILE = "opencode-go.json";
+      const WINDOW_NAMES = ["5-hour", "Weekly", "Monthly"];
+
+      const $ = (id) => document.getElementById(id);
+
+      function storageGet(storage, key) {
+        try {
+          return storage.getItem(key);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function storageSet(storage, key, value) {
+        try {
+          storage.setItem(key, value);
+        } catch (_) {}
+      }
+
+      function storageRemove(storage, key) {
+        try {
+          storage.removeItem(key);
+        } catch (_) {}
+      }
+
+      // Theme: follow Management Center's own setting. Its document carries
+      // data-theme ("dark", "white", or none for its light theme); when the
+      // page cannot reach it, read the persisted setting instead.
+      function managementCenterTheme() {
+        try {
+          if (window.parent !== window) {
+            return (
+              window.parent.document.documentElement.getAttribute(
+                "data-theme",
+              ) || "light"
+            );
+          }
+        } catch (_) {}
+        let saved = "auto";
+        try {
+          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
+          if (persisted && persisted.state && persisted.state.theme) {
+            saved = persisted.state.theme;
+          }
+        } catch (_) {}
+        if (saved === "auto") {
+          return matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "white";
+        }
+        return saved;
+      }
+
+      function applyTheme() {
+        document.documentElement.setAttribute(
+          "data-theme",
+          managementCenterTheme(),
+        );
+      }
+
+      applyTheme();
+      matchMedia("(prefers-color-scheme: dark)").addEventListener(
+        "change",
+        applyTheme,
+      );
+      window.addEventListener("storage", (event) => {
+        if (event.key === MC_THEME_KEY) applyTheme();
+      });
+      try {
+        if (window.parent !== window) {
+          new MutationObserver(applyTheme).observe(
+            window.parent.document.documentElement,
+            { attributes: true, attributeFilter: ["data-theme"] },
+          );
+        }
+      } catch (_) {}
+
+      // Management key: Management Center persists it, when "remember" is on,
+      // as zustand state {"state":{"managementKey":...}} obfuscated by
+      // src/utils/encryption.ts. A key typed here lives in sessionStorage.
+      function deobfuscate(payload) {
+        const prefix = "enc::v1::";
+        if (!payload.startsWith(prefix)) return payload;
+        const binary = atob(payload.slice(prefix.length));
+        const secret = new TextEncoder().encode(
+          "cli-proxy-api-webui::secure-storage|" +
+            location.host +
+            "|" +
+            navigator.userAgent,
+        );
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
+        }
+        return new TextDecoder().decode(bytes);
+      }
+
+      function managementCenterKey() {
+        const raw = storageGet(localStorage, MC_AUTH_KEY);
+        if (!raw || storageGet(sessionStorage, REJECTED_KEY) === raw) return "";
+        try {
+          const persisted = JSON.parse(deobfuscate(raw));
+          const key =
+            persisted && persisted.state && persisted.state.managementKey;
+          return typeof key === "string" ? key.trim() : "";
+        } catch (_) {
+          return "";
+        }
+      }
+
+      const auth = { key: "", source: "" };
+
+      function resolveKey() {
+        const typed = storageGet(sessionStorage, SESSION_KEY);
+        if (typed) return { key: typed, source: "session" };
+        const shared = managementCenterKey();
+        if (shared) return { key: shared, source: "mc" };
+        return { key: "", source: "" };
+      }
+
+      // A rejected key is never retried: five failures ban the address for
+      // 30 minutes.
+      function forgetKey() {
+        if (auth.source === "session")
+          storageRemove(sessionStorage, SESSION_KEY);
+        if (auth.source === "mc") {
+          storageSet(
+            sessionStorage,
+            REJECTED_KEY,
+            storageGet(localStorage, MC_AUTH_KEY) || "",
+          );
+        }
+        auth.key = "";
+        auth.source = "";
+      }
+
+      class AuthError extends Error {}
+
+      async function api(method, path, body) {
+        if (!auth.key) throw new AuthError("No management key.");
+        const headers = { Authorization: "Bearer " + auth.key };
+        if (body !== undefined) headers["Content-Type"] = "application/json";
+        let response;
+        try {
+          response = await fetch(API + path, {
+            method,
+            headers,
+            body: body === undefined ? undefined : JSON.stringify(body),
+            cache: "no-store",
+            credentials: "omit",
+          });
+        } catch (err) {
+          throw new Error("CLIProxyAPI did not answer: " + err.message);
+        }
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (_) {}
+        const message =
+          data && typeof data.error === "string" ? data.error : "";
+        if (response.status === 401) {
+          forgetKey();
+          usageQueue.length = 0;
+          showAuth(
+            "Management key rejected. Five wrong keys block this address for 30 minutes.",
+          );
+          throw new AuthError(message);
+        }
+        if (!response.ok) {
+          throw new Error(
+            message || "CLIProxyAPI answered HTTP " + response.status + ".",
+          );
+        }
+        return data || {};
+      }
+
+      // DOM helper: strings become text nodes, never markup.
+      function h(tag, props, ...children) {
+        const el = document.createElement(tag);
+        for (const [name, value] of Object.entries(props || {})) {
+          if (value === null || value === undefined || value === false)
+            continue;
+          if (name === "class") el.className = value;
+          else if (name.startsWith("on"))
+            el.addEventListener(name.slice(2), value);
+          else el.setAttribute(name, value === true ? "" : String(value));
+        }
+        for (const child of children.flat()) {
+          if (child === null || child === undefined || child === false)
+            continue;
+          el.append(child instanceof Node ? child : String(child));
+        }
+        return el;
+      }
+
+      const pad = (n) => String(n).padStart(2, "0");
+
+      function stamp(date) {
+        return (
+          pad(date.getMonth() + 1) +
+          "-" +
+          pad(date.getDate()) +
+          " " +
+          pad(date.getHours()) +
+          ":" +
+          pad(date.getMinutes())
+        );
+      }
+
+      function day(iso) {
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return iso;
+        return (
+          date.getFullYear() +
+          "-" +
+          pad(date.getMonth() + 1) +
+          "-" +
+          pad(date.getDate())
+        );
+      }
+
+      function relative(date) {
+        const minutes = Math.ceil((date.getTime() - Date.now()) / 60000);
+        if (minutes <= 0) return "now";
+        if (minutes < 60) return "in " + minutes + "m";
+        const hours = Math.floor(minutes / 60);
+        if (hours < 48) return "in " + hours + "h " + (minutes % 60) + "m";
+        return "in " + Math.round(hours / 24) + " days";
+      }
+
+      // State
+      let keys = [];
+      const usage = new Map();
+      const results = new Map();
+      const busy = new Set();
+      const cards = new Map();
+      const ui = { renaming: null, draft: "", confirming: null };
+      const usageQueue = [];
+      let usageActive = 0;
+
+      const displayName = (key) => key.label || key.masked_key;
+
+      function badge(text, tone, title) {
+        return h(
+          "span",
+          { class: "badge" + (tone ? " badge-" + tone : ""), title },
+          text,
+        );
+      }
+
+      function statusBadge(key) {
+        if (key.disabled) return badge("Disabled");
+        const runtime = key.runtime;
+        if (!runtime)
+          return badge(
+            "Not loaded",
+            "",
+            "CLIProxyAPI has not registered this key.",
+          );
+        const retry = runtime.next_retry_after
+          ? new Date(runtime.next_retry_after)
+          : null;
+        if (retry && retry.getTime() > Date.now()) {
+          return badge(
+            "Cooling down until " + stamp(retry),
+            "warn",
+            runtime.message,
+          );
+        }
+        if (runtime.unavailable)
+          return badge("Unavailable", "warn", runtime.message);
+        if (runtime.state === "error")
+          return badge("Error", "bad", runtime.message);
+        if (runtime.state === "active") return badge("Active", "ok");
+        return badge(runtime.state || "Unknown");
+      }
+
+      function actionButton(label, onclick, disabled, extra) {
+        return h(
+          "button",
+          {
+            class: "btn btn-ghost btn-sm" + (extra ? " " + extra : ""),
+            type: "button",
+            onclick,
+            disabled,
+          },
+          label,
+        );
+      }
+
+      function buildHead(key) {
+        const working = busy.has(key.id);
+        if (ui.renaming === key.id) {
+          const input = h("input", {
+            class: "input",
+            maxlength: 64,
+            placeholder: key.masked_key,
+            "aria-label": "Label",
+            disabled: working,
+          });
+          input.value = ui.draft;
+          input.addEventListener("input", () => {
+            ui.draft = input.value;
+          });
+          input.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") saveRename(key);
+            if (event.key === "Escape") cancelRename(key);
+          });
+          if (!working) {
+            requestAnimationFrame(() => input.focus());
+          }
+          return h(
+            "div",
+            { class: "key-head" },
+            input,
+            h(
+              "button",
+              {
+                class: "btn btn-primary btn-sm",
+                type: "button",
+                onclick: () => saveRename(key),
+                disabled: working,
+              },
+              "Save",
+            ),
+            actionButton("Cancel", () => cancelRename(key), working),
+          );
+        }
+        return h(
+          "div",
+          { class: "key-head" },
+          h(
+            "span",
+            { class: "name" + (key.label ? "" : " name-masked") },
+            displayName(key),
+          ),
+          statusBadge(key),
+          h(
+            "div",
+            { class: "key-actions" },
+            actionButton("Test", () => testKey(key), working),
+            actionButton("Rename", () => startRename(key), working),
+            actionButton(
+              key.disabled ? "Enable" : "Disable",
+              () => setDisabled(key, !key.disabled),
+              working,
+            ),
+            actionButton(
+              "Delete",
+              () => confirmDelete(key),
+              working,
+              "btn-danger",
+            ),
+          ),
+        );
+      }
+
+      function buildMeta(key) {
+        const items = [];
+        if (key.label) items.push(h("code", { title: "Key" }, key.masked_key));
+        if (key.workspace)
+          items.push(h("code", { title: "Workspace" }, key.workspace));
+        if (key.models) items.push(key.models + " models");
+        if (key.added_at) items.push("added " + day(key.added_at));
+        if (key.file && key.file !== SOURCE_FILE)
+          items.push(h("span", { title: "Auth file" }, key.file));
+        const runtime = key.runtime;
+        if (runtime && (runtime.success || runtime.failed)) {
+          items.push(
+            "requests: " +
+              runtime.success +
+              " ok, " +
+              runtime.failed +
+              " failed",
+          );
+        }
+        return h(
+          "div",
+          { class: "meta" },
+          items.map((item) => h("span", {}, item)),
+        );
+      }
+
+      function runtimeMessage(key) {
+        const runtime = key.runtime;
+        const showing =
+          runtime &&
+          runtime.message &&
+          !key.disabled &&
+          (runtime.state !== "active" || runtime.unavailable);
+        return h(
+          "p",
+          { class: "error runtime-message" },
+          showing ? runtime.message : null,
+        );
+      }
+
+      function meter(bucket) {
+        const left = Math.max(0, Math.min(100, 100 - bucket.used_percent));
+        const tone = left >= 70 ? "high" : left >= 30 ? "medium" : "low";
+        const fill = h("div", { class: "fill fill-" + tone });
+        fill.style.width = left + "%";
+        const shown = left > 0 && left < 1 ? "<1" : String(Math.round(left));
+        const value =
+          bucket.exhausted && bucket.status && bucket.status !== "ok"
+            ? bucket.status
+            : shown + "% left";
+        const resetsAt = bucket.resets_at ? new Date(bucket.resets_at) : null;
+        return h(
+          "div",
+          { class: "meter" },
+          h(
+            "div",
+            { class: "meter-head" },
+            h("span", { class: "meter-name" }, bucket.label),
+            h(
+              "span",
+              { class: "meter-value" + (bucket.exhausted ? " is-bad" : "") },
+              value,
+            ),
+          ),
+          h("div", { class: "track" }, fill),
+          resetsAt
+            ? h(
+                "div",
+                {
+                  class: "reset",
+                  title: "Resets " + resetsAt.toLocaleString(),
+                },
+                stamp(resetsAt),
+                h("span", { class: "reset-relative" }, relative(resetsAt)),
+              )
+            : null,
+        );
+      }
+
+      function meterPlaceholder(name) {
+        return h(
+          "div",
+          { class: "meter" },
+          h(
+            "div",
+            { class: "meter-head" },
+            h("span", { class: "meter-name" }, name),
+            h("span", { class: "meter-value reset" }, "…"),
+          ),
+          h("div", { class: "track" }),
+        );
+      }
+
+      function fillUsage(container, id) {
+        const entry = usage.get(id);
+        if (!entry || entry.state === "loading") {
+          container.replaceChildren(...WINDOW_NAMES.map(meterPlaceholder));
+        } else if (entry.state === "error") {
+          container.replaceChildren(
+            h("p", { class: "error" }, "Usage unavailable: " + entry.error),
+          );
+        } else {
+          container.replaceChildren(...entry.data.windows.map(meter));
+        }
+      }
+
+      function fillNotice(container, key) {
+        if (ui.confirming === key.id) {
+          const working = busy.has(key.id);
+          container.replaceChildren(
+            h(
+              "span",
+              {},
+              "Delete " +
+                displayName(key) +
+                "? CLIProxyAPI stops using it at once.",
+            ),
+            h(
+              "button",
+              {
+                class: "btn btn-danger-solid btn-sm",
+                type: "button",
+                onclick: () => deleteKey(key),
+                disabled: working,
+              },
+              "Delete",
+            ),
+            actionButton("Cancel", () => cancelDelete(key), working),
+          );
+          return;
+        }
+        const result = results.get(key.id);
+        container.replaceChildren(
+          result
+            ? h("span", { class: result.ok ? "ok-text" : "error" }, result.text)
+            : "",
+        );
+      }
+
+      function buildCard(key) {
+        const usageEl = h("div", { class: "usage" });
+        const noticeEl = h("div", { class: "notice" });
+        fillUsage(usageEl, key.id);
+        fillNotice(noticeEl, key);
+        const card = h(
+          "li",
+          { class: "card key" + (key.disabled ? " is-disabled" : "") },
+          buildHead(key),
+          buildMeta(key),
+          runtimeMessage(key),
+          usageEl,
+          noticeEl,
+        );
+        cards.set(key.id, { card, usageEl });
+        return card;
+      }
+
+      function renderList() {
+        cards.clear();
+        $("loading").hidden = true;
+        $("empty").hidden = keys.length > 0;
+        if (keys.length === 0) openAdd();
+        $("keys").replaceChildren(...keys.map(buildCard));
+      }
+
+      function updateCard(id) {
+        const key = keys.find((item) => item.id === id);
+        const current = cards.get(id);
+        if (!key || !current) return;
+        current.card.replaceWith(buildCard(key));
+      }
+
+      function updateUsage(id) {
+        const current = cards.get(id);
+        if (current) fillUsage(current.usageEl, id);
+      }
+
+      function queueUsage(ids) {
+        for (const id of ids) {
+          if (usageQueue.includes(id)) continue;
+          usage.set(id, { state: "loading" });
+          usageQueue.push(id);
+          updateUsage(id);
+        }
+        pumpUsage();
+      }
+
+      function pumpUsage() {
+        while (
+          usageActive < USAGE_CONCURRENCY &&
+          usageQueue.length > 0 &&
+          auth.key
+        ) {
+          const id = usageQueue.shift();
+          usageActive++;
+          api("GET", "/keys/usage?id=" + encodeURIComponent(id))
+            .then((data) => usage.set(id, { state: "ok", data: data.usage }))
+            .catch((err) => {
+              if (err instanceof AuthError) usage.delete(id);
+              else usage.set(id, { state: "error", error: err.message });
+            })
+            .finally(() => {
+              usageActive--;
+              updateUsage(id);
+              pumpUsage();
+            });
+        }
+      }
+
+      async function loadList() {
+        const data = await api("GET", "/keys");
+        keys = data.keys || [];
+        for (const id of [...usage.keys()]) {
+          if (!keys.some((key) => key.id === id)) usage.delete(id);
+        }
+        renderList();
+      }
+
+      function showPageError(message) {
+        $("page-error").textContent = message;
+        $("page-error").hidden = !message;
+      }
+
+      async function refresh() {
+        showPageError("");
+        try {
+          await loadList();
+          queueUsage(keys.map((key) => key.id));
+        } catch (err) {
+          if (!(err instanceof AuthError)) {
+            $("loading").hidden = true;
+            showPageError(err.message);
+          }
+        }
+      }
+
+      function replaceKey(view) {
+        const index = view ? keys.findIndex((key) => key.id === view.id) : -1;
+        if (index < 0) return refresh();
+        keys[index] = view;
+        updateCard(view.id);
+      }
+
+      async function act(key, work) {
+        busy.add(key.id);
+        results.delete(key.id);
+        updateCard(key.id);
+        try {
+          await work();
+        } catch (err) {
+          if (!(err instanceof AuthError))
+            results.set(key.id, { ok: false, text: err.message });
+        } finally {
+          busy.delete(key.id);
+          updateCard(key.id);
+        }
+      }
+
+      function testKey(key) {
+        return act(key, async () => {
+          const data = await api("POST", "/keys/test", { id: key.id });
+          if (!data.ok) {
+            results.set(key.id, { ok: false, text: data.error });
+            return;
+          }
+          usage.set(key.id, { state: "ok", data: data.usage });
+          key.workspace = data.workspace;
+          key.models = data.models;
+          results.set(key.id, {
+            ok: true,
+            text: "Key works: " + data.models + " Go models.",
+          });
+        });
+      }
+
+      function startRename(key) {
+        ui.renaming = key.id;
+        ui.draft = key.label;
+        ui.confirming = null;
+        updateCard(key.id);
+      }
+
+      function cancelRename(key) {
+        ui.renaming = null;
+        updateCard(key.id);
+      }
+
+      function saveRename(key) {
+        if (busy.has(key.id)) return;
+        return act(key, async () => {
+          const data = await api("PATCH", "/keys", {
+            id: key.id,
+            label: ui.draft,
+          });
+          ui.renaming = null;
+          replaceKey(data.key);
+        });
+      }
+
+      function setDisabled(key, disabled) {
+        return act(key, async () => {
+          const data = await api("PATCH", "/keys", { id: key.id, disabled });
+          replaceKey(data.key);
+        });
+      }
+
+      function confirmDelete(key) {
+        ui.confirming = key.id;
+        ui.renaming = null;
+        results.delete(key.id);
+        updateCard(key.id);
+      }
+
+      function cancelDelete(key) {
+        ui.confirming = null;
+        updateCard(key.id);
+      }
+
+      function deleteKey(key) {
+        return act(key, async () => {
+          await api("DELETE", "/keys?id=" + encodeURIComponent(key.id));
+          ui.confirming = null;
+          usage.delete(key.id);
+          results.delete(key.id);
+          await loadList();
+        });
+      }
+
+      // Add form
+      function openAdd() {
+        $("add").hidden = false;
+        $("add-open").hidden = true;
+        $("add-cancel").hidden = keys.length === 0;
+        $("add-key").focus();
+      }
+
+      function closeAdd() {
+        $("add").hidden = keys.length > 0;
+        $("add-open").hidden = keys.length === 0;
+        $("add-error").hidden = true;
+        $("add-key").value = "";
+        $("add-label").value = "";
+      }
+
+      function showAddError(message) {
+        $("add-error").textContent = message;
+        $("add-error").hidden = false;
+      }
+
+      $("add-open").addEventListener("click", openAdd);
+      $("add-cancel").addEventListener("click", closeAdd);
+      $("add").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const apiKey = $("add-key").value.trim();
+        const label = $("add-label").value.trim();
+        $("add-error").hidden = true;
+        if (!apiKey.startsWith("oc_sk_")) {
+          showAddError("OpenCode service-account keys start with oc_sk_.");
+          return;
+        }
+        const submit = $("add-submit");
+        submit.disabled = true;
+        submit.textContent = "Checking key…";
+        try {
+          const data = await api("POST", "/keys", { label, api_key: apiKey });
+          if (data.key)
+            usage.set(data.key.id, { state: "ok", data: data.usage });
+          await loadList();
+          closeAdd();
+        } catch (err) {
+          if (!(err instanceof AuthError)) showAddError(err.message);
+        } finally {
+          submit.disabled = false;
+          submit.textContent = "Add";
+        }
+      });
+
+      $("reload").addEventListener("click", refresh);
+
+      // Authentication
+      function showContent() {
+        $("auth").hidden = true;
+        $("content").hidden = false;
+        $("bar-actions").hidden = false;
+      }
+
+      function showAuth(message) {
+        $("content").hidden = true;
+        $("bar-actions").hidden = true;
+        $("auth").hidden = false;
+        $("auth-error").textContent = message;
+        $("auth-error").hidden = !message;
+        $("auth-key").value = "";
+        $("auth-key").focus();
+      }
+
+      $("auth").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const typed = $("auth-key").value.trim();
+        if (!typed) return;
+        auth.key = typed;
+        auth.source = "typed";
+        const submit = $("auth-submit");
+        submit.disabled = true;
+        try {
+          await loadList();
+          storageSet(sessionStorage, SESSION_KEY, typed);
+          auth.source = "session";
+          showContent();
+          queueUsage(keys.map((key) => key.id));
+        } catch (err) {
+          if (!(err instanceof AuthError)) {
+            $("auth-error").textContent = err.message;
+            $("auth-error").hidden = false;
+          }
+        } finally {
+          submit.disabled = false;
+        }
+      });
+
+      Object.assign(auth, resolveKey());
+      if (auth.key) {
+        showContent();
+        refresh();
+      } else {
+        showAuth("");
+      }
+    </script>
+  </body>
+</html>

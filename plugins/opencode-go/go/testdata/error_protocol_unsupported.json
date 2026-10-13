@@ -1,0 +1,7 @@
+{
+  "type": "error",
+  "error": {
+    "type": "ModelProtocolUnsupported",
+    "message": "Model does not support this protocol."
+  }
+}

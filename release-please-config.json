@@ -12,6 +12,10 @@
     "plugins/disable-response-api": {
       "component": "disable-response-api",
       "extra-files": ["go/main.go"]
+    },
+    "plugins/opencode-go": {
+      "component": "opencode-go",
+      "extra-files": ["go/main.go"]
     }
   }
 }

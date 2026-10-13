@@ -1,0 +1,24 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_reasoning_only_fixture","object":"response","created_at":1791849374,"status":"in_progress","model":"gpt-6-luna","output":[]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"rs_reasoning_only_fixture","type":"reasoning","summary":[]}}
+
+event: response.reasoning_summary_part.added
+data: {"type":"response.reasoning_summary_part.added","sequence_number":2,"item_id":"rs_reasoning_only_fixture","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":3,"item_id":"rs_reasoning_only_fixture","output_index":0,"summary_index":0,"delta":"Still thinking about the answer."}
+
+event: response.reasoning_summary_text.done
+data: {"type":"response.reasoning_summary_text.done","sequence_number":4,"item_id":"rs_reasoning_only_fixture","output_index":0,"summary_index":0,"text":"Still thinking about the answer."}
+
+event: response.reasoning_summary_part.done
+data: {"type":"response.reasoning_summary_part.done","sequence_number":5,"item_id":"rs_reasoning_only_fixture","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":"Still thinking about the answer."}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":6,"output_index":0,"item":{"id":"rs_reasoning_only_fixture","type":"reasoning","encrypted_content":"gAAAAABfixtureEncryptedReasoningOnly","summary":[{"type":"summary_text","text":"Still thinking about the answer."}]}}
+
+event: response.incomplete
+data: {"type":"response.incomplete","sequence_number":7,"response":{"id":"resp_reasoning_only_fixture","object":"response","created_at":1791849374,"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"model":"gpt-6-luna","output":[{"id":"rs_reasoning_only_fixture","type":"reasoning","encrypted_content":"gAAAAABfixtureEncryptedReasoningOnly","summary":[{"type":"summary_text","text":"Still thinking about the answer."}]}],"usage":{"input_tokens":9,"output_tokens":16,"total_tokens":25,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":16}}}}
+

@@ -1,0 +1,45 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_reasoning_fixture","object":"response","created_at":1791849374,"status":"in_progress","model":"gpt-6-luna","output":[]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"rs_reasoning_fixture","type":"reasoning","summary":[]}}
+
+event: response.reasoning_summary_part.added
+data: {"type":"response.reasoning_summary_part.added","sequence_number":2,"item_id":"rs_reasoning_fixture","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":3,"item_id":"rs_reasoning_fixture","output_index":0,"summary_index":0,"delta":"Checking the instruction"}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":4,"item_id":"rs_reasoning_fixture","output_index":0,"summary_index":0,"delta":" before answering."}
+
+event: response.reasoning_summary_text.done
+data: {"type":"response.reasoning_summary_text.done","sequence_number":5,"item_id":"rs_reasoning_fixture","output_index":0,"summary_index":0,"text":"Checking the instruction before answering."}
+
+event: response.reasoning_summary_part.done
+data: {"type":"response.reasoning_summary_part.done","sequence_number":6,"item_id":"rs_reasoning_fixture","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":"Checking the instruction before answering."}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":7,"output_index":0,"item":{"id":"rs_reasoning_fixture","type":"reasoning","encrypted_content":"gAAAAABfixtureEncryptedReasoning","summary":[{"type":"summary_text","text":"Checking the instruction before answering."}]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":8,"output_index":1,"item":{"id":"msg_reasoning_fixture","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","sequence_number":9,"output_index":1,"content_index":0,"item_id":"msg_reasoning_fixture","part":{"type":"output_text","text":"","annotations":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":10,"output_index":1,"content_index":0,"item_id":"msg_reasoning_fixture","delta":"OK"}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","sequence_number":11,"output_index":1,"content_index":0,"item_id":"msg_reasoning_fixture","text":"OK"}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","sequence_number":12,"output_index":1,"content_index":0,"item_id":"msg_reasoning_fixture","part":{"type":"output_text","text":"OK","annotations":[]}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":13,"output_index":1,"item":{"id":"msg_reasoning_fixture","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"OK","annotations":[]}]}}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":14,"response":{"id":"resp_reasoning_fixture","object":"response","created_at":1791849374,"status":"completed","model":"gpt-6-luna","output":[{"id":"rs_reasoning_fixture","type":"reasoning","encrypted_content":"gAAAAABfixtureEncryptedReasoning","summary":[{"type":"summary_text","text":"Checking the instruction before answering."}]},{"id":"msg_reasoning_fixture","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"OK","annotations":[]}]}],"usage":{"input_tokens":9,"output_tokens":20,"total_tokens":29,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":12}}}}
+

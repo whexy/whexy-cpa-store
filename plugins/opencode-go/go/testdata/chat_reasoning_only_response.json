@@ -1,0 +1,24 @@
+{
+  "id": "02179185390216535c9db62ef7a9766eeb1c4efe709aaa9abbb4a",
+  "object": "chat.completion",
+  "created": 1791853902,
+  "model": "deepseek-v4.1-flash",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "length",
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "The user wants me to reply with OK. I need to determine if there's any policy"
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 33,
+    "completion_tokens": 32,
+    "total_tokens": 65,
+    "prompt_tokens_details": { "cached_tokens": 0 },
+    "completion_tokens_details": { "reasoning_tokens": 32 }
+  }
+}

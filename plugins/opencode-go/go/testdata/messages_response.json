@@ -1,0 +1,15 @@
+{
+  "id": "071ca69c295b347a765c1b8e79cb34e5",
+  "type": "message",
+  "role": "assistant",
+  "stop_reason": "max_tokens",
+  "model": "minimax-m2.7",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "The user says \"Reply with OK\". This is a simple instruction. There's no policy violation. We can comply. We should respond with \"OK\". That's straightforward.\n\nBut we need to ensure that the response is exactly \"OK\"? Probably yes. The user is explicitly requesting \"Reply with OK\". So we just",
+      "signature": "0ef6b4fec54029eb82fb747f36542d7db47209dac0c467347a0ca565647bb8b6"
+    }
+  ],
+  "usage": { "input_tokens": 44, "output_tokens": 64 }
+}

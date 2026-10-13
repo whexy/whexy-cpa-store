@@ -7,6 +7,7 @@ plugins directly from this repo's GitHub release assets.
 ## Plugins
 
 - `disable-response-api` — returns an empty 404 for OpenAI Responses API requests from configured client API keys or carrying the `WHEXY_CPA_DISABLE_RESPONSE_API` header, so clients fall back to Chat Completions.
+- `opencode-go` — serves an OpenCode Go subscription: the workspace's Go models under `opencode-go/<model>`, keys managed on a Management Center page, quota in the Plugin tab.
 
 ## How it works
 

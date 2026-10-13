@@ -1,0 +1,25 @@
+{
+  "id": "resp_reasoning_only_fixture",
+  "object": "response",
+  "created_at": 1791849374,
+  "status": "incomplete",
+  "incomplete_details": { "reason": "max_output_tokens" },
+  "model": "gpt-6-luna",
+  "output": [
+    {
+      "id": "rs_reasoning_only_fixture",
+      "type": "reasoning",
+      "encrypted_content": "gAAAAABfixtureEncryptedReasoningOnly",
+      "summary": [
+        { "type": "summary_text", "text": "Still thinking about the answer." }
+      ]
+    }
+  ],
+  "usage": {
+    "input_tokens": 9,
+    "output_tokens": 16,
+    "total_tokens": 25,
+    "input_tokens_details": { "cached_tokens": 0 },
+    "output_tokens_details": { "reasoning_tokens": 16 }
+  }
+}

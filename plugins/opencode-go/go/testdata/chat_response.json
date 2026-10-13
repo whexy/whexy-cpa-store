@@ -1,0 +1,25 @@
+{
+  "id": "02179184937127382fba1344a9ed2fba97aa536d307b6cfe528e6",
+  "object": "chat.completion",
+  "created": 1791849371,
+  "model": "deepseek-v4.1-flash",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "logprobs": null,
+      "message": {
+        "role": "assistant",
+        "content": "OK",
+        "reasoning_content": "We need answer user asks \"Reply with OK\". Must comply exactly? We need output OK. Ensure no extra."
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 33,
+    "completion_tokens": 25,
+    "total_tokens": 58,
+    "prompt_tokens_details": { "cached_tokens": 0 },
+    "completion_tokens_details": { "reasoning_tokens": 23 }
+  }
+}
