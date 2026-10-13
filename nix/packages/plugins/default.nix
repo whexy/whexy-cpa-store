@@ -7,10 +7,23 @@
 let
   inherit (pkgs) lib;
   pluginsDir = flake + "/plugins";
-  # release-please owns plugin versions; a plugin builds as 0.0.0 until its
-  # first release adds it to the manifest.
-  releasedVersions = builtins.fromJSON (builtins.readFile (flake + "/.release-please-manifest.json"));
-  versionOf = id: releasedVersions."plugins/${id}" or "0.0.0";
+  # Artifacts carry the version the plugin reports to the host: the
+  # pluginVersion constant in go/main.go, 0.0.0 until its first release.
+  versionOf =
+    id:
+    let
+      versions = lib.concatMap (
+        line:
+        let
+          version = builtins.match ''[[:space:]]*pluginVersion[[:space:]]*=[[:space:]]*"([^"]*)".*'' line;
+        in
+        if version == null then [ ] else version
+      ) (lib.splitString "\n" (builtins.readFile (pluginsDir + "/${id}/go/main.go")));
+    in
+    if builtins.length versions == 1 then
+      builtins.head versions
+    else
+      throw "plugins/${id}/go/main.go must declare pluginVersion exactly once";
 
   entries = builtins.readDir pluginsDir;
   discoveredIds = builtins.filter (

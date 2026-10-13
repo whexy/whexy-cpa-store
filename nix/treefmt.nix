@@ -8,11 +8,11 @@ _: {
     prettier.enable = true;
   };
 
-  # CI bots write these files with their own serializers; formatting them here
-  # would fail the next pull request's format check on a bot commit.
+  # whexy-bot commits registry.json and release/bump.mjs writes changelogs with
+  # their own serializers; formatting them here would fail the next pull
+  # request's format check.
   settings.global.excludes = [
     "registry.json"
-    ".release-please-manifest.json"
     "plugins/*/CHANGELOG.md"
   ];
 }

@@ -1,26 +1,18 @@
-import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { readPlugins, tagName, UNRELEASED } from "./plugins.mjs";
 
-export async function readReleaseState(root = new URL("../", import.meta.url)) {
-  const read = async (name) =>
-    JSON.parse(await readFile(new URL(name, root), "utf8"));
-  return {
-    config: await read("release-please-config.json"),
-    manifest: await read(".release-please-manifest.json"),
-  };
-}
-
-// release-please tags a plugin release <component>-v<version>; the tag pipeline
-// may only publish the version the merged release PR wrote to the manifest.
-export function pluginForTag(tag, { config, manifest }) {
-  for (const [path, settings] of Object.entries(config.packages)) {
-    const version = manifest[path];
-    if (version && tag === `${settings.component}-v${version}`)
-      return { id: settings.component, path, version };
-  }
-  throw new Error(
-    `Tag ${tag} is not the manifest version of any plugin in .release-please-manifest.json`,
+// A tag pipeline may only publish the version its own tree declares.
+export function pluginForTag(tag, plugins) {
+  const plugin = plugins.find(
+    (candidate) =>
+      candidate.version !== UNRELEASED &&
+      tag === tagName(candidate.id, candidate.version),
   );
+  if (!plugin)
+    throw new Error(
+      `Tag ${tag} is not <id>-v<pluginVersion> of any plugin in its tree`,
+    );
+  return plugin;
 }
 
 if (
@@ -29,7 +21,7 @@ if (
 ) {
   const plugin = pluginForTag(
     process.env.CI_COMMIT_TAG ?? "",
-    await readReleaseState(),
+    await readPlugins(),
   );
   console.log(`Releasing ${plugin.id} ${plugin.version}`);
 }

@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { setTimeout as sleep } from "node:timers/promises";
 import { githubRequest, githubToken } from "./github-app.mjs";
-import { pluginForTag, readReleaseState } from "./plugin-tag.mjs";
+import { pluginForTag } from "./plugin-tag.mjs";
+import { changelogSection, readPlugins } from "./plugins.mjs";
 
 export async function readArtifacts(dir, plugin) {
   const prefix = `${plugin.id}-v${plugin.version}-`;
@@ -44,14 +44,23 @@ export async function githubUpload(
   return response.json();
 }
 
+export function releaseNotes(plugin) {
+  const notes = changelogSection(plugin.changelog, plugin.version);
+  if (!notes)
+    throw new Error(
+      `${plugin.path}/CHANGELOG.md has no ${plugin.version} section`,
+    );
+  return notes;
+}
+
 export async function publishRelease(
   env,
+  plugin,
   artifacts,
   {
     request = githubRequest,
     upload = githubUpload,
     tokenFor = githubToken,
-    wait = sleep,
   } = {},
 ) {
   if (env.CI_PIPELINE_EVENT !== "tag")
@@ -59,24 +68,28 @@ export async function publishRelease(
   const token = await tokenFor(env);
   const root = `/repos/${env.CI_REPO}`;
   let release;
-  // Forced tag creation triggers CI before release-please creates its draft.
-  for (let attempt = 0; attempt < 6 && !release; attempt++) {
-    for (let page = 1; ; page++) {
-      const releases = await request(
-        token,
-        `${root}/releases?per_page=100&page=${page}`,
-      );
-      release = releases.find(
-        (candidate) => candidate.tag_name === env.CI_COMMIT_TAG,
-      );
-      if (release || releases.length < 100) break;
-    }
-    if (!release && attempt < 5) await wait(1000 * 2 ** attempt);
-  }
-  if (!release)
-    throw new Error(
-      `No release-please draft found for ${env.CI_COMMIT_TAG}; rerun the tag pipeline after preparation succeeds`,
+  // The releases-by-tag endpoint omits drafts, so a rerun searches the list.
+  for (let page = 1; !release; page++) {
+    const releases = await request(
+      token,
+      `${root}/releases?per_page=100&page=${page}`,
     );
+    release = releases.find(
+      (candidate) => candidate.tag_name === env.CI_COMMIT_TAG,
+    );
+    if (releases.length < 100) break;
+  }
+  // The release stays a draft until it holds the build, because publishing
+  // makes its assets immutable.
+  release ??= await request(token, `${root}/releases`, {
+    method: "POST",
+    body: {
+      tag_name: env.CI_COMMIT_TAG,
+      name: `${plugin.id}: v${plugin.version}`,
+      body: releaseNotes(plugin),
+      draft: true,
+    },
+  });
   if (!release.draft) {
     // Published assets are immutable, so a rerun can only confirm that the
     // release already holds this build.
@@ -121,7 +134,11 @@ if (
 ) {
   const plugin = pluginForTag(
     process.env.CI_COMMIT_TAG ?? "",
-    await readReleaseState(),
+    await readPlugins(),
   );
-  await publishRelease(process.env, await readArtifacts("dist", plugin));
+  await publishRelease(
+    process.env,
+    plugin,
+    await readArtifacts("dist", plugin),
+  );
 }

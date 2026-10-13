@@ -47,7 +47,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.1.0" // x-release-please-version
+	pluginVersion = "0.1.0"
 
 	pluginID    = "client-keys"
 	displayName = "Client keys"

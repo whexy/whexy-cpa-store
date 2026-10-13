@@ -1,26 +1,11 @@
 import { pathToFileURL } from "node:url";
 import { githubRequest, githubToken } from "./github-app.mjs";
+import { compareVersions, RELEASE_VERSION } from "./plugins.mjs";
 
 const REGISTRY_PATH = "registry.json";
 const PLUGIN_METADATA = /^plugins\/([^/]+)\/plugin\.json$/;
-const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const ASSET_SUFFIX = /^(.+)-([^-]+)-([^-]+)\.zip$/;
 const DIGEST = /^sha256:([0-9a-f]{64})$/;
-
-export function compareVersions(left, right) {
-  const parse = (version) => {
-    const [core, pre] = version.split(/-(.*)/s);
-    return { core: core.split(".").map(Number), pre: pre ?? "" };
-  };
-  const a = parse(left);
-  const b = parse(right);
-  for (let index = 0; index < 3; index++)
-    if (a.core[index] !== b.core[index]) return a.core[index] - b.core[index];
-  if (a.pre === b.pre) return 0;
-  if (!a.pre) return 1;
-  if (!b.pre) return -1;
-  return a.pre.localeCompare(b.pre, "en", { numeric: true });
-}
 
 // The registry lists, for every plugin directory on the default branch, the
 // highest version among assets named <id>-v<version>-<goos>-<goarch>.zip on

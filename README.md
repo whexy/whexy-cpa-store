@@ -24,10 +24,10 @@ plugins directly from this repo's GitHub release assets.
   `<id>-v<version>-<goos>-<goarch>.zip`, the digest GitHub recorded for each
   asset, and `plugin.json` as of that release's tag. Never edit
   `registry.json` by hand.
-- release-please owns plugin versions: `.release-please-manifest.json` and the
-  `pluginVersion` constant in each `go/main.go`. The plugin reports that
-  constant to the host, and CLIProxyAPI offers an update whenever it differs
-  from the registry version, so the two must come from the same release.
+- A plugin's version is the `pluginVersion` constant in its `go/main.go`. The
+  plugin reports that constant to the host, and CLIProxyAPI offers an update
+  whenever it differs from the registry version, so the release is built from
+  the commit that declares it.
 
 ## Layout
 
@@ -35,13 +35,11 @@ plugins directly from this repo's GitHub release assets.
 plugins/<id>/
   plugin.json          # store metadata (id, name, description, ...), no version
   vendor-hash.nix      # fixed-output hash of the vendored Go dependencies
-  CHANGELOG.md         # written by release-please
-  go/                  # plugin source (Go module)
+  CHANGELOG.md         # written by release/bump.mjs
+  go/                  # plugin source (Go module); main.go declares pluginVersion
 tools/registry-check/  # validates registry.json and plugin.json with the host's parser
-release/               # release-please, release publication and registry tooling
+release/               # version bumps, tagging, release publication and registry tooling
 nix/packages/plugins/  # .#plugins.<id> builds, tests and zips one plugin
-release-please-config.json
-.release-please-manifest.json
 ```
 
 ## Module path caveat
@@ -58,39 +56,53 @@ needed at build time.
    described above (`github.com/router-for-me/CLIProxyAPI/v7/whexy-cpa-store/plugins/<id>`).
 2. Add `plugins/<id>/plugin.json` without a `version` (id must equal the
    directory name).
-3. In `go/main.go`, declare `pluginVersion = "0.0.0" // x-release-please-version`
-   and register it as the plugin's `Metadata.Version`.
-4. Add `plugins/<id>` to `release-please-config.json` with `component: <id>`
-   and `extra-files: ["go/main.go"]`. Leave the manifest alone: the first
-   release is `initial-version`, 0.1.0.
-5. Add `plugins/<id>/vendor-hash.nix` with `lib.fakeHash`, run
+3. In `go/main.go`, declare `pluginVersion = "0.0.0"` in a `const` block and
+   register it as the plugin's `Metadata.Version`. 0.0.0 means unreleased.
+4. Add `plugins/<id>/vendor-hash.nix` with `lib.fakeHash`, run
    `nix build .#plugins.<id>`, and paste the hash from the error message.
-6. Open a pull request with a `feat(<id>): ...` commit.
+5. Open a pull request with a `feat(<id>): ...` commit. To release it in the
+   same pull request, see [Release flow](#release-flow).
 
 ## Release flow
 
-Merging pull requests is the only manual step; never create tags or releases
-by hand. Woodpecker runs `.woodpecker.yaml`:
+A plugin is released by the pull request that raises its `pluginVersion`.
+Plugins release independently: a release touches only its own directory, and
+pull requests merge without being rebased onto the latest `main`, so
+concurrent releases of different plugins never wait for each other.
 
-1. Pull requests run `nix flake check` (formatting, lint, the registry check,
-   and every plugin's build and tests) and the release tooling tests. `main`
-   only accepts rebase-merged pull requests that passed on an up-to-date
-   branch.
-2. Each push to `main` runs release-please. It keeps one release pull request
-   per plugin with releasable commits (`feat`, `fix`, `perf`, `revert`) touching
-   `plugins/<id>/`. Before 1.0, `feat` and breaking changes bump the minor
-   version and `fix` the patch.
-3. Merging a release pull request makes release-please tag
-   `<id>-v<version>` and create a draft release.
-4. The tag pipeline checks the tag against the manifest, builds only that
-   plugin, uploads its zip to the draft and publishes the release.
-5. whexy-bot regenerates `registry.json` and commits it to `main`. This is the
+To release, finish the pull request's changes, then run:
+
+```bash
+node release/bump.mjs <id>          # next version from the commits since <id>'s last tag
+node release/bump.mjs <id> 0.2.1    # or name the version
+```
+
+It writes the version into `go/main.go` and a section into `CHANGELOG.md`
+listing the `feat`, `fix`, `perf` and `revert` commits that touch
+`plugins/<id>/`. Before 1.0, `feat` and breaking changes bump the minor
+version and `fix` the patch. Commit both files as
+`chore(<id>): release <version>` and merge the pull request; changes merged
+without a bump wait for the next one.
+
+Woodpecker runs `.woodpecker.yaml`, and nothing else is manual; never create
+tags or releases by hand:
+
+1. Pull requests run `nix flake check`: formatting, lint, the registry check,
+   every plugin's build and tests, and the release tooling's tests, which also
+   require a changelog section for every declared version.
+2. Each push to `main` runs the same check, then tags `<id>-v<version>` at that
+   commit for every declared version that has no tag yet.
+3. The tag pipeline checks the tag against the declared version, builds only
+   that plugin, creates a draft release with its changelog section, uploads
+   the zip and publishes the release.
+4. whexy-bot regenerates `registry.json` and commits it to `main`. This is the
    only commit that bypasses the pull request rule.
 
-A failed tag pipeline leaves the release as a draft: fix the cause and rerun
-the pipeline. Published releases are immutable, so a broken version is fixed
-by releasing a new one. To republish the registry, start a manual pipeline on
-`main`.
+A failed tag pipeline leaves the release as a draft or missing: fix the cause
+and rerun the pipeline. A failed `main` pipeline tags nothing; the next
+passing push or a manual pipeline on `main` tags what it missed. Published
+releases are immutable, so a broken version is fixed by releasing a new one.
+To republish the registry, start a manual pipeline on `main`.
 
 The pipeline acts as whexy-bot through the `github_app_id`,
 `github_app_installation_id` and `github_app_private_key` organization
@@ -120,16 +132,14 @@ URL of the registry it came from and stops offering updates when it changes.
 ```bash
 nix develop                                # go, node, jq, gh + pre-commit hooks
 nix fmt                                    # treefmt: nixfmt, gofmt, shfmt, prettier
-nix flake check                            # lint, registry check, build + test every plugin
+nix flake check                            # lint, registry check, release tests, build + test every plugin
 nix build .#plugins.disable-response-api   # one plugin's release zip in ./result
-npm ci --prefix release && node --test release/release.test.mjs
+node --test release/release.test.mjs       # the release tooling's tests alone
 ```
 
-Preview what CI would do next with your own GitHub token; neither command
-writes anything:
+Preview the registry the next publication would commit, with your own GitHub
+token; it writes nothing:
 
 ```bash
-export CI_REPO=whexy/whexy-cpa-store GITHUB_TOKEN="$(gh auth token)"
-node release/release-please.mjs --dry-run  # pending releases and release PRs
-node release/registry.mjs --dry-run        # registry.json after the next publication
+CI_REPO=whexy/whexy-cpa-store GITHUB_TOKEN="$(gh auth token)" node release/registry.mjs --dry-run
 ```

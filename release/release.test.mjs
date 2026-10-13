@@ -1,15 +1,24 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, verify } from "node:crypto";
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { Manifest, setLogger } from "release-please";
-import { buildStrategy } from "release-please/build/src/factory.js";
-import { Version } from "release-please/build/src/version.js";
-import { TagName } from "release-please/build/src/util/tag-name.js";
+import {
+  changelogEntry,
+  nextVersion,
+  parseCommit,
+  prependSection,
+} from "./bump.mjs";
 import { githubToken } from "./github-app.mjs";
-import { pluginForTag, readReleaseState } from "./plugin-tag.mjs";
+import { pluginForTag } from "./plugin-tag.mjs";
+import {
+  changelogSection,
+  declaredVersion,
+  readPlugins,
+  setDeclaredVersion,
+  UNRELEASED,
+} from "./plugins.mjs";
 import { publishRelease, readArtifacts } from "./publish-release.mjs";
 import {
   commitTitle,
@@ -18,19 +27,9 @@ import {
   registryEntry,
   renderRegistry,
 } from "./registry.mjs";
+import { tagReleases } from "./tag-releases.mjs";
 
 const repository = "whexy/example";
-const quiet = () => {};
-setLogger({
-  error: quiet,
-  warn: quiet,
-  info: quiet,
-  debug: quiet,
-  trace: quiet,
-});
-
-const root = new URL("../", import.meta.url);
-const readText = (path) => readFile(new URL(path, root), "utf8");
 const sha = (char) => char.repeat(64);
 const asset = (name, char, extra = {}) => ({
   name,
@@ -46,23 +45,6 @@ const release = (tag_name, assets, extra = {}) => ({
   assets,
   ...extra,
 });
-
-async function pluginDirectories() {
-  const entries = await readdir(new URL("plugins/", root), {
-    withFileTypes: true,
-  });
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-}
-
-function goVersion(source) {
-  const line = source
-    .split("\n")
-    .find((candidate) => candidate.includes("x-release-please-version"));
-  return /"(\d+\.\d+\.\d+[^"]*)"/.exec(line ?? "")?.[1];
-}
 
 test("App authentication signs a valid JWT and restricts the installation token to this repository", async () => {
   const { privateKey, publicKey } = generateKeyPairSync("rsa", {
@@ -99,117 +81,253 @@ test("App authentication signs a valid JWT and restricts the installation token 
   assert.equal(token, "installation-token");
 });
 
-test("every plugin is a release-please package whose shipped version matches the manifest", async () => {
-  const { config, manifest } = await readReleaseState();
-  const ids = await pluginDirectories();
-  assert.deepEqual(
-    Object.keys(config.packages).sort(),
-    ids.map((id) => `plugins/${id}`),
+test("every plugin declares its version in go/main.go, with release notes for a released one", async () => {
+  for (const plugin of await readPlugins()) {
+    assert.equal(plugin.metadata.id, plugin.id, `${plugin.path}/plugin.json`);
+    // The registry takes versions from published assets; a version in
+    // plugin.json would be a second source.
+    assert.equal(
+      plugin.metadata.version,
+      undefined,
+      `${plugin.path}/plugin.json`,
+    );
+    if (plugin.version !== UNRELEASED)
+      assert.ok(
+        changelogSection(plugin.changelog, plugin.version),
+        `${plugin.path}/CHANGELOG.md has no ${plugin.version} section`,
+      );
+  }
+});
+
+test("the version is the single pluginVersion constant", () => {
+  const source =
+    'const (\n\tpluginVersion = "0.2.0"\n\tother = "1.0.0"\n)\n\nfunc v() string { return pluginVersion }\n';
+  assert.equal(declaredVersion(source, "main.go"), "0.2.0");
+  const bumped = setDeclaredVersion(source, "0.3.0");
+  assert.equal(declaredVersion(bumped, "main.go"), "0.3.0");
+  assert.equal(bumped.replace("0.3.0", "0.2.0"), source);
+  assert.throws(
+    () => declaredVersion("const other = 1\n", "main.go"),
+    /exactly once/,
   );
-  for (const id of ids) {
-    const path = `plugins/${id}`;
-    assert.equal(config.packages[path].component, id);
-    assert.deepEqual(config.packages[path]["extra-files"], ["go/main.go"]);
-    const metadata = JSON.parse(await readText(`${path}/plugin.json`));
-    assert.equal(metadata.id, id);
-    // The registry takes versions from published assets; a version here
-    // would be a second source that release-please does not update.
-    assert.equal(metadata.version, undefined, `${path}/plugin.json`);
-    // CLIProxyAPI offers an update whenever the loaded plugin reports a
-    // different version than the registry.
-    assert.equal(
-      goVersion(await readText(`${path}/go/main.go`)),
-      manifest[path] ?? "0.0.0",
-      `${path}/go/main.go`,
-    );
-  }
+  assert.throws(
+    () =>
+      declaredVersion(
+        source.replace("\tother", '\tpluginVersion = "0.4.0"\n\tother'),
+        "main.go",
+      ),
+    /exactly once/,
+  );
+  assert.throws(
+    () => declaredVersion('pluginVersion = "dev"\n', "main.go"),
+    /"dev"/,
+  );
 });
 
-test("a release PR tags <id>-v<version> and advances the version the plugin reports", async () => {
-  const contents = async (path) => {
-    const parsedContent = await readText(path);
-    return {
-      parsedContent,
-      content: Buffer.from(parsedContent).toString("base64"),
-      sha: "test",
-    };
-  };
-  const github = {
-    repository: { owner: "whexy", repo: "example", defaultBranch: "main" },
-    getFileJson: async (path) => JSON.parse(await readText(path)),
-    getFileContentsOnBranch: contents,
-    getFileContents: contents,
-    findFilesByFilenameAndRef: async () => [],
-    findFilesByGlobAndRef: async () => [],
-  };
-  const manifest = await Manifest.fromManifest(github, "main");
-  for (const [path, config] of Object.entries(manifest.repositoryConfig)) {
-    // The tag pipeline builds from the forced tag while the release stays a draft.
-    assert.equal(config.draft, true);
-    assert.equal(config.forceTag, true);
-    const current = manifest.releasedVersions[path]?.toString();
-    const strategy = await buildStrategy({
-      ...config,
-      github,
-      path,
-      targetBranch: "main",
-    });
-    const pullRequest = await strategy.buildReleasePullRequest(
-      [
-        {
-          sha: "new-sha",
-          message: "fix: correct a bug",
-          type: "fix",
-          scope: null,
-          bareMessage: "correct a bug",
-          breaking: false,
-          notes: [],
-          references: [],
-          files: [],
-        },
-      ],
-      current && {
-        tag: new TagName(Version.parse(current), config.component, "-", true),
-        sha: "old-sha",
-        notes: "",
-      },
-    );
-    const next = pullRequest.version.toString();
-    if (current) assert.notEqual(next, current);
-    else assert.equal(next, config.initialVersion);
-    assert.equal(
-      new TagName(pullRequest.version, config.component, "-", true).toString(),
-      `${config.component}-v${next}`,
-    );
-    const update = pullRequest.updates.find(
-      (candidate) => candidate.path === `${path}/go/main.go`,
-    );
-    assert.ok(update, `Missing release update for ${path}/go/main.go`);
-    const updated = update.updater.updateContent(
-      await readText(`${path}/go/main.go`),
-    );
-    assert.equal(goVersion(updated), next);
-  }
+test("release notes are the version's changelog section", () => {
+  const changelog = [
+    "# Changelog",
+    "",
+    "## [0.2.0](https://example.com/compare/foo-v0.1.0...foo-v0.2.0) (2026-10-13)",
+    "",
+    "",
+    "### Features",
+    "",
+    "* **foo:** two",
+    "",
+    "## 0.1.0 (2026-10-12)",
+    "",
+    "* **foo:** one",
+    "",
+  ].join("\n");
+  assert.equal(
+    changelogSection(changelog, "0.2.0"),
+    "## [0.2.0](https://example.com/compare/foo-v0.1.0...foo-v0.2.0) (2026-10-13)\n\n\n### Features\n\n* **foo:** two",
+  );
+  assert.equal(
+    changelogSection(changelog, "0.1.0"),
+    "## 0.1.0 (2026-10-12)\n\n* **foo:** one",
+  );
+  assert.equal(changelogSection(changelog, "0.1.1"), undefined);
 });
 
-test("only the manifest version of a plugin can be released", () => {
-  const state = {
-    config: {
-      packages: {
-        "plugins/foo": { component: "foo" },
-        "plugins/foo-bar": { component: "foo-bar" },
-      },
-    },
-    manifest: { "plugins/foo": "0.2.0", "plugins/foo-bar": "1.0.0" },
-  };
-  assert.deepEqual(pluginForTag("foo-bar-v1.0.0", state), {
-    id: "foo-bar",
-    path: "plugins/foo-bar",
-    version: "1.0.0",
+test("a version is bumped from the conventional commits since its last tag", () => {
+  const commits = (...subjects) =>
+    subjects.map((subject) => parseCommit(subject));
+  assert.equal(nextVersion(undefined, []), "0.1.0");
+  assert.equal(
+    nextVersion("0.2.0", commits("fix(foo): a", "docs: b")),
+    "0.2.1",
+  );
+  assert.equal(nextVersion("0.2.1", commits("feat(foo): a")), "0.3.0");
+  assert.equal(nextVersion("0.2.1", commits("feat(foo)!: a")), "0.3.0");
+  assert.equal(nextVersion("1.2.3", commits("feat(foo)!: a")), "2.0.0");
+  assert.equal(
+    nextVersion("1.2.3", [parseCommit("fix: a", "BREAKING CHANGE: b")]),
+    "2.0.0",
+  );
+  assert.equal(nextVersion("0.2.0", commits("chore(foo): a")), undefined);
+  assert.equal(parseCommit("Merge branch main"), undefined);
+});
+
+test("a changelog entry groups the releasable commits under its version", () => {
+  const entry = changelogEntry({
+    id: "foo",
+    version: "0.3.0",
+    previous: "0.2.0",
+    repository: "https://github.com/whexy/example",
+    date: "2026-10-13",
+    commits: [
+      parseCommit("feat(foo)!: drop a setting"),
+      parseCommit("fix(foo): correct a bug"),
+      parseCommit("feat: add a page"),
+    ],
   });
-  assert.equal(pluginForTag("foo-v0.2.0", state).id, "foo");
-  assert.throws(() => pluginForTag("foo-v0.1.0", state), /manifest version/);
-  assert.throws(() => pluginForTag("v0.2.0", state), /manifest version/);
+  assert.equal(
+    entry,
+    [
+      "## [0.3.0](https://github.com/whexy/example/compare/foo-v0.2.0...foo-v0.3.0) (2026-10-13)",
+      "",
+      "",
+      "### ⚠ BREAKING CHANGES",
+      "",
+      "* **foo:** drop a setting",
+      "",
+      "### Features",
+      "",
+      "* **foo:** drop a setting",
+      "* add a page",
+      "",
+      "### Bug Fixes",
+      "",
+      "* **foo:** correct a bug",
+      "",
+    ].join("\n"),
+  );
+  const first = changelogEntry({
+    id: "foo",
+    version: "0.1.0",
+    date: "2026-10-13",
+    commits: [],
+  });
+  assert.equal(
+    prependSection("", first),
+    "# Changelog\n\n## 0.1.0 (2026-10-13)\n",
+  );
+  assert.equal(
+    prependSection(prependSection("", first), entry).split("\n## ").length,
+    3,
+  );
+  assert.equal(
+    changelogSection(prependSection("", entry), "0.3.0"),
+    entry.trimEnd(),
+  );
+});
+
+test("a tag pipeline only publishes the version declared in its tree", () => {
+  const plugins = [
+    { id: "foo", version: "0.2.0" },
+    { id: "foo-bar", version: "1.0.0" },
+    { id: "new", version: UNRELEASED },
+  ];
+  assert.equal(pluginForTag("foo-bar-v1.0.0", plugins).id, "foo-bar");
+  assert.equal(pluginForTag("foo-v0.2.0", plugins).id, "foo");
+  assert.throws(() => pluginForTag("foo-v0.1.0", plugins), /pluginVersion/);
+  assert.throws(() => pluginForTag("new-v0.0.0", plugins), /pluginVersion/);
+  assert.throws(() => pluginForTag("v0.2.0", plugins), /pluginVersion/);
+});
+
+const headSha = "c".repeat(40);
+const pushEnv = {
+  CI_PIPELINE_EVENT: "push",
+  CI_COMMIT_BRANCH: "main",
+  CI_REPO_DEFAULT_BRANCH: "main",
+  CI_COMMIT_SHA: headSha,
+  CI_REPO: repository,
+};
+
+function tagFixture(tags, { racedBy = [] } = {}) {
+  const calls = [];
+  const existing = new Set(tags);
+  const request = async (_token, path, options = {}) => {
+    const method = options.method ?? "GET";
+    calls.push({ method, path, body: options.body });
+    const route = path.slice(`/repos/${repository}`.length);
+    if (method === "GET" && route.startsWith("/git/matching-refs/tags/")) {
+      const prefix = `refs/tags/${decodeURIComponent(route.slice("/git/matching-refs/tags/".length))}`;
+      return [...existing]
+        .map((tag) => ({ ref: `refs/tags/${tag}` }))
+        .filter(({ ref }) => ref.startsWith(prefix));
+    }
+    if (method === "POST" && route === "/git/refs") {
+      const tag = options.body.ref.slice("refs/tags/".length);
+      if (racedBy.includes(tag)) existing.add(tag);
+      if (existing.has(tag)) {
+        const error = new Error("HTTP 422");
+        error.status = 422;
+        throw error;
+      }
+      existing.add(tag);
+      return {};
+    }
+    throw new Error(`Unexpected request: ${method} ${route}`);
+  };
+  return { calls, deps: { request, tokenFor: async () => "app-token" } };
+}
+
+test("main pipelines tag each untagged plugin version at the validated commit", async () => {
+  const f = tagFixture(["foo-v0.1.0", "foo-bar-v1.0.0", "v0.3.0"]);
+  const created = await tagReleases(
+    pushEnv,
+    [
+      { id: "foo", path: "plugins/foo", version: "0.2.0" },
+      { id: "foo-bar", path: "plugins/foo-bar", version: "1.0.0" },
+      { id: "new", path: "plugins/new", version: UNRELEASED },
+    ],
+    f.deps,
+  );
+  assert.deepEqual(created, ["foo-v0.2.0"]);
+  assert.deepEqual(
+    f.calls.filter((call) => call.method === "POST").map((call) => call.body),
+    [{ ref: "refs/tags/foo-v0.2.0", sha: headSha }],
+  );
+});
+
+test("a version tagged by a concurrent pipeline is not an error", async () => {
+  const f = tagFixture(["foo-v0.1.0"], { racedBy: ["foo-v0.2.0"] });
+  assert.deepEqual(
+    await tagReleases(
+      pushEnv,
+      [{ id: "foo", path: "plugins/foo", version: "0.2.0" }],
+      f.deps,
+    ),
+    [],
+  );
+});
+
+test("a version below a released one is never tagged", async () => {
+  const f = tagFixture(["foo-v0.3.0"]);
+  await assert.rejects(
+    tagReleases(
+      pushEnv,
+      [{ id: "foo", path: "plugins/foo", version: "0.2.0" }],
+      f.deps,
+    ),
+    /below the released foo-v0.3.0/,
+  );
+  assert.ok(f.calls.every((call) => call.method === "GET"));
+});
+
+test("only default-branch pushes and manual runs tag releases", async () => {
+  const plugins = [{ id: "foo", path: "plugins/foo", version: "0.2.0" }];
+  for (const env of [
+    { ...pushEnv, CI_PIPELINE_EVENT: "pull_request" },
+    { ...pushEnv, CI_COMMIT_BRANCH: "feat/foo" },
+  ]) {
+    const f = tagFixture([]);
+    await assert.rejects(tagReleases(env, plugins, f.deps), /push or manual/);
+    assert.equal(f.calls.length, 0);
+  }
 });
 
 test("release artifacts are the plugin's zips in the build output", async () => {
@@ -238,6 +356,13 @@ const tagEnv = {
   CI_REPO: repository,
   CI_COMMIT_TAG: "foo-v0.2.0",
 };
+const tagPlugin = {
+  id: "foo",
+  path: "plugins/foo",
+  version: "0.2.0",
+  changelog:
+    "# Changelog\n\n## 0.2.0 (2026-10-13)\n\n* **foo:** two\n\n## 0.1.0 (2026-10-12)\n",
+};
 const artifact = {
   name: "foo-v0.2.0-linux-amd64.zip",
   data: Buffer.from("zip"),
@@ -246,36 +371,27 @@ const artifact = {
 
 function releaseFixture({ draft = true, missing = false, assets = [] } = {}) {
   const calls = [];
-  let waits = 0;
+  const draftRelease = {
+    id: 7,
+    tag_name: tagEnv.CI_COMMIT_TAG,
+    draft,
+    assets,
+    upload_url:
+      "https://uploads.github.com/repos/whexy/example/releases/7/assets{?name,label}",
+  };
   return {
     calls,
-    get waits() {
-      return waits;
-    },
     deps: {
       tokenFor: async () => "app-token",
-      wait: async () => {
-        waits++;
-      },
       upload: async (_token, uploadUrl, uploaded) => {
         calls.push({ path: uploadUrl, options: { method: "UPLOAD" } });
         return { name: uploaded.name, digest: `sha256:${uploaded.sha256}` };
       },
       request: async (_token, path, options) => {
         calls.push({ path, options });
-        if (path.includes("?per_page="))
-          return missing
-            ? []
-            : [
-                {
-                  id: 7,
-                  tag_name: tagEnv.CI_COMMIT_TAG,
-                  draft,
-                  assets,
-                  upload_url:
-                    "https://uploads.github.com/repos/whexy/example/releases/7/assets{?name,label}",
-                },
-              ];
+        if (path.includes("?per_page=")) return missing ? [] : [draftRelease];
+        if (options?.method === "POST")
+          return { ...draftRelease, draft: true, assets: [] };
         if (options?.method === "DELETE") return null;
         if (options?.method === "PATCH")
           return { html_url: "https://github.com/whexy/example/releases/7" };
@@ -285,19 +401,40 @@ function releaseFixture({ draft = true, missing = false, assets = [] } = {}) {
   };
 }
 
-test("publication uploads the build to the draft, then publishes it", async () => {
-  const f = releaseFixture();
-  await publishRelease(tagEnv, [artifact], f.deps);
+test("publication creates a draft with the changelog section, uploads the build, then publishes it", async () => {
+  const f = releaseFixture({ missing: true });
+  await publishRelease(tagEnv, tagPlugin, [artifact], f.deps);
   assert.deepEqual(
     f.calls.map((call) => call.options?.method ?? "GET"),
-    ["GET", "UPLOAD", "PATCH"],
+    ["GET", "POST", "UPLOAD", "PATCH"],
   );
+  assert.deepEqual(f.calls[1].options.body, {
+    tag_name: "foo-v0.2.0",
+    name: "foo: v0.2.0",
+    body: "## 0.2.0 (2026-10-13)\n\n* **foo:** two",
+    draft: true,
+  });
   assert.deepEqual(f.calls.at(-1).options.body, { draft: false });
 });
 
-test("a rerun replaces a partial upload left on the draft", async () => {
+test("a release without a changelog section is not created", async () => {
+  const f = releaseFixture({ missing: true });
+  await assert.rejects(
+    publishRelease(
+      tagEnv,
+      { ...tagPlugin, changelog: "# Changelog\n" },
+      [artifact],
+      f.deps,
+    ),
+    /has no 0.2.0 section/,
+  );
+  assert.ok(f.calls.every((call) => !call.options?.method));
+});
+
+test("a rerun reuses the draft and replaces a partial upload", async () => {
   const f = releaseFixture({ assets: [{ id: 3, name: artifact.name }] });
-  await publishRelease(tagEnv, [artifact], f.deps);
+  await publishRelease(tagEnv, tagPlugin, [artifact], f.deps);
+  assert.ok(!f.calls.some((call) => call.options?.method === "POST"));
   assert.equal(f.calls[1].path, `/repos/${repository}/releases/assets/3`);
   assert.equal(f.calls[1].options.method, "DELETE");
 });
@@ -307,27 +444,17 @@ test("a published release is only confirmed, never changed", async () => {
     draft: false,
     assets: [{ name: artifact.name, digest: `sha256:${artifact.sha256}` }],
   });
-  await publishRelease(tagEnv, [artifact], same.deps);
+  await publishRelease(tagEnv, tagPlugin, [artifact], same.deps);
   assert.equal(same.calls.length, 1);
   const different = releaseFixture({
     draft: false,
     assets: [{ name: artifact.name, digest: `sha256:${sha("b")}` }],
   });
   await assert.rejects(
-    publishRelease(tagEnv, [artifact], different.deps),
+    publishRelease(tagEnv, tagPlugin, [artifact], different.deps),
     /release a new version/,
   );
   assert.equal(different.calls.length, 1);
-});
-
-test("missing draft waits for the tag/draft creation race, then fails without publishing", async () => {
-  const f = releaseFixture({ missing: true });
-  await assert.rejects(
-    publishRelease(tagEnv, [artifact], f.deps),
-    /No release-please draft/,
-  );
-  assert.equal(f.waits, 5);
-  assert.ok(!f.calls.some((call) => call.options?.method === "PATCH"));
 });
 
 test("only tag pipelines publish releases", async () => {
@@ -335,6 +462,7 @@ test("only tag pipelines publish releases", async () => {
   await assert.rejects(
     publishRelease(
       { ...tagEnv, CI_PIPELINE_EVENT: "pull_request" },
+      tagPlugin,
       [artifact],
       f.deps,
     ),
