@@ -47,7 +47,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.0.0"
+	pluginVersion = "0.1.0"
 
 	pluginID    = "system-prompt"
 	displayName = "System Prompts"
