@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.2.1...opencode-go-v0.2.2) (2026-10-13)
+
+
+### Bug Fixes
+
+* **opencode-go:** cool the model down until the quota window resets
+
 ## [0.2.1](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.2.0...opencode-go-v0.2.1) (2026-10-13)
 
 
