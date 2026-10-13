@@ -38,7 +38,7 @@ plugins/<id>/
   CHANGELOG.md         # written by release/bump.mjs
   go/                  # plugin source (Go module); main.go declares pluginVersion
 tools/registry-check/  # validates registry.json and plugin.json with the host's parser
-release/               # version bumps, tagging, release publication and registry tooling
+release/               # validation scope, version bumps, tagging, release publication and registry tooling
 nix/packages/plugins/  # .#plugins.<id> builds, tests and zips one plugin
 ```
 
@@ -87,16 +87,22 @@ without a bump wait for the next one.
 Woodpecker runs `.woodpecker.yaml`, and nothing else is manual; never create
 tags or releases by hand:
 
-1. Pull requests run `nix flake check`: formatting, lint, the registry check,
-   every plugin's build and tests, and the release tooling's tests, which also
-   require a changelog section for every declared version.
-2. Each push to `main` runs the same check, then tags `<id>-v<version>` at that
-   commit for every declared version that has no tag yet.
+1. Pull requests run the part of `nix flake check` their changed files
+   affect, as chosen by `release/validate.mjs`. Formatting, lint and the
+   release tooling's tests, which also require a changelog section for every
+   declared version, always run. A change in `plugins/<id>/` builds and tests
+   that plugin, and a change to `registry.json`, a `plugin.json` or
+   `tools/registry-check/` runs the registry check. Changes outside these,
+   `release/` and the top-level docs run all of `nix flake check`.
+2. Each push to `main` runs the same check for its own changes and for every
+   plugin whose declared version `registry.json` does not list yet, then tags
+   `<id>-v<version>` at that commit for each of those versions that has no tag
+   yet.
 3. The tag pipeline checks the tag against the declared version, builds only
    that plugin, creates a draft release with its changelog section, uploads
    the zip and publishes the release.
 4. whexy-bot regenerates `registry.json` and commits it to `main`. This is the
-   only commit that bypasses the pull request rule.
+   only commit that bypasses the pull request rule, and it starts no pipeline.
 
 A failed tag pipeline leaves the release as a draft or missing: fix the cause
 and rerun the pipeline. A failed `main` pipeline tags nothing; the next

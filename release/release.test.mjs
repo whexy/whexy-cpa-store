@@ -28,6 +28,12 @@ import {
   renderRegistry,
 } from "./registry.mjs";
 import { tagReleases } from "./tag-releases.mjs";
+import {
+  nixArguments,
+  pendingReleases,
+  validatedPlugins,
+  validationScope,
+} from "./validate.mjs";
 
 const repository = "whexy/example";
 const sha = (char) => char.repeat(64);
@@ -328,6 +334,98 @@ test("only default-branch pushes and manual runs tag releases", async () => {
     await assert.rejects(tagReleases(env, plugins, f.deps), /push or manual/);
     assert.equal(f.calls.length, 0);
   }
+});
+
+const scopePlugins = [
+  { id: "foo", version: "0.2.0" },
+  { id: "foo-bar", version: "1.0.0" },
+  { id: "new", version: UNRELEASED },
+];
+const scopeRegistry = {
+  plugins: [
+    { id: "foo", version: "0.2.0" },
+    { id: "foo-bar", version: "0.9.0" },
+  ],
+};
+const scopeOf = (files, event = "pull_request") =>
+  validationScope(
+    {
+      CI_PIPELINE_EVENT: event,
+      CI_PIPELINE_FILES: files && JSON.stringify(files),
+    },
+    scopePlugins,
+    scopeRegistry,
+  );
+
+test("a pipeline validates only the plugins and checks its changed files affect", () => {
+  assert.deepEqual(
+    scopeOf(["plugins/foo/go/main.go", "plugins/foo/README.md", "README.md"]),
+    { checks: ["pre-commit-check", "release"], plugins: ["foo"] },
+  );
+  assert.deepEqual(scopeOf(["plugins/new/plugin.json", "registry.json"]), {
+    checks: ["pre-commit-check", "registry", "release"],
+    plugins: ["new"],
+  });
+  assert.deepEqual(scopeOf(["tools/registry-check/main.go"]), {
+    checks: ["pre-commit-check", "registry", "release"],
+    plugins: [],
+  });
+  assert.deepEqual(scopeOf(["release/bump.mjs", "plugins/gone/go/main.go"]), {
+    checks: ["pre-commit-check", "release"],
+    plugins: [],
+  });
+  assert.deepEqual(
+    nixArguments(scopeOf(["plugins/foo/go/main.go", "registry.json"])),
+    [
+      "build",
+      "--no-link",
+      "--print-build-logs",
+      ".#checks.x86_64-linux.pre-commit-check",
+      ".#checks.x86_64-linux.registry",
+      ".#checks.x86_64-linux.release",
+      ".#plugins.foo",
+    ],
+  );
+});
+
+test("shared files, manual runs and unlisted changes validate everything", () => {
+  for (const files of [
+    ["plugins/foo/go/main.go", "flake.lock"],
+    ["nix/packages/plugins/default.nix"],
+    [".woodpecker.yaml"],
+    [],
+    undefined,
+  ])
+    assert.equal(scopeOf(files), null, JSON.stringify(files));
+  assert.equal(scopeOf([], "manual"), null);
+  assert.deepEqual(nixArguments(null), [
+    "flake",
+    "check",
+    "--print-build-logs",
+  ]);
+});
+
+test("main pipelines also validate every release the registry does not list yet", () => {
+  assert.deepEqual(
+    pendingReleases(scopePlugins, scopeRegistry).map((plugin) => plugin.id),
+    ["foo-bar"],
+  );
+  assert.deepEqual(scopeOf(["plugins/foo/go/main.go"], "push").plugins, [
+    "foo",
+    "foo-bar",
+  ]);
+  assert.deepEqual(scopeOf(["README.md"], "push").plugins, ["foo-bar"]);
+  assert.deepEqual(scopeOf(["README.md"]).plugins, []);
+});
+
+test("main pipelines only tag the plugins they validated", () => {
+  assert.deepEqual(
+    validatedPlugins(scopeOf(["README.md"], "push"), scopePlugins).map(
+      (plugin) => plugin.id,
+    ),
+    ["foo-bar"],
+  );
+  assert.equal(validatedPlugins(null, scopePlugins), scopePlugins);
 });
 
 test("release artifacts are the plugin's zips in the build output", async () => {

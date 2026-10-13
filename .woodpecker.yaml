@@ -24,15 +24,19 @@ variables:
           cpu: "4"
           memory: 6Gi
 
-# Pull requests merge without being rebased onto the latest main, so every
-# default-branch push is validated again before it may tag a release. A tag
-# names the commit whose push pipeline passed, and its pipeline builds and
-# tests the one plugin it releases. The registry commits whexy-bot makes
-# through its bypass contain only registry.json.
+# A pipeline validates only what its changed files affect, as decided by
+# release/validate.mjs. Pull requests merge without being rebased onto the
+# latest main, so a default-branch push validates its changes again, together
+# with every release the registry does not list yet, before it tags those
+# releases at its commit. A tag pipeline builds and tests the one plugin it
+# releases. The registry commits whexy-bot makes through its bypass contain
+# only registry.json and start no pipeline.
 when:
   - event: pull_request
   - event: push
     branch: ${CI_REPO_DEFAULT_BRANCH}
+    path:
+      exclude: [registry.json]
   - event: tag
     ref: refs/tags/*-v*
   - event: manual
@@ -55,7 +59,8 @@ steps:
       - echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
       # The default container seccomp profile blocks the namespaces nix uses
       # for its build sandbox.
-      - nix --option sandbox false flake check --print-build-logs
+      - echo "sandbox = false" >> /etc/nix/nix.conf
+      - nix shell --inputs-from . nixpkgs#nodejs_24 --command node release/validate.mjs
 
   - name: tag-releases
     image: node:24-bookworm-slim

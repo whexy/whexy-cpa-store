@@ -2,11 +2,11 @@ import { pathToFileURL } from "node:url";
 import { githubRequest, githubToken } from "./github-app.mjs";
 import {
   compareVersions,
-  readPlugins,
   RELEASE_VERSION,
   tagName,
   UNRELEASED,
 } from "./plugins.mjs";
+import { readScope, validatedPlugins } from "./validate.mjs";
 
 export function taggedVersions(id, refs) {
   const prefix = `refs/tags/${tagName(id, "")}`;
@@ -17,9 +17,9 @@ export function taggedVersions(id, refs) {
     .filter((version) => RELEASE_VERSION.test(version));
 }
 
-// Tags every plugin version declared on the default branch that has no tag
-// yet, at the commit this pipeline just validated. Each tag starts the
-// pipeline that builds and publishes that version.
+// Tags the declared version of each plugin this pipeline just validated that
+// has no tag yet, at the validated commit. Each tag starts the pipeline that
+// builds and publishes that version.
 export async function tagReleases(
   env,
   plugins,
@@ -83,5 +83,7 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   if (!process.env.CI_REPO) throw new Error("Set CI_REPO to <owner>/<name>");
-  await tagReleases(process.env, await readPlugins());
+  // The validate step built and tested only these plugins at this commit.
+  const { plugins, scope } = await readScope(process.env);
+  await tagReleases(process.env, validatedPlugins(scope, plugins));
 }
