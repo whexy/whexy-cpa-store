@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
@@ -20,6 +21,13 @@ const keyFileName = "opencode-go.json"
 // keyIDAttribute names the auth attribute that points a runtime auth at its
 // key inside the source file.
 const keyIDAttribute = "key_id"
+
+// catalogRefreshedField is the time the plugin last rewrote a file to make
+// CPA register the catalog again. CPA asks for an auth's models only when
+// the auth changes, and a virtual auth of a multi-key file changes only
+// through what auth.parse returns, so every auth carries the value as an
+// attribute of the same name.
+const catalogRefreshedField = "catalog_refreshed_at"
 
 var errNoKey = errors.New("auth file holds no OpenCode Go key")
 
@@ -226,7 +234,8 @@ func handleAuthParse(raw []byte) ([]byte, error) {
 	return okEnvelope(parseAuths(req))
 }
 
-// parseAuths expands one auth file into one runtime auth per key.
+// parseAuths expands one auth file into one runtime auth per key, or into
+// the single auth of a login file.
 //
 // With two or more keys the host marks the auths plugin-virtual: it never
 // writes them back, and quota calls receive the whole file. A single auth is
@@ -240,6 +249,9 @@ func parseAuths(req pluginapi.AuthParseRequest) pluginapi.AuthParseResponse {
 		return pluginapi.AuthParseResponse{}
 	}
 	base := authFileBase(req.Path, req.FileName)
+	if isLoginFile(req.RawJSON) {
+		return pluginapi.AuthParseResponse{Handled: true, Auth: parseLoginAuth(base, req.RawJSON)}
+	}
 	file, errParse := parseKeyFile(req.RawJSON)
 	if errParse != nil || len(file.Keys) == 0 {
 		label := displayName + " (no keys)"
@@ -254,33 +266,84 @@ func parseAuths(req pluginapi.AuthParseRequest) pluginapi.AuthParseResponse {
 			StorageJSON: bytes.Clone(req.RawJSON),
 		}}
 	}
+	mark := extraString(file.extra, catalogRefreshedField)
 	if len(file.Keys) == 1 {
-		auth := keyAuth(base, file.Keys[0])
+		auth := keyAuth(base, file.Keys[0], mark)
 		auth.StorageJSON = bytes.Clone(req.RawJSON)
 		return pluginapi.AuthParseResponse{Handled: true, Auth: auth}
 	}
 	auths := make([]pluginapi.AuthData, 0, len(file.Keys))
 	for _, entry := range file.Keys {
-		auths = append(auths, keyAuth(base, entry))
+		auths = append(auths, keyAuth(base, entry, mark))
 	}
 	return pluginapi.AuthParseResponse{Handled: true, Auths: auths}
 }
 
-func keyAuth(base string, entry keyEntry) pluginapi.AuthData {
+func keyAuth(base string, entry keyEntry, catalogMark string) pluginapi.AuthData {
 	storage, _ := json.Marshal(map[string]any{
 		"type":         providerKey,
 		keyIDAttribute: entry.ID,
 		"api_key":      entry.APIKey,
 		"label":        entry.Label,
 	})
+	attributes := map[string]string{keyIDAttribute: entry.ID}
+	if catalogMark != "" {
+		attributes[catalogRefreshedField] = catalogMark
+	}
 	return pluginapi.AuthData{
 		Provider:    providerKey,
 		ID:          authIDFor(base, entry.ID),
 		Label:       entry.displayLabel(),
 		Disabled:    entry.Disabled,
 		StorageJSON: storage,
-		Attributes:  map[string]string{keyIDAttribute: entry.ID},
+		Attributes:  attributes,
 	}
+}
+
+// extraString reads a string field kept in a file's extra fields.
+func extraString(extra map[string]json.RawMessage, name string) string {
+	var value string
+	if json.Unmarshal(extra[name], &value) != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+// credential is what one auth sends upstream: a service-account key or a
+// login's access token.
+type credential struct {
+	// ID keys catalog caches and usage blocks. A login's ID is its
+	// workspace, so it stays the same when the tokens rotate.
+	ID     string
+	Bearer string
+	// Name labels the credential in quota cards.
+	Name string
+}
+
+// resolveCredential finds the credential a host call is about. An expired
+// login returns its credential together with a *loginExpiredError, so
+// callers can still name it and use its cached catalog.
+func resolveCredential(storageJSON []byte, attributes map[string]string, metadata map[string]any) (credential, error) {
+	if isLoginFile(storageJSON) {
+		login, errParse := parseLoginFile(storageJSON)
+		if errParse != nil {
+			return credential{}, errParse
+		}
+		cred := login.credential()
+		if login.expired(time.Now()) {
+			return cred, &loginExpiredError{name: login.displayName(), at: login.ExpiresAt}
+		}
+		return cred, nil
+	}
+	key, errKey := resolveAuthKey(storageJSON, attributes, metadata)
+	if errKey != nil {
+		return credential{}, errKey
+	}
+	return keyCredential(key), nil
+}
+
+func keyCredential(key keyEntry) credential {
+	return credential{ID: key.ID, Bearer: key.APIKey, Name: quotaGroupName(key)}
 }
 
 // resolveAuthKey finds the key a host call is about. Executor and

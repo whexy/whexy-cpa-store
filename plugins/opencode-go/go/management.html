@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
-    <title>OpenCode Go keys</title>
+    <title>OpenCode Go</title>
     <style>
       :root {
         --bg-page: #faf9f5;
@@ -308,6 +308,14 @@
         color: var(--text-secondary);
       }
 
+      .section-hint {
+        margin-bottom: 12px;
+      }
+
+      .logins:not(:empty) {
+        margin-bottom: 12px;
+      }
+
       .keys {
         display: flex;
         flex-direction: column;
@@ -484,9 +492,156 @@
         color: var(--text-quaternary);
       }
 
+      h2 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .section {
+        margin-top: 32px;
+      }
+
+      .section-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 12px;
+        margin-bottom: 12px;
+      }
+
+      .section-head .btn {
+        margin-left: auto;
+      }
+
+      .section-meta {
+        color: var(--text-tertiary);
+        font-size: 13px;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+
+      .stack:empty {
+        display: none;
+      }
+
+      .stack p {
+        margin: 0;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .warn-text {
+        color: var(--warn-badge-text);
+      }
+
+      .table-card {
+        padding: 0;
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      th {
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text-secondary);
+        font-weight: 600;
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      th[title] {
+        cursor: help;
+        text-decoration: underline dotted var(--text-quaternary);
+        text-underline-offset: 3px;
+      }
+
+      td {
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      .num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .toggle {
+        width: 1%;
+        text-align: center;
+      }
+
+      .model-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 8px;
+      }
+
+      .model-name {
+        font-weight: 600;
+      }
+
+      .model-id,
+      .served {
+        color: var(--text-tertiary);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+
+      .model-id {
+        font-family: var(--font-mono);
+      }
+
+      tr.is-off .model-head,
+      tr.is-off .model-id {
+        opacity: 0.55;
+      }
+
+      input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        accent-color: var(--primary);
+        cursor: pointer;
+      }
+
+      input[type="checkbox"]:disabled {
+        cursor: not-allowed;
+      }
+
+      .routing {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 160px)) auto;
+        gap: 12px;
+        align-items: end;
+        justify-content: start;
+      }
+
+      .routing > p {
+        grid-column: 1 / -1;
+      }
+
       @media (max-width: 640px) {
         .add,
-        .usage {
+        .usage,
+        .routing {
           grid-template-columns: minmax(0, 1fr);
         }
 
@@ -507,7 +662,7 @@
   <body>
     <main>
       <div class="bar">
-        <h1>OpenCode Go keys</h1>
+        <h1>OpenCode Go</h1>
         <div class="bar-actions" id="bar-actions" hidden>
           <button class="btn btn-ghost" id="reload" type="button">
             Reload
@@ -543,8 +698,10 @@
         <p class="error" id="page-error" hidden></p>
 
         <p class="empty" id="empty" hidden>
-          No keys yet. Add a service-account key (<code>oc_sk_…</code>) from the
-          OpenCode workspace that holds the Go subscription.
+          Nothing added yet. Log in from Management Center → OAuth Login →
+          OpenCode Go, no key needed, or add a service-account key
+          (<code>oc_sk_…</code>) from the workspace that holds the Go
+          subscription.
           <a
             href="https://opencode.ai/v2/docs/console/go/"
             target="_blank"
@@ -588,19 +745,278 @@
         </form>
 
         <p class="hint" id="loading">Loading…</p>
+        <p class="hint section-hint" id="login-hint" hidden></p>
+        <ul class="keys logins" id="logins"></ul>
         <ul class="keys" id="keys"></ul>
+
+        <section class="section" id="models" hidden>
+          <div class="section-head">
+            <h2>Models</h2>
+            <span class="section-meta" id="models-meta"></span>
+            <button class="btn btn-ghost" id="models-refresh" type="button">
+              Refresh models
+            </button>
+          </div>
+          <div class="stack" id="models-notices"></div>
+          <div class="stack" id="models-rules"></div>
+          <div class="card table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>Protocol</th>
+                  <th class="num">Context</th>
+                  <th
+                    class="toggle"
+                    title="Also list the model under its bare ID, such as deepseek-v4-pro. Every provider serving that ID shares its requests, by priority and weight."
+                  >
+                    Bare ID
+                  </th>
+                  <th
+                    class="toggle"
+                    title="Remove the model from CLIProxyAPI. Stored in the opencode-go entry of the OAuth model disablement settings."
+                  >
+                    Disabled
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="models-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section" id="routing" hidden>
+          <div class="section-head">
+            <h2>Routing</h2>
+          </div>
+          <form class="card routing" id="routing-form">
+            <p class="hint" id="routing-strategy"></p>
+            <label class="field">
+              Priority
+              <input
+                class="input"
+                id="routing-priority"
+                type="number"
+                step="1"
+                placeholder="0"
+                title="Higher wins. Default 0."
+              />
+            </label>
+            <label class="field">
+              Weight
+              <input
+                class="input"
+                id="routing-weight"
+                type="number"
+                step="1"
+                min="0"
+                max="1000000"
+                placeholder="1"
+                title="Share under weighted-round-robin, per credential. Default 1; 0 takes no share."
+              />
+            </label>
+            <div class="row">
+              <button class="btn btn-primary" id="routing-save" type="submit">
+                Save
+              </button>
+            </div>
+            <p class="hint" id="routing-files"></p>
+            <p class="error" id="routing-error" hidden></p>
+          </form>
+        </section>
       </div>
     </main>
     <script>
       "use strict";
 
+      // Edits of CLIProxyAPI's provider-keyed OAuth config maps. This block
+      // touches no DOM, so testdata/page_test.mjs runs it under node.
+      const PROVIDER = "opencode-go";
+
+      const sameID = (a, b) =>
+        String(a ?? "")
+          .trim()
+          .toLowerCase() ===
+        String(b ?? "")
+          .trim()
+          .toLowerCase();
+
+      // CPA folds provider keys to lower case, so every spelling of the key
+      // is the provider's.
+      const isProviderKey = (key) => key.trim().toLowerCase() === PROVIDER;
+
+      function channelEntries(map) {
+        const out = [];
+        if (!map || typeof map !== "object" || Array.isArray(map)) return out;
+        for (const [key, value] of Object.entries(map)) {
+          if (isProviderKey(key) && Array.isArray(value)) out.push(...value);
+        }
+        return out;
+      }
+
+      // channelWrite is the request that stores list as the provider's entry
+      // of map. It writes that key alone unless other spellings of it must
+      // go, and is null when nothing changes.
+      function channelWrite(map, list) {
+        const keys = Object.keys(map || {}).filter(isProviderKey);
+        if (keys.every((key) => key === PROVIDER)) {
+          if (list.length > 0)
+            return { method: "PUT", path: "/" + PROVIDER, body: list };
+          return keys.length > 0
+            ? { method: "DELETE", path: "/" + PROVIDER }
+            : null;
+        }
+        const whole = {};
+        for (const [key, value] of Object.entries(map)) {
+          if (!keys.includes(key)) whole[key] = value;
+        }
+        if (list.length > 0) whole[PROVIDER] = list;
+        return { method: "PUT", path: "", body: whole };
+      }
+
+      const isBareAlias = (entry, model) =>
+        Boolean(entry) &&
+        sameID(entry.name, model.id) &&
+        sameID(entry.alias, model.upstream_id);
+
+      function hasBareID(aliases, model) {
+        return aliases.some((entry) => isBareAlias(entry, model));
+      }
+
+      // withBareID adds or removes the fork alias that lists a model under
+      // its bare ID as well, keeping every other alias as it is.
+      function withBareID(aliases, model, on) {
+        const rest = aliases.filter((entry) => !isBareAlias(entry, model));
+        if (!on) return rest;
+        const taken = rest.find(
+          (entry) => entry && sameID(entry.alias, model.upstream_id),
+        );
+        if (taken) {
+          throw new Error(
+            model.upstream_id + " is already the alias of " + taken.name + ".",
+          );
+        }
+        return [
+          ...rest,
+          { name: model.id, alias: model.upstream_id, fork: true },
+        ];
+      }
+
+      const isRule = (pattern) => String(pattern).includes("*");
+
+      // matchRule is CPA's match of an excluded-models entry.
+      function matchRule(pattern, id) {
+        const parts = String(pattern).trim().toLowerCase().split("*");
+        let value = String(id).trim().toLowerCase();
+        if (parts.length === 1) return parts[0] !== "" && parts[0] === value;
+        const head = parts[0];
+        const tail = parts[parts.length - 1];
+        if (!value.startsWith(head)) return false;
+        value = value.slice(head.length);
+        if (!value.endsWith(tail)) return false;
+        value = value.slice(0, value.length - tail.length);
+        for (const segment of parts.slice(1, -1)) {
+          if (!segment) continue;
+          const at = value.indexOf(segment);
+          if (at < 0) return false;
+          value = value.slice(at + segment.length);
+        }
+        return true;
+      }
+
+      function isExcluded(excluded, id) {
+        return excluded.some(
+          (pattern) => !isRule(pattern) && sameID(pattern, id),
+        );
+      }
+
+      // withExcluded adds or removes a model's own entry; rules stay.
+      function withExcluded(excluded, id, on) {
+        const rest = excluded.filter(
+          (pattern) => isRule(pattern) || !sameID(pattern, id),
+        );
+        return on ? [...rest, id] : rest;
+      }
+
+      function ruleFor(excluded, id) {
+        return (
+          excluded.find(
+            (pattern) => isRule(pattern) && matchRule(pattern, id),
+          ) || ""
+        );
+      }
+
+      function addServedBy(into, id, provider) {
+        const key = String(id ?? "")
+          .trim()
+          .toLowerCase();
+        if (!key || !provider) return;
+        if (!into.has(key)) into.set(key, new Set());
+        into.get(key).add(String(provider));
+      }
+
+      // configServedBy adds the models the api-keys config lists for each
+      // provider entry; entries without a model list serve defaults the
+      // config does not name.
+      function configServedBy(apiKeys, into) {
+        for (const [family, groups] of Object.entries(apiKeys || {})) {
+          if (!Array.isArray(groups)) continue;
+          for (const group of groups) {
+            if (!group || group.disabled === true) continue;
+            if (!Array.isArray(group.models)) continue;
+            for (const model of group.models) {
+              addServedBy(
+                into,
+                model && (model.alias || model.name),
+                group.name || family,
+              );
+            }
+          }
+        }
+        return into;
+      }
+
+      // routingStrategy is the strategy CPA runs for a routing.strategy value.
+      function routingStrategy(value) {
+        switch (
+          String(value ?? "")
+            .trim()
+            .toLowerCase()
+        ) {
+          case "weighted-round-robin":
+          case "weightedroundrobin":
+          case "wrr":
+            return "weighted-round-robin";
+          case "fill-first":
+          case "fillfirst":
+          case "ff":
+            return "fill-first";
+          default:
+            return "round-robin";
+        }
+      }
+
+      function tokens(count) {
+        if (!count) return "";
+        if (count >= 1e6) return +(count / 1e6).toFixed(2) + "M";
+        if (count >= 1e3) return Math.round(count / 1e3) + "K";
+        return String(count);
+      }
+    </script>
+    <script>
+      "use strict";
+
       // The page is served at <base>/v0/resource/plugins/opencode-go/index.html,
       // where <base> is empty unless a reverse proxy adds a path prefix.
-      const API =
-        location.pathname.replace(
-          /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
-          "",
-        ) + "/v0/management/opencode-go";
+      const BASE = location.pathname.replace(
+        /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
+        "",
+      );
+      const API = BASE + "/v0/management/opencode-go";
+      // CLIProxyAPI's own Management API, for config the plugin cannot reach.
+      const CPA = BASE + "/v8/management";
+      const ALIAS_MAP = "/config/oauth/model-alias";
+      const EXCLUDED_MAP = "/config/oauth/excluded-models";
       const SESSION_KEY = "opencode-go.management-key";
       const REJECTED_KEY = "opencode-go.rejected-mc-auth";
       const MC_AUTH_KEY = "cli-proxy-auth";
@@ -744,13 +1160,15 @@
 
       class AuthError extends Error {}
 
-      async function api(method, path, body) {
+      // request calls a Management API route. A 404 answers missing when
+      // the caller passes one: config reads answer 404 for an absent key.
+      async function request(base, method, path, body, missing) {
         if (!auth.key) throw new AuthError("No management key.");
         const headers = { Authorization: "Bearer " + auth.key };
         if (body !== undefined) headers["Content-Type"] = "application/json";
         let response;
         try {
-          response = await fetch(API + path, {
+          response = await fetch(base + path, {
             method,
             headers,
             body: body === undefined ? undefined : JSON.stringify(body),
@@ -774,6 +1192,7 @@
           );
           throw new AuthError(message);
         }
+        if (response.status === 404 && missing !== undefined) return missing;
         if (!response.ok) {
           throw new Error(
             message || "CLIProxyAPI answered HTTP " + response.status + ".",
@@ -781,6 +1200,10 @@
         }
         return data || {};
       }
+
+      const api = (method, path, body) => request(API, method, path, body);
+      const cpa = (method, path, body, missing) =>
+        request(CPA, method, path, body, missing);
 
       // DOM helper: strings become text nodes, never markup.
       function h(tag, props, ...children) {
@@ -838,6 +1261,7 @@
 
       // State
       let keys = [];
+      let logins = [];
       const usage = new Map();
       const results = new Map();
       const busy = new Set();
@@ -847,6 +1271,17 @@
       let usageActive = 0;
 
       const displayName = (key) => key.label || key.masked_key;
+      const isLogin = (id) => logins.some((login) => login.id === id);
+      const findItem = (id) =>
+        keys.find((key) => key.id === id) ||
+        logins.find((login) => login.id === id);
+
+      function usagePath(id) {
+        return (
+          (isLogin(id) ? "/logins/usage?id=" : "/keys/usage?id=") +
+          encodeURIComponent(id)
+        );
+      }
 
       function badge(text, tone, title) {
         return h(
@@ -1120,19 +1555,109 @@
         return card;
       }
 
+      function loginName(login) {
+        return login.email
+          ? "Logged in as " + login.email + " · " + login.workspace
+          : login.workspace;
+      }
+
+      function loginBadge(login) {
+        if (login.expired && !login.disabled) {
+          return badge(
+            "Login expired",
+            "bad",
+            "Log in again from OAuth Login → OpenCode Go.",
+          );
+        }
+        return statusBadge(login);
+      }
+
+      function buildLoginCard(login) {
+        const working = busy.has(login.id);
+        const usageEl = h("div", { class: "usage" });
+        const noticeEl = h("div", { class: "notice" });
+        fillUsage(usageEl, login.id);
+        fillNotice(noticeEl, login);
+        const items = [];
+        if (login.expires_at) {
+          items.push(
+            h(
+              "span",
+              {
+                class: login.expired ? "error" : null,
+                title: new Date(login.expires_at).toLocaleString(),
+              },
+              (login.expired ? "token expired " : "token expires ") +
+                day(login.expires_at),
+            ),
+          );
+        }
+        if (login.models) items.push(login.models + " models");
+        items.push(h("span", { title: "Auth file" }, login.id));
+        const runtime = login.runtime;
+        if (runtime && (runtime.success || runtime.failed)) {
+          items.push(
+            "requests: " +
+              runtime.success +
+              " ok, " +
+              runtime.failed +
+              " failed",
+          );
+        }
+        const card = h(
+          "li",
+          { class: "card key" + (login.disabled ? " is-disabled" : "") },
+          h(
+            "div",
+            { class: "key-head" },
+            h("span", { class: "name" }, loginName(login)),
+            loginBadge(login),
+            h(
+              "div",
+              { class: "key-actions" },
+              actionButton(
+                login.disabled ? "Enable" : "Disable",
+                () => setLoginDisabled(login, !login.disabled),
+                working,
+              ),
+            ),
+          ),
+          h(
+            "div",
+            { class: "meta" },
+            items.map((item) => h("span", {}, item)),
+          ),
+          runtimeMessage(login),
+          usageEl,
+          noticeEl,
+        );
+        cards.set(login.id, { card, usageEl });
+        return card;
+      }
+
       function renderList() {
         cards.clear();
         $("loading").hidden = true;
-        $("empty").hidden = keys.length > 0;
-        if (keys.length === 0) openAdd();
+        $("empty").hidden = keys.length > 0 || logins.length > 0;
+        const hint = $("login-hint");
+        hint.textContent =
+          logins.length > 0
+            ? "Add logins from OAuth Login → OpenCode Go. Delete them on the Auth Files page."
+            : keys.length > 0
+              ? "Log in from OAuth Login → OpenCode Go to add a workspace without a key."
+              : "";
+        hint.hidden = !hint.textContent;
+        $("logins").replaceChildren(...logins.map(buildLoginCard));
         $("keys").replaceChildren(...keys.map(buildCard));
       }
 
       function updateCard(id) {
-        const key = keys.find((item) => item.id === id);
+        const item = findItem(id);
         const current = cards.get(id);
-        if (!key || !current) return;
-        current.card.replaceWith(buildCard(key));
+        if (!item || !current) return;
+        current.card.replaceWith(
+          isLogin(id) ? buildLoginCard(item) : buildCard(item),
+        );
       }
 
       function updateUsage(id) {
@@ -1158,7 +1683,7 @@
         ) {
           const id = usageQueue.shift();
           usageActive++;
-          api("GET", "/keys/usage?id=" + encodeURIComponent(id))
+          api("GET", usagePath(id))
             .then((data) => usage.set(id, { state: "ok", data: data.usage }))
             .catch((err) => {
               if (err instanceof AuthError) usage.delete(id);
@@ -1173,13 +1698,19 @@
       }
 
       async function loadList() {
-        const data = await api("GET", "/keys");
-        keys = data.keys || [];
+        const [keyData, loginData] = await Promise.all([
+          api("GET", "/keys"),
+          api("GET", "/logins"),
+        ]);
+        keys = keyData.keys || [];
+        logins = loginData.logins || [];
         for (const id of [...usage.keys()]) {
-          if (!keys.some((key) => key.id === id)) usage.delete(id);
+          if (!findItem(id)) usage.delete(id);
         }
         renderList();
       }
+
+      const allIds = () => [...logins, ...keys].map((item) => item.id);
 
       function showPageError(message) {
         $("page-error").textContent = message;
@@ -1190,13 +1721,21 @@
         showPageError("");
         try {
           await loadList();
-          queueUsage(keys.map((key) => key.id));
+          queueUsage(allIds());
+          loadExtras();
         } catch (err) {
           if (!(err instanceof AuthError)) {
             $("loading").hidden = true;
             showPageError(err.message);
           }
         }
+      }
+
+      // Models and routing load after the credential list, which decides
+      // whether either section has anything to show.
+      function loadExtras() {
+        loadModels();
+        loadRouting();
       }
 
       function replaceKey(view) {
@@ -1262,10 +1801,27 @@
         });
       }
 
+      function setLoginDisabled(login, disabled) {
+        return act(login, async () => {
+          const data = await api("PATCH", "/logins", {
+            id: login.id,
+            disabled,
+          });
+          const index = data.login
+            ? logins.findIndex((item) => item.id === data.login.id)
+            : -1;
+          if (index < 0) return refresh();
+          logins[index] = data.login;
+          updateCard(data.login.id);
+          loadExtras();
+        });
+      }
+
       function setDisabled(key, disabled) {
         return act(key, async () => {
           const data = await api("PATCH", "/keys", { id: key.id, disabled });
           replaceKey(data.key);
+          loadExtras();
         });
       }
 
@@ -1288,6 +1844,7 @@
           usage.delete(key.id);
           results.delete(key.id);
           await loadList();
+          loadExtras();
         });
       }
 
@@ -1295,13 +1852,12 @@
       function openAdd() {
         $("add").hidden = false;
         $("add-open").hidden = true;
-        $("add-cancel").hidden = keys.length === 0;
         $("add-key").focus();
       }
 
       function closeAdd() {
-        $("add").hidden = keys.length > 0;
-        $("add-open").hidden = keys.length === 0;
+        $("add").hidden = true;
+        $("add-open").hidden = false;
         $("add-error").hidden = true;
         $("add-key").value = "";
         $("add-label").value = "";
@@ -1332,11 +1888,467 @@
             usage.set(data.key.id, { state: "ok", data: data.usage });
           await loadList();
           closeAdd();
+          loadExtras();
         } catch (err) {
           if (!(err instanceof AuthError)) showAddError(err.message);
         } finally {
           submit.disabled = false;
           submit.textContent = "Add";
+        }
+      });
+
+      // Models: the catalog of the first working credential, with this
+      // provider's entries of CPA's model alias and disablement maps.
+      const models = {
+        view: null,
+        aliases: [],
+        excluded: [],
+        configLoaded: false,
+        configError: "",
+        servedBy: null,
+        busy: new Set(),
+        notice: null,
+        refreshing: false,
+      };
+
+      async function loadModels() {
+        try {
+          const [view, maps] = await Promise.all([
+            api("GET", "/models"),
+            Promise.all([
+              cpa("GET", ALIAS_MAP, undefined, {}),
+              cpa("GET", EXCLUDED_MAP, undefined, {}),
+            ]).then(
+              ([aliasMap, excludedMap]) => ({ aliasMap, excludedMap }),
+              (err) => {
+                if (err instanceof AuthError) throw err;
+                return { error: err.message };
+              },
+            ),
+          ]);
+          models.view = view;
+          models.configError = maps.error || "";
+          models.configLoaded = !maps.error;
+          if (!maps.error) {
+            models.aliases = channelEntries(maps.aliasMap);
+            models.excluded = channelEntries(maps.excludedMap).map(String);
+          }
+        } catch (err) {
+          if (err instanceof AuthError) return;
+          models.view = models.view || {
+            models: [],
+            unregistered: [],
+            unlisted: [],
+          };
+          models.notice = { tone: "error", text: err.message };
+        }
+        renderModels();
+        if (models.view.models.length > 0 && !models.servedBy) loadServedBy();
+      }
+
+      // loadServedBy finds other providers that register a model's bare ID:
+      // provider entries of the api-keys config, and one credential of each
+      // other credential provider. Failures only leave the hint out.
+      async function loadServedBy() {
+        const into = new Map();
+        try {
+          configServedBy(
+            await cpa("GET", "/config/api-keys", undefined, {}),
+            into,
+          );
+        } catch (_) {}
+        try {
+          const list = await cpa("GET", "/credentials");
+          const picked = new Map();
+          for (const file of list.files || []) {
+            const provider = String(file.provider || file.type || "")
+              .trim()
+              .toLowerCase();
+            if (!provider || provider === PROVIDER || file.disabled) continue;
+            if (!picked.has(provider))
+              picked.set(provider, file.id || file.name);
+          }
+          await Promise.all(
+            [...picked].map(async ([provider, name]) => {
+              try {
+                const data = await cpa(
+                  "GET",
+                  "/credentials/models?name=" + encodeURIComponent(name),
+                );
+                for (const model of data.models || [])
+                  addServedBy(into, model.id, provider);
+              } catch (_) {}
+            }),
+          );
+        } catch (_) {}
+        models.servedBy = into;
+        renderModels();
+      }
+
+      function checkbox(checked, label, onchange, disabled, title) {
+        const box = h("input", {
+          type: "checkbox",
+          "aria-label": label,
+          title,
+          disabled,
+        });
+        box.checked = checked;
+        box.addEventListener("change", () => onchange(box.checked));
+        return box;
+      }
+
+      function modelRow(model) {
+        const locked = models.busy.has(model.id) || !models.configLoaded;
+        const rule = ruleFor(models.excluded, model.id);
+        const disabled = Boolean(rule) || isExcluded(models.excluded, model.id);
+        const bare = hasBareID(models.aliases, model);
+        const served = [
+          ...((models.servedBy &&
+            models.servedBy.get(model.upstream_id.toLowerCase())) ||
+            []),
+        ];
+        const limits = model.context
+          ? model.context.toLocaleString() +
+            " tokens" +
+            (model.output ? ", output " + model.output.toLocaleString() : "")
+          : null;
+        return h(
+          "tr",
+          { class: disabled ? "is-off" : null },
+          h(
+            "td",
+            {},
+            h(
+              "div",
+              { class: "model-head" },
+              h("span", { class: "model-name" }, model.name),
+              model.free
+                ? badge(
+                    "Free",
+                    "ok",
+                    "Priced at zero; keeps working after a usage limit.",
+                  )
+                : null,
+            ),
+            h("div", { class: "model-id" }, model.id),
+            served.length > 0
+              ? h(
+                  "div",
+                  { class: "served" },
+                  model.upstream_id + " is also served by " + served.join(", "),
+                )
+              : null,
+          ),
+          h("td", {}, model.protocol),
+          h("td", { class: "num", title: limits }, tokens(model.context)),
+          h(
+            "td",
+            { class: "toggle" },
+            checkbox(
+              bare,
+              "Bare ID " + model.upstream_id,
+              (on) => toggleBare(model, on),
+              locked,
+            ),
+          ),
+          h(
+            "td",
+            { class: "toggle" },
+            checkbox(
+              disabled,
+              "Disable " + model.id,
+              (on) => toggleDisabled(model, on),
+              locked || Boolean(rule),
+              rule ? "Disabled by rule " + rule : null,
+            ),
+          ),
+        );
+      }
+
+      function note(tone, ...text) {
+        return h("p", { class: tone }, ...text);
+      }
+
+      function modelNotices() {
+        const view = models.view;
+        const out = [];
+        if (models.notice) {
+          const tone = { ok: "ok-text", warn: "warn-text", error: "error" };
+          out.push(note(tone[models.notice.tone], models.notice.text));
+        }
+        if (view.error) {
+          out.push(
+            note(
+              "error",
+              "Could not read the live catalog, so this is the last list read: " +
+                view.error,
+            ),
+          );
+        }
+        if (models.configError) {
+          out.push(
+            note(
+              "error",
+              "Could not read the model aliases and disabled models, so the toggles are off: " +
+                models.configError,
+            ),
+          );
+        }
+        const pending = [];
+        if (view.unregistered.length > 0)
+          pending.push("new " + view.unregistered.join(", "));
+        if (view.unlisted.length > 0)
+          pending.push("gone " + view.unlisted.join(", "));
+        if (pending.length > 0 && !models.notice) {
+          out.push(
+            note(
+              "warn-text",
+              "CLIProxyAPI has not registered this list yet (" +
+                pending.join("; ") +
+                "). Refresh models registers it.",
+            ),
+          );
+        }
+        return out;
+      }
+
+      function ruleNotes() {
+        const rules = models.excluded.filter(isRule);
+        if (rules.length === 0) return [];
+        const out = rules.map((rule) => {
+          const matched = models.view.models
+            .filter((model) => matchRule(rule, model.id))
+            .map((model) => model.upstream_id);
+          return note(
+            "hint",
+            "Rule ",
+            h("code", {}, rule),
+            matched.length > 0
+              ? " disables " + matched.join(", ") + "."
+              : " matches no listed model.",
+          );
+        });
+        out.push(
+          note(
+            "hint",
+            "Rules are edited in Management Center → Auth Files → OAuth Model Disablement.",
+          ),
+        );
+        return out;
+      }
+
+      function renderModels() {
+        const view = models.view;
+        const section = $("models");
+        section.hidden = !view || (view.models.length === 0 && !view.error);
+        if (section.hidden) return;
+        $("models-meta").textContent = [
+          view.models.length + " models",
+          view.credential,
+          view.fetched_at ? "read " + stamp(new Date(view.fetched_at)) : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        const button = $("models-refresh");
+        button.disabled = models.refreshing;
+        button.textContent = models.refreshing
+          ? "Refreshing…"
+          : "Refresh models";
+        $("models-notices").replaceChildren(...modelNotices());
+        $("models-rules").replaceChildren(...ruleNotes());
+        $("models-body").replaceChildren(...view.models.map(modelRow));
+      }
+
+      // Writes to CPA's config run one at a time, each re-reading the map
+      // right before it writes.
+      let configWrites = Promise.resolve();
+
+      function queued(work) {
+        const run = configWrites.then(work, work);
+        configWrites = run.catch(() => {});
+        return run;
+      }
+
+      async function editChannel(mapPath, edit) {
+        const map = await cpa("GET", mapPath, undefined, {});
+        const next = edit(channelEntries(map));
+        const write = channelWrite(map, next);
+        if (write) await cpa(write.method, mapPath + write.path, write.body);
+        return next;
+      }
+
+      function toggleModel(model, work) {
+        models.busy.add(model.id);
+        models.notice = null;
+        renderModels();
+        return queued(work)
+          .catch((err) => {
+            if (!(err instanceof AuthError))
+              models.notice = { tone: "error", text: err.message };
+          })
+          .finally(() => {
+            models.busy.delete(model.id);
+            renderModels();
+          });
+      }
+
+      function toggleBare(model, on) {
+        return toggleModel(model, async () => {
+          models.aliases = await editChannel(ALIAS_MAP, (list) =>
+            withBareID(list, model, on),
+          );
+        });
+      }
+
+      function toggleDisabled(model, on) {
+        return toggleModel(model, async () => {
+          const next = await editChannel(EXCLUDED_MAP, (list) =>
+            withExcluded(list.map(String), model.id, on),
+          );
+          models.excluded = next.map(String);
+        });
+      }
+
+      function refreshSummary(report) {
+        const parts = [
+          "Catalog read " +
+            (report.fetched_at ? stamp(new Date(report.fetched_at)) : "now") +
+            ".",
+        ];
+        if (report.added.length > 0)
+          parts.push("New: " + report.added.join(", ") + ".");
+        if (report.removed.length > 0)
+          parts.push("Gone: " + report.removed.join(", ") + ".");
+        if (report.added.length === 0 && report.removed.length === 0)
+          parts.push("No model added or removed.");
+        if (!report.registered)
+          parts.push(
+            "CLIProxyAPI has not picked up the list yet; Reload in a few seconds.",
+          );
+        if (report.failures && report.failures.length > 0)
+          parts.push("Not read: " + report.failures.join("; ") + ".");
+        return parts.join(" ");
+      }
+
+      $("models-refresh").addEventListener("click", async () => {
+        models.refreshing = true;
+        models.notice = null;
+        renderModels();
+        try {
+          const report = await api("POST", "/models/refresh");
+          models.notice = {
+            tone: report.registered ? "ok" : "warn",
+            text: refreshSummary(report),
+          };
+          models.servedBy = null;
+          await loadModels();
+        } catch (err) {
+          if (!(err instanceof AuthError))
+            models.notice = { tone: "error", text: err.message };
+        } finally {
+          models.refreshing = false;
+          renderModels();
+        }
+      });
+
+      // Routing: priority and weight on every opencode-go auth file, and the
+      // strategy that decides what they do.
+      const STRATEGY_NOTES = {
+        "round-robin":
+          "Requests for a model go to the highest priority with a ready credential and rotate per credential within it; weight has no effect.",
+        "weighted-round-robin":
+          "Requests for a model go to the highest priority with a ready credential and split within it by credential weight; each OpenCode Go login and key counts with the weight set here.",
+        "fill-first":
+          "Requests for a model go to the highest priority with a ready credential, and within it to the first ready one; weight has no effect.",
+      };
+
+      async function loadRouting() {
+        let view;
+        let config = null;
+        try {
+          [view, config] = await Promise.all([
+            api("GET", "/routing"),
+            cpa("GET", "/config/routing", undefined, {}).catch((err) => {
+              if (err instanceof AuthError) throw err;
+              return null;
+            }),
+          ]);
+        } catch (err) {
+          if (err instanceof AuthError) return;
+          $("routing").hidden = false;
+          showRoutingError(err.message);
+          return;
+        }
+        showRoutingError("");
+        renderRouting(view, config);
+      }
+
+      function showRoutingError(message) {
+        $("routing-error").textContent = message;
+        $("routing-error").hidden = !message;
+      }
+
+      function renderRouting(view, config) {
+        $("routing").hidden = view.files.length === 0;
+        if (view.files.length === 0) return;
+        const strategy = config
+          ? "Strategy " +
+            routingStrategy(config.strategy) +
+            ". " +
+            STRATEGY_NOTES[routingStrategy(config.strategy)] +
+            (config["session-affinity"]
+              ? " Session affinity keeps a session on its credential."
+              : "")
+          : "Could not read routing.strategy.";
+        $("routing-strategy").textContent = strategy;
+        $("routing-priority").value = view.priority ?? "";
+        $("routing-weight").value = view.weight ?? "";
+        const names = view.files.map((file) => file.file).join(", ");
+        $("routing-files").textContent = view.mixed
+          ? "The files differ now (" +
+            view.files
+              .map(
+                (file) =>
+                  file.file +
+                  ": priority " +
+                  (file.priority ?? 0) +
+                  ", weight " +
+                  (file.weight ?? 1),
+              )
+              .join("; ") +
+            "). Save sets both on every file."
+          : "Stored in " + names + ".";
+      }
+
+      function routingInput(id) {
+        const raw = $(id).value.trim();
+        return raw === "" ? null : Number(raw);
+      }
+
+      $("routing-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const save = $("routing-save");
+        save.disabled = true;
+        showRoutingError("");
+        try {
+          const view = await api("PUT", "/routing", {
+            priority: routingInput("routing-priority"),
+            weight: routingInput("routing-weight"),
+          });
+          const config = await cpa(
+            "GET",
+            "/config/routing",
+            undefined,
+            {},
+          ).catch((err) => {
+            if (err instanceof AuthError) throw err;
+            return null;
+          });
+          renderRouting(view, config);
+        } catch (err) {
+          if (!(err instanceof AuthError)) showRoutingError(err.message);
+        } finally {
+          save.disabled = false;
         }
       });
 
@@ -1372,7 +2384,8 @@
           storageSet(sessionStorage, SESSION_KEY, typed);
           auth.source = "session";
           showContent();
-          queueUsage(keys.map((key) => key.id));
+          queueUsage(allIds());
+          loadExtras();
         } catch (err) {
           if (!(err instanceof AuthError)) {
             $("auth-error").textContent = err.message;

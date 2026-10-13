@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -271,22 +273,18 @@ func (c catalog) find(cfg settings, model string) (catalogModel, bool) {
 	return catalogModel{}, false
 }
 
-// configURL is the workspace config endpoint on the configured host.
+// configURL is the workspace config endpoint on the Console.
 func configURL(cfg settings) string {
-	parsed, errParse := url.Parse(cfg.BaseURL)
-	if errParse != nil || parsed.Host == "" {
-		return "https://opencode.ai/console/api/v2/config"
-	}
-	return parsed.Scheme + "://" + parsed.Host + "/console/api/v2/config"
+	return cfg.consoleURL() + "/api/v2/config"
 }
 
-// fetchCatalog reads the live catalog with apiKey; any key permission level
-// may read it.
-func fetchCatalog(ctx context.Context, doer httpDoer, cfg settings, apiKey string) (catalog, error) {
+// fetchCatalog reads the live catalog with a key or login token; any key
+// permission level may read it.
+func fetchCatalog(ctx context.Context, doer httpDoer, cfg settings, bearer string) (catalog, error) {
 	resp, errDo := doer.Do(ctx, pluginapi.HTTPRequest{
 		Method:  http.MethodGet,
 		URL:     configURL(cfg),
-		Headers: goRequestHeaders(cfg, apiKey),
+		Headers: goRequestHeaders(cfg, bearer),
 	})
 	if errDo != nil {
 		return catalog{}, fmt.Errorf("fetch OpenCode Go catalog: %w", errDo)
@@ -313,39 +311,46 @@ type catalogEntry struct {
 	fetchedAt time.Time
 }
 
-// catalogStore caches the catalog per key. A failed refresh keeps the key's
-// previous catalog, then the last catalog any key fetched, then the
-// embedded snapshot, so models never vanish because the console is down.
+// modelRegistration is the model list model.for_auth last returned for a
+// credential, which is the list CPA has registered for it.
+type modelRegistration struct {
+	fingerprint string
+	ids         []string
+	at          time.Time
+}
+
+// catalogStore caches the catalog per credential ID. A failed refresh keeps
+// the credential's previous catalog, then the last catalog any credential
+// fetched, then the embedded snapshot, so models never vanish because the
+// console is down.
 type catalogStore struct {
-	mu       sync.Mutex
-	now      func() time.Time
-	byKey    map[string]catalogEntry
-	lastGood *catalog
-	snapshot *catalog
+	mu         sync.Mutex
+	now        func() time.Time
+	byKey      map[string]catalogEntry
+	registered map[string]modelRegistration
+	lastGood   *catalog
+	snapshot   *catalog
 }
 
 func newCatalogStore() *catalogStore {
-	return &catalogStore{now: time.Now, byKey: make(map[string]catalogEntry)}
+	return &catalogStore{now: time.Now, byKey: make(map[string]catalogEntry), registered: make(map[string]modelRegistration)}
 }
 
 var catalogs = newCatalogStore()
 
-// forKey returns the key's catalog, refreshing it once it is older than
-// catalogTTL. errFetch is the refresh failure when a fallback was served.
-func (s *catalogStore) forKey(ctx context.Context, doer httpDoer, cfg settings, key keyEntry) (catalog, catalogSource, error) {
+// forKey returns the credential's catalog, refreshing it once it is older
+// than catalogTTL. errFetch is the refresh failure when a fallback was
+// served.
+func (s *catalogStore) forKey(ctx context.Context, doer httpDoer, cfg settings, cred credential) (catalog, catalogSource, error) {
 	s.mu.Lock()
-	entry, cached := s.byKey[key.ID]
+	entry, cached := s.byKey[cred.ID]
 	now := s.now()
 	s.mu.Unlock()
 	if cached && now.Sub(entry.fetchedAt) < catalogTTL {
 		return entry.catalog, catalogCached, nil
 	}
-	fetched, errFetch := fetchCatalog(ctx, doer, cfg, key.APIKey)
+	fetched, errFetch := s.refresh(ctx, doer, cfg, cred)
 	if errFetch == nil {
-		s.mu.Lock()
-		s.byKey[key.ID] = catalogEntry{catalog: fetched, fetchedAt: s.now()}
-		s.lastGood = &fetched
-		s.mu.Unlock()
 		return fetched, catalogFresh, nil
 	}
 	if cached {
@@ -353,6 +358,56 @@ func (s *catalogStore) forKey(ctx context.Context, doer httpDoer, cfg settings, 
 	}
 	fallback, source := s.cached("")
 	return fallback, source, errFetch
+}
+
+// refresh fetches the credential's catalog regardless of its age and caches
+// it; a failure leaves the cache as it was.
+func (s *catalogStore) refresh(ctx context.Context, doer httpDoer, cfg settings, cred credential) (catalog, error) {
+	fetched, errFetch := fetchCatalog(ctx, doer, cfg, cred.Bearer)
+	if errFetch != nil {
+		return catalog{}, errFetch
+	}
+	s.remember(cred.ID, fetched)
+	return fetched, nil
+}
+
+// fetchedAt is when the credential's cached catalog was fetched.
+func (s *catalogStore) fetchedAt(credID string) (time.Time, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, ok := s.byKey[credID]
+	return entry.fetchedAt, ok
+}
+
+func (s *catalogStore) markRegistered(credID string, cfg settings, cat catalog) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.registered[credID] = modelRegistration{fingerprint: cat.fingerprint(), ids: cat.exposedIDs(cfg), at: s.now()}
+}
+
+func (s *catalogStore) registeredFor(credID string) (modelRegistration, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reg, ok := s.registered[credID]
+	return reg, ok
+}
+
+// fingerprint covers what decides whether CPA must register a catalog
+// again: the model set and each model's protocol and token limits.
+func (c catalog) fingerprint() string {
+	sum := sha256.New()
+	for _, model := range c.Models {
+		fmt.Fprintf(sum, "%s|%s|%d|%d|%d\n", model.UpstreamID, model.Protocol, model.ContextLength, model.InputLimit, model.OutputLimit)
+	}
+	return hex.EncodeToString(sum.Sum(nil))
+}
+
+func (c catalog) exposedIDs(cfg settings) []string {
+	ids := make([]string, 0, len(c.Models))
+	for _, model := range c.Models {
+		ids = append(ids, exposedModelID(cfg, model.UpstreamID))
+	}
+	return ids
 }
 
 // cached returns the best catalog for keyID without network access.
@@ -397,18 +452,27 @@ func handleModelsForAuth(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode model request: %w", errUnmarshal)
 	}
-	key, errKey := resolveAuthKey(req.StorageJSON, req.Attributes, req.Metadata)
-	if errKey != nil {
+	cfg := currentSettings()
+	cred, errCred := resolveCredential(req.StorageJSON, req.Attributes, req.Metadata)
+	var expired *loginExpiredError
+	if errors.As(errCred, &expired) {
+		// The models stay registered so a request still reaches the auth, and
+		// the 401 it gets makes the host refresh the login.
+		cat, _ := catalogs.cached(cred.ID)
+		catalogs.markRegistered(cred.ID, cfg, cat)
+		return okEnvelope(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg)})
+	}
+	if errCred != nil {
 		return okEnvelope(pluginapi.ModelResponse{Provider: providerKey})
 	}
-	cfg := currentSettings()
 	h := newHost(req.HostCallbackID)
-	cat, source, errFetch := catalogs.forKey(context.Background(), h, cfg, key)
+	cat, source, errFetch := catalogs.forKey(context.Background(), h, cfg, cred)
 	if errFetch != nil {
 		h.Log("warn", "OpenCode Go catalog refresh failed; serving "+string(source)+" catalog", map[string]any{
 			"auth_id": req.AuthID,
 			"error":   errFetch.Error(),
 		})
 	}
+	catalogs.markRegistered(cred.ID, cfg, cat)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg)})
 }

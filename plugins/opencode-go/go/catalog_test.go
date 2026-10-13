@@ -211,8 +211,8 @@ func TestCatalogStoreFallbacks(t *testing.T) {
 	store := newCatalogStore()
 	store.now = func() time.Time { return now }
 	cfg := defaultSettings()
-	keyA := keyEntry{ID: keyIDFor(testKeyA), APIKey: testKeyA}
-	keyB := keyEntry{ID: keyIDFor(testKeyB), APIKey: testKeyB}
+	keyA := keyCredential(keyEntry{ID: keyIDFor(testKeyA), APIKey: testKeyA})
+	keyB := keyCredential(keyEntry{ID: keyIDFor(testKeyB), APIKey: testKeyB})
 
 	if _, source, errFetch := store.forKey(context.Background(), doer, cfg, keyA); source != catalogFresh || errFetch != nil {
 		t.Fatalf("first = %s %v", source, errFetch)
@@ -298,6 +298,44 @@ func TestModelsForAuthFallsBackAndLogs(t *testing.T) {
 	logs := fake.callsTo(pluginabi.MethodHostLog)
 	if len(logs) != 1 || !strings.Contains(string(logs[0]), "snapshot") {
 		t.Fatalf("logs = %s", logs)
+	}
+}
+
+func TestModelsForAuthWithLoginKeysCacheByWorkspace(t *testing.T) {
+	useSettings(t, defaultSettings())
+	store := useCatalogStore(t)
+	fake := installFakeHost(t)
+	config := readFixture(t, "config.json")
+	var bearers []string
+	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req hostHTTPRequest
+		_ = json.Unmarshal(payload, &req)
+		bearers = append(bearers, req.Headers.Get("Authorization"))
+		return pluginapi.HTTPResponse{StatusCode: 200, Body: config}, nil
+	})
+	models := func(login []byte) []pluginapi.ModelInfo {
+		t.Helper()
+		auth := parseLoginAuth("opencode-go-oauth-"+testOrgID+".json", login)
+		raw, _ := handleMethod(pluginabi.MethodModelForAuth, mustJSON(t, rpcAuthModelRequest{AuthModelRequest: pluginapi.AuthModelRequest{
+			AuthID:      auth.ID,
+			StorageJSON: hostStorageJSON(t, auth.StorageJSON, auth.Metadata),
+			Attributes:  auth.Attributes,
+			Metadata:    auth.Metadata,
+		}}))
+		return decodeResult[pluginapi.ModelResponse](t, raw).Models
+	}
+	if got := models(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil)); len(got) != 7 {
+		t.Fatalf("models = %d", len(got))
+	}
+	if _, cached := store.ownCatalog("login:" + testOrgID); !cached || len(bearers) != 1 || bearers[0] != "Bearer "+testAccessToken {
+		t.Fatalf("cache %v after %v", cached, bearers)
+	}
+	if got := models(loginFileJSON(t, testAccessToken2, testRefreshToken2, testLoginExpiry, nil)); len(got) != 7 || len(bearers) != 1 {
+		t.Fatalf("rotated tokens refetched: %v", bearers)
+	}
+	expired := loginFileJSON(t, testAccessToken2, testRefreshToken2, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), nil)
+	if got := models(expired); len(got) != 7 || len(bearers) != 1 {
+		t.Fatalf("expired login: %d models after %v", len(got), bearers)
 	}
 }
 

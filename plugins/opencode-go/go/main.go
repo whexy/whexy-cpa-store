@@ -79,10 +79,8 @@ const (
 	providerKey        = "opencode-go"
 	displayName        = "OpenCode Go"
 	defaultBaseURL     = "https://opencode.ai/inference/go"
+	defaultConsoleURL  = "https://opencode.ai/console"
 	defaultModelPrefix = "opencode-go"
-	// Management Center turns an emptied string field into null, so an empty
-	// model_prefix cannot mean "no prefix".
-	noModelPrefix = "none"
 
 	// Background work gets this long to observe cancellation before the host
 	// unloads the library underneath it.
@@ -130,13 +128,16 @@ type registrationCapability struct {
 
 // settings are the plugin-owned values under plugins.configs.opencode-go.
 type settings struct {
-	BaseURL     string
+	BaseURL string
+	// ConsoleURL is empty unless configured; consoleURL derives it.
+	ConsoleURL  string
 	ModelPrefix string
 	UserAgent   string
 }
 
 type rawSettings struct {
 	BaseURL     string `yaml:"base_url"`
+	ConsoleURL  string `yaml:"console_url"`
 	ModelPrefix string `yaml:"model_prefix"`
 	UserAgent   string `yaml:"user_agent"`
 }
@@ -163,6 +164,19 @@ func (s settings) userAgent() string {
 	return "whexy-cpa-opencode-go/" + pluginVersion
 }
 
+// consoleURL is the OpenCode Console base. By default it is on the
+// gateway's host, so a base_url pointing at a mirror moves both.
+func (s settings) consoleURL() string {
+	if s.ConsoleURL != "" {
+		return s.ConsoleURL
+	}
+	parsed, errParse := url.Parse(s.BaseURL)
+	if errParse != nil || parsed.Host == "" {
+		return defaultConsoleURL
+	}
+	return parsed.Scheme + "://" + parsed.Host + "/console"
+}
+
 func main() {}
 
 //export cliproxy_plugin_init
@@ -175,6 +189,7 @@ func cliproxy_plugin_init(host *C.cliproxy_host_api, plugin *C.cliproxy_plugin_a
 	plugin.call = C.cliproxy_plugin_call_fn(C.cliproxyPluginCall)
 	plugin.free_buffer = C.cliproxy_plugin_free_fn(C.cliproxyPluginFree)
 	plugin.shutdown = C.cliproxy_plugin_shutdown_fn(C.cliproxyPluginShutdown)
+	startCatalogWatch()
 	return 0
 }
 
@@ -239,11 +254,12 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 		return okEnvelope(identifierResponse{Identifier: providerKey})
 	case pluginabi.MethodAuthParse:
 		return handleAuthParse(request)
-	case pluginabi.MethodAuthLoginStart, pluginabi.MethodAuthLoginPoll:
-		return errorEnvelope("unsupported", "OpenCode Go has no login flow; add keys on the OpenCode Go page in Management Center", 400), nil
+	case pluginabi.MethodAuthLoginStart:
+		return handleLoginStart(request)
+	case pluginabi.MethodAuthLoginPoll:
+		return handleLoginPoll(request)
 	case pluginabi.MethodAuthRefresh:
-		// Keys do not expire; an empty auth tells the host to keep the record as is.
-		return okEnvelope(pluginapi.AuthRefreshResponse{})
+		return handleAuthRefresh(request)
 
 	case pluginabi.MethodModelStatic:
 		return okEnvelope(pluginapi.ModelResponse{Provider: providerKey})
@@ -283,10 +299,14 @@ func pluginRegistration() registration {
 			Version:          pluginVersion,
 			Author:           "Whexy",
 			GitHubRepository: "https://github.com/whexy/whexy-cpa-store",
+			Logo:             logoPath,
+			// CPA HTML-escapes these descriptions and Management Center shows
+			// the escapes literally, so they avoid < > & and quotes.
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "base_url", Type: pluginapi.ConfigFieldTypeString, Description: "OpenCode Go gateway base URL. Default " + defaultBaseURL + "."},
-				{Name: "model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of the exposed model IDs, as in opencode-go/kimi-k3. Default " + defaultModelPrefix + ". Set to none to expose bare IDs, which then share routing with any other provider serving the same ID."},
-				{Name: "user_agent", Type: pluginapi.ConfigFieldTypeString, Description: "User-Agent sent upstream when the client sends none. Default whexy-cpa-opencode-go/<version>."},
+				{Name: "console_url", Type: pluginapi.ConfigFieldTypeString, Description: "OpenCode Console base URL, used for login, token refresh and the model catalog. Default: the base_url host followed by /console, which is " + defaultConsoleURL + " for the default base_url."},
+				{Name: "model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every model ID, as in opencode-go/kimi-k3. Default " + defaultModelPrefix + ". To share a bare ID such as deepseek-v4-pro with another provider, turn on Bare ID for that model on the OpenCode Go page."},
+				{Name: "user_agent", Type: pluginapi.ConfigFieldTypeString, Description: "User-Agent sent upstream when the client sends none. Default whexy-cpa-opencode-go/" + pluginVersion + "."},
 			},
 		},
 		Capabilities: registrationCapability{
@@ -327,23 +347,40 @@ func parseSettings(configYAML []byte) (settings, error) {
 		}
 	}
 	cfg := defaultSettings()
-	if base := strings.TrimRight(strings.TrimSpace(raw.BaseURL), "/"); base != "" {
-		parsed, errParse := url.Parse(base)
-		if errParse != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
-			return settings{}, fmt.Errorf("base_url must be an absolute http(s) URL, got %q", base)
-		}
+	base, errBase := absoluteURLSetting("base_url", raw.BaseURL)
+	if errBase != nil {
+		return settings{}, errBase
+	}
+	if base != "" {
 		cfg.BaseURL = base
 	}
+	console, errConsole := absoluteURLSetting("console_url", raw.ConsoleURL)
+	if errConsole != nil {
+		return settings{}, errConsole
+	}
+	cfg.ConsoleURL = console
 	if prefix := strings.Trim(strings.TrimSpace(raw.ModelPrefix), "/"); prefix != "" {
-		if strings.EqualFold(prefix, noModelPrefix) {
-			prefix = ""
-		} else if strings.ContainsAny(prefix, " \t\r\n()") {
-			return settings{}, fmt.Errorf("model_prefix must not contain spaces or parentheses, got %q", prefix)
+		if strings.ContainsAny(prefix, " \t\r\n()*") {
+			return settings{}, fmt.Errorf("model_prefix must not contain spaces, parentheses or *, got %q", prefix)
 		}
 		cfg.ModelPrefix = prefix
 	}
 	cfg.UserAgent = strings.TrimSpace(raw.UserAgent)
 	return cfg, nil
+}
+
+// absoluteURLSetting reads an optional http(s) URL setting without its
+// trailing slash.
+func absoluteURLSetting(name, value string) (string, error) {
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	if value == "" {
+		return "", nil
+	}
+	parsed, errParse := url.Parse(value)
+	if errParse != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+		return "", fmt.Errorf("%s must be an absolute http(s) URL, got %q", name, value)
+	}
+	return value, nil
 }
 
 // Work that outlives a plugin call (stream pumps) runs under backgroundCtx so
@@ -382,12 +419,18 @@ func stopBackground(grace time.Duration) {
 	}
 }
 
-var secretPattern = regexp.MustCompile(`oc_sk_[A-Za-z0-9_\-]+`)
+var (
+	secretPattern = regexp.MustCompile(`oc_sk_[A-Za-z0-9_\-]+`)
+	// loginTokenPattern matches OpenCode Console access (st_) and refresh
+	// (rt_) tokens.
+	loginTokenPattern = regexp.MustCompile(`\b(st|rt)_[A-Za-z0-9_\-]{16,}`)
+)
 
-// redactSecrets removes OpenCode keys from text the plugin returns or logs;
-// upstream error bodies may echo the key back.
+// redactSecrets removes OpenCode keys and login tokens from text the plugin
+// returns or logs; upstream error bodies may echo them back.
 func redactSecrets(text string) string {
-	return secretPattern.ReplaceAllString(text, "oc_sk_[redacted]")
+	text = secretPattern.ReplaceAllString(text, "oc_sk_[redacted]")
+	return loginTokenPattern.ReplaceAllString(text, "${1}_[redacted]")
 }
 
 func okEnvelope(value any) ([]byte, error) {

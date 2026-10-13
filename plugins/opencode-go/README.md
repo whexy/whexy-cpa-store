@@ -9,14 +9,20 @@ the subscription and never on Console credits.
 ## Set up
 
 1. Install `opencode-go` from Management Center → Plugin Store.
-2. In the OpenCode Console, create a service-account key (`oc_sk_…`) that may
-   call models, in the workspace that holds the Go subscription.
-3. Open Management Center → OpenCode Go and add the key. The page checks it
-   against the gateway, then stores it in `opencode-go.json` in the auth
-   directory. Add more keys the same way; CLIProxyAPI rotates between them.
-   The same page renames, disables, tests and removes keys.
-4. Request models as `opencode-go/<model>`, for example `opencode-go/kimi-k3`.
+2. Open Management Center → OAuth Login → OpenCode Go and approve the request
+   on the OpenCode page that opens, in the workspace that holds the Go
+   subscription. The login is saved as `opencode-go-oauth-<workspace id>.json`
+   in the auth directory, and CLIProxyAPI refreshes its token on its own.
+   Logging in to the same workspace again replaces that login.
+3. Request models as `opencode-go/<model>`, for example `opencode-go/kimi-k3`.
    `GET /v1/models` lists them.
+
+Service-account keys (`oc_sk_…`, allowed to call models) work instead of or
+alongside logins: add them on Management Center → OpenCode Go, which checks
+each key and stores it in `opencode-go.json`. CLIProxyAPI rotates between all
+logins and keys. The same page shows each login's account and token expiry
+and disables logins, and renames, disables, tests and removes keys. Delete a
+login on the Auth Files page.
 
 <details>
 <summary>Adding a key as an auth file instead</summary>
@@ -34,8 +40,8 @@ Put a file of type `opencode-go` in the auth directory:
 
 The routes take the management key like the rest of the Management API, as
 `Authorization: Bearer <key>`. Paths are under `/v0/management/opencode-go`.
-A key is named by the `id` the list returns; no route returns a full key.
-Failures answer `{"error": "<message>"}`.
+A key or login is named by the `id` its list returns; no route returns a full
+key or a token. Failures answer `{"error": "<message>"}`.
 
 - `GET /keys`: every key with its label, masked key, enabled state,
   CLIProxyAPI routing state and workspace.
@@ -48,21 +54,66 @@ Failures answer `{"error": "<message>"}`.
   `{"ok": true, "usage": …}` or `{"ok": false, "error": "…"}`.
 - `GET /keys/usage?id=…`: the key's 5-hour, weekly and monthly usage with
   reset times.
+- `GET /logins`: every login with its workspace, account email, token
+  expiry, enabled state and CLIProxyAPI routing state.
+- `PATCH /logins` with `{"id": "…", "disabled": true}`: disables or enables a
+  login.
+- `GET /logins/usage?id=…`: the login's usage, as for a key.
+- `GET /models`: the catalog of the first login or key that can read it,
+  and the models CLIProxyAPI has not registered yet or still lists.
+- `POST /models/refresh`: reads every catalog again, makes CLIProxyAPI
+  register the lists, and answers the models added and removed.
+- `GET /routing`: the priority and weight of every OpenCode Go auth file.
+- `PUT /routing` with `{"priority": 5, "weight": 2}`: writes both into every
+  OpenCode Go auth file; `null` restores the default.
+
+Bare ID and Disabled are CLIProxyAPI settings, which the page edits through
+`/v8/management/config/oauth/model-alias/opencode-go` and
+`/v8/management/config/oauth/excluded-models/opencode-go`.
 
 </details>
 
 ## Models
 
-The model list is the workspace's OpenCode catalog, read with the key when
-CLIProxyAPI loads it. If the catalog cannot be read, the last list read
-stays in use.
-
+The OpenCode Go page lists the models of the workspace's OpenCode catalog.
 Every ID carries the `opencode-go/` prefix, so Go never takes requests meant
 for another provider that serves the same model, such as `kimi-k3` through
-Kimi. With `model_prefix: none` the IDs are bare and share those requests.
+Kimi. **Disabled** removes a model from CLIProxyAPI; the page also lists the
+wildcard rules of Management Center's OAuth Model Disablement page that match
+Go models.
 
-Models the catalog prices at zero keep working after a key reaches its usage
-limit.
+The plugin reads the catalog again every three hours and on **Refresh
+models**, and CLIProxyAPI then lists the models OpenCode added and drops those
+it removed. If the catalog cannot be read, the last list read stays in use.
+
+Models the catalog prices at zero keep working after a login or key reaches
+its usage limit.
+
+## Sharing a model with another provider
+
+To serve `deepseek-v4-pro` from both OpenCode Go and another provider of that
+ID, such as an `openai-compatibility` entry for the DeepSeek API, turn on
+**Bare ID** for the model on the OpenCode Go page. Clients then request
+`deepseek-v4-pro`, and `opencode-go/deepseek-v4-pro` keeps working. The page
+names the other providers that serve a model's bare ID.
+
+CLIProxyAPI sends each request to the highest priority that has a ready
+credential and fails over to the next one on errors. Within a priority,
+`round-robin` rotates per credential and `weighted-round-robin` splits by
+credential weight. Set OpenCode Go's priority and weight under **Routing** on
+the page, which writes them into every OpenCode Go auth file; the other
+provider's priority is in its own config entry.
+
+Bare ID is this config entry, which also works written by hand:
+
+```yaml
+oauth:
+  model-alias:
+    opencode-go:
+      - name: opencode-go/deepseek-v4-pro
+        alias: deepseek-v4-pro
+        fork: true
+```
 
 ## Settings
 
@@ -70,12 +121,14 @@ All optional, under `plugins.configs.opencode-go` or in the plugin's
 configuration form in Management Center:
 
 - `base_url`: Go gateway base URL. Default `https://opencode.ai/inference/go`.
-- `model_prefix`: prefix of model IDs, or `none`. Default `opencode-go`.
+- `console_url`: OpenCode Console base URL, for login, token refresh and the
+  model catalog. Default: the `base_url` host followed by `/console`.
+- `model_prefix`: prefix of every model ID. Default `opencode-go`.
 - `user_agent`: sent upstream when the client sends none. Default
   `whexy-cpa-opencode-go/<version>`.
 
 ## Quota
 
-The Plugin tab of Management Center's quota page shows each key's 5-hour,
-weekly and monthly usage. A key that reaches a limit gets no further paid
-requests until the window resets.
+The Plugin tab of Management Center's quota page shows each login's and
+key's 5-hour, weekly and monthly usage. A login or key that reaches a limit
+gets no further paid requests until the window resets.

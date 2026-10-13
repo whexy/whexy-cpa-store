@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
@@ -317,6 +318,45 @@ func TestExecutorUnknownModel(t *testing.T) {
 	}
 	if len(gateway.inferenceRequests()) != 0 {
 		t.Fatal("unknown model reached the gateway")
+	}
+}
+
+func TestExecutorUsesLoginToken(t *testing.T) {
+	useSettings(t, defaultSettings())
+	useTestCatalog(t)
+	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	catalogs.byKey["login:"+testOrgID] = catalogEntry{catalog: cat, fetchedAt: time.Now()}
+	gateway := installFakeGateway(t, fixtureGateway(t))
+	login := loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil)
+	raw, _ := executorExecute(testCall{Source: "openai", Model: "opencode-go/deepseek-v4-flash", Payload: clientPayload("openai", "x", false), Login: login}.raw(t))
+	decodeResult[pluginapi.ExecutorResponse](t, raw)
+	sent := gateway.inferenceRequests()
+	if len(sent) != 1 || sent[0].Headers.Get("Authorization") != "Bearer "+testAccessToken {
+		t.Fatalf("sent = %+v", sent)
+	}
+
+	// A usage block on the workspace holds after the tokens rotate.
+	tracker, _, _ := useExhaustion(t, time.Now())
+	tracker.block("login:"+testOrgID, "", time.Now().Add(time.Hour), []string{"weekly"})
+	rotated := loginFileJSON(t, testAccessToken2, testRefreshToken2, testLoginExpiry, nil)
+	raw, _ = executorExecute(testCall{Source: "openai", Model: "opencode-go/deepseek-v4-flash", Payload: clientPayload("openai", "x", false), Login: rotated}.raw(t))
+	if env := decodeEnvelope(t, raw); env.OK || env.Error.HTTPStatus != http.StatusTooManyRequests || len(gateway.inferenceRequests()) != 1 {
+		t.Fatalf("blocked = %s", raw)
+	}
+}
+
+func TestExecutorExpiredLoginFailsFast(t *testing.T) {
+	useSettings(t, defaultSettings())
+	useTestCatalog(t)
+	gateway := installFakeGateway(t, fixtureGateway(t))
+	expired := loginFileJSON(t, testAccessToken, testRefreshToken, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), nil)
+	raw, _ := executorExecute(testCall{Source: "openai", Model: "opencode-go/deepseek-v4-flash", Payload: clientPayload("openai", "x", false), Login: expired}.raw(t))
+	env := decodeEnvelope(t, raw)
+	if env.OK || env.Error.HTTPStatus != http.StatusUnauthorized || !strings.Contains(env.Error.Message, "log in again") || strings.Contains(string(raw), testAccessToken) {
+		t.Fatalf("expired = %s", raw)
+	}
+	if len(gateway.requests) != 0 {
+		t.Fatalf("expired login reached OpenCode: %+v", gateway.requests)
 	}
 }
 

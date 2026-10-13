@@ -215,6 +215,8 @@ type testCall struct {
 	Headers http.Header
 	Meta    map[string]any
 	APIKey  string
+	// Login, when set, is the login file the auth holds instead of a key.
+	Login []byte
 }
 
 func (c testCall) raw(t *testing.T) []byte {
@@ -225,6 +227,14 @@ func (c testCall) raw(t *testing.T) []byte {
 	}
 	keyID := keyIDFor(apiKey)
 	storage := mustJSON(t, map[string]any{"type": providerKey, keyIDAttribute: keyID, "api_key": apiKey})
+	authID := authIDFor(keyFileName, keyID)
+	attributes := map[string]string{keyIDAttribute: keyID}
+	var metadata map[string]any
+	if c.Login != nil {
+		auth := parseLoginAuth("opencode-go-oauth-"+testOrgID+".json", c.Login)
+		storage = hostStorageJSON(t, auth.StorageJSON, auth.Metadata)
+		authID, attributes, metadata = auth.ID, auth.Attributes, auth.Metadata
+	}
 	headers := c.Headers
 	if headers == nil {
 		headers = http.Header{"Authorization": {"Bearer sk-client-secret"}, "Cookie": {"session=client"}}
@@ -235,7 +245,7 @@ func (c testCall) raw(t *testing.T) []byte {
 	}
 	req := rpcExecutorRequest{
 		ExecutorRequest: pluginapi.ExecutorRequest{
-			AuthID:          authIDFor(keyFileName, keyID),
+			AuthID:          authID,
 			AuthProvider:    providerKey,
 			Model:           c.Model,
 			Format:          format,
@@ -246,7 +256,8 @@ func (c testCall) raw(t *testing.T) []byte {
 			OriginalRequest: []byte(c.Payload),
 			Metadata:        c.Meta,
 			StorageJSON:     storage,
-			AuthAttributes:  map[string]string{keyIDAttribute: keyID},
+			AuthAttributes:  attributes,
+			AuthMetadata:    metadata,
 		},
 		HostCallbackID: "cb-exec",
 	}

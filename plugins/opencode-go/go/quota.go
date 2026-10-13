@@ -29,15 +29,19 @@ func handleQuotaFetch(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode quota fetch request: %w", errUnmarshal)
 	}
-	key, errKey := resolveAuthKey(req.StorageJSON, req.Attributes, req.Metadata)
-	if errKey != nil {
-		return errorEnvelope("invalid_auth", errKey.Error(), http.StatusBadRequest), nil
+	cred, errCred := resolveCredential(req.StorageJSON, req.Attributes, req.Metadata)
+	var expired *loginExpiredError
+	if errors.As(errCred, &expired) {
+		return errorEnvelope("login_expired", errCred.Error(), http.StatusUnauthorized), nil
 	}
-	report, errFetch := fetchUsage(context.Background(), newHost(req.HostCallbackID), currentSettings(), key.APIKey)
+	if errCred != nil {
+		return errorEnvelope("invalid_auth", errCred.Error(), http.StatusBadRequest), nil
+	}
+	report, errFetch := fetchUsage(context.Background(), newHost(req.HostCallbackID), currentSettings(), cred.Bearer)
 	if errFetch != nil {
 		return errorEnvelope("upstream_error", errFetch.Error(), quotaErrorStatus(errFetch)), nil
 	}
-	return okEnvelope(quotaResponse(report, key))
+	return okEnvelope(quotaResponse(report, cred.Name))
 }
 
 func quotaErrorStatus(err error) int {
@@ -48,7 +52,7 @@ func quotaErrorStatus(err error) int {
 	return http.StatusBadGateway
 }
 
-// quotaGroupName names the key, because Management Center titles every card
+// quotaGroupName names a key, because Management Center titles every card
 // from one multi-key file with the same file name.
 func quotaGroupName(key keyEntry) string {
 	if key.Label == "" {
@@ -57,7 +61,7 @@ func quotaGroupName(key keyEntry) string {
 	return key.Label + " · " + maskKey(key.APIKey)
 }
 
-func quotaResponse(report usageReport, key keyEntry) pluginapi.QuotaFetchResponse {
+func quotaResponse(report usageReport, groupName string) pluginapi.QuotaFetchResponse {
 	buckets := make([]pluginapi.QuotaBucket, 0, len(report.Windows))
 	for _, window := range report.Windows {
 		names, ok := quotaBucketNames[window.Name]
@@ -80,6 +84,6 @@ func quotaResponse(report usageReport, key keyEntry) pluginapi.QuotaFetchRespons
 	}
 	return pluginapi.QuotaFetchResponse{
 		Subscription: &pluginapi.QuotaSubscription{Plan: displayName},
-		Groups:       []pluginapi.QuotaGroup{{DisplayName: quotaGroupName(key), Buckets: buckets}},
+		Groups:       []pluginapi.QuotaGroup{{DisplayName: groupName, Buckets: buckets}},
 	}
 }

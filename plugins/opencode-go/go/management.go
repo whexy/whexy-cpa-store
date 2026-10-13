@@ -23,10 +23,17 @@ const (
 	// resourcePagePath is the key management page Management Center embeds
 	// under the "OpenCode Go" menu. Resource routes are not authenticated.
 	resourcePagePath = "/v0/resource/plugins/" + providerKey + "/index.html"
+	// logoPath is the plugin's Metadata.Logo. Management Center resolves a
+	// path against its API base and shows it in the sidebar, on the OAuth
+	// Login tile and on the Plugins page.
+	logoPath = "/v0/resource/plugins/" + providerKey + "/logo.svg"
 	// managementBasePath prefixes the authenticated key routes; the host
 	// matches exact paths, so IDs travel in the query or body.
 	managementBasePath = "/v0/management/" + providerKey
 	keysPath           = managementBasePath + "/keys"
+	loginsPath         = managementBasePath + "/logins"
+	modelsPath         = managementBasePath + "/models"
+	routingPath        = managementBasePath + "/routing"
 
 	maxLabelLength = 64
 )
@@ -38,6 +45,12 @@ const (
 var managementPage []byte
 
 var managementPageCSP = pageCSP(managementPage)
+
+// logoSVG is the OpenCode mark; ../logo.svg is the copy the store registry
+// links to.
+//
+//go:embed logo.svg
+var logoSVG []byte
 
 type rpcManagementRequest struct {
 	pluginapi.ManagementRequest
@@ -63,24 +76,31 @@ type resourceRoute struct {
 }
 
 // Key routes name keys by their key ID, which is derived from the key and
-// stays fixed; an auth_index shifts when an earlier key is removed.
+// stays fixed; an auth_index shifts when an earlier key is removed. Login
+// routes name a login by its file name.
 var managementRoutes = []managementRoute{
 	{Method: http.MethodGet, Path: keysPath, Description: "List OpenCode Go keys: masked key, label, state, workspace.", handle: handleListKeys},
 	{Method: http.MethodPost, Path: keysPath, Description: "Check and add an OpenCode Go key: {label, api_key}.", handle: handleAddKey},
 	{Method: http.MethodPatch, Path: keysPath, Description: "Rename, enable or disable an OpenCode Go key: {id, label?, disabled?}.", handle: handleUpdateKey},
 	{Method: http.MethodDelete, Path: keysPath, Description: "Remove an OpenCode Go key: ?id=.", handle: handleDeleteKey},
 	{Method: http.MethodPost, Path: keysPath + "/test", Description: "Check a stored OpenCode Go key against the gateway: {id}.", handle: handleTestKey},
-	{Method: http.MethodGet, Path: keysPath + "/usage", Description: "Read an OpenCode Go key's 5-hour, weekly and monthly usage: ?id=.", handle: handleKeyUsage},
+	{Method: http.MethodGet, Path: keysPath + "/usage", Description: "Read the 5-hour, weekly and monthly usage of an OpenCode Go key: ?id=.", handle: handleKeyUsage},
+	{Method: http.MethodGet, Path: loginsPath, Description: "List OpenCode logins: workspace, account, token expiry, state.", handle: handleListLogins},
+	{Method: http.MethodPatch, Path: loginsPath, Description: "Enable or disable an OpenCode login: {id, disabled}.", handle: handleUpdateLogin},
+	{Method: http.MethodGet, Path: loginsPath + "/usage", Description: "Read the 5-hour, weekly and monthly usage of an OpenCode login: ?id=.", handle: handleLoginUsage},
+	{Method: http.MethodGet, Path: modelsPath, Description: "List the OpenCode Go catalog of the first working login or key, and how it differs from the models CLIProxyAPI registered.", handle: handleListModels},
+	{Method: http.MethodPost, Path: modelsPath + "/refresh", Description: "Read every catalog again and make CLIProxyAPI register the current model lists.", handle: handleRefreshModels},
+	{Method: http.MethodGet, Path: routingPath, Description: "Read the priority and weight of the OpenCode Go auth files.", handle: handleGetRouting},
+	{Method: http.MethodPut, Path: routingPath, Description: "Set priority and weight on every OpenCode Go auth file: {priority, weight}, null for the default.", handle: handleSetRouting},
 }
 
 func managementRegister(raw []byte) ([]byte, error) {
 	return okEnvelope(managementRegistration{
 		Routes: managementRoutes,
-		Resources: []resourceRoute{{
-			Path:        resourcePagePath,
-			Menu:        displayName,
-			Description: "Manage OpenCode Go keys.",
-		}},
+		Resources: []resourceRoute{
+			{Path: resourcePagePath, Menu: displayName, Description: "Manage OpenCode Go logins, keys, models and routing."},
+			{Path: logoPath, Description: "OpenCode Go logo."},
+		},
 	})
 }
 
@@ -105,6 +125,18 @@ func routeManagement(h host, req pluginapi.ManagementRequest) pluginapi.Manageme
 				"Referrer-Policy":         {"no-referrer"},
 			},
 			Body: managementPage,
+		}
+	}
+	if method == http.MethodGet && req.Path == logoPath {
+		return pluginapi.ManagementResponse{
+			StatusCode: http.StatusOK,
+			Headers: http.Header{
+				"Content-Type":            {"image/svg+xml"},
+				"Cache-Control":           {"public, max-age=3600"},
+				"Content-Security-Policy": {"default-src 'none'"},
+				"X-Content-Type-Options":  {"nosniff"},
+			},
+			Body: logoSVG,
 		}
 	}
 	for _, route := range managementRoutes {
@@ -142,24 +174,38 @@ func managementJSON(status int, body any) pluginapi.ManagementResponse {
 	}
 }
 
-// pageCSP admits only the page's own inline script and style and requests
+// pageCSP admits only the page's own inline scripts and styles and requests
 // to its own origin, so injected markup can neither run nor send the
 // management key elsewhere. It sets no frame-ancestors because Management
 // Center may be served from another origin than CLIProxyAPI.
 func pageCSP(page []byte) string {
-	return "default-src 'none'; script-src " + inlineHash(page, "script") +
-		"; style-src " + inlineHash(page, "style") +
+	return "default-src 'none'; script-src " + inlineHashes(page, "script") +
+		"; style-src " + inlineHashes(page, "style") +
 		"; connect-src 'self'; base-uri 'none'; form-action 'none'"
 }
 
-func inlineHash(page []byte, tag string) string {
+// inlineHashes lists the hash of every <tag> block of the page.
+func inlineHashes(page []byte, tag string) string {
 	open, end := []byte("<"+tag+">"), []byte("</"+tag+">")
-	start, stop := bytes.Index(page, open), bytes.Index(page, end)
-	if start < 0 || stop < start {
+	var hashes []string
+	for {
+		start := bytes.Index(page, open)
+		if start < 0 {
+			break
+		}
+		page = page[start+len(open):]
+		stop := bytes.Index(page, end)
+		if stop < 0 {
+			break
+		}
+		sum := sha256.Sum256(page[:stop])
+		hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'")
+		page = page[stop+len(end):]
+	}
+	if len(hashes) == 0 {
 		return "'none'"
 	}
-	sum := sha256.Sum256(page[start+len(open) : stop])
-	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+	return strings.Join(hashes, " ")
 }
 
 // apiError is a key route failure shown to the user as is.
@@ -223,16 +269,56 @@ func newKeyView(file storedKeyFile, entry keyEntry) keyView {
 		view.Models = len(cat.Models)
 	}
 	if auth, ok := file.runtimeAuth(entry.ID); ok {
-		view.Runtime = &runtimeView{
-			State:       auth.Status,
-			Message:     auth.StatusMessage,
-			Unavailable: auth.Unavailable,
-			Success:     auth.Success,
-			Failed:      auth.Failed,
-		}
-		if !auth.NextRetryAfter.IsZero() {
-			view.Runtime.NextRetryAfter = auth.NextRetryAfter.UTC().Format(time.RFC3339)
-		}
+		view.Runtime = newRuntimeView(auth)
+	}
+	return view
+}
+
+func newRuntimeView(auth pluginapi.HostAuthFileEntry) *runtimeView {
+	view := &runtimeView{
+		State:       auth.Status,
+		Message:     auth.StatusMessage,
+		Unavailable: auth.Unavailable,
+		Success:     auth.Success,
+		Failed:      auth.Failed,
+	}
+	if !auth.NextRetryAfter.IsZero() {
+		view.NextRetryAfter = auth.NextRetryAfter.UTC().Format(time.RFC3339)
+	}
+	return view
+}
+
+// loginView is a login as the page shows it; it never carries a token.
+type loginView struct {
+	ID        string       `json:"id"`
+	Workspace string       `json:"workspace"`
+	OrgID     string       `json:"org_id"`
+	Email     string       `json:"email,omitempty"`
+	Disabled  bool         `json:"disabled"`
+	ExpiresAt string       `json:"expires_at,omitempty"`
+	Expired   bool         `json:"expired,omitempty"`
+	Models    int          `json:"models,omitempty"`
+	Runtime   *runtimeView `json:"runtime,omitempty"`
+}
+
+func newLoginView(stored storedLogin) loginView {
+	login := logins.current(stored.Login)
+	view := loginView{
+		ID:        stored.Name,
+		Workspace: login.displayName(),
+		OrgID:     login.OrgID,
+		Email:     login.Email,
+		Disabled:  login.Disabled,
+		Expired:   login.expired(time.Now()),
+	}
+	if !login.ExpiresAt.IsZero() {
+		view.ExpiresAt = login.ExpiresAt.Format(time.RFC3339)
+	}
+	if cat, ok := catalogs.ownCatalog(login.credential().ID); ok {
+		view.Models = len(cat.Models)
+	}
+	if stored.Auth.AuthIndex != "" {
+		view.Runtime = newRuntimeView(stored.Auth)
 	}
 	return view
 }
@@ -405,6 +491,87 @@ func handleKeyUsage(h host, req pluginapi.ManagementRequest) (int, any, error) {
 		return 0, nil, describeCheckFailure(errFetch, false)
 	}
 	return http.StatusOK, map[string]any{"usage": newUsageView(report)}, nil
+}
+
+func handleListLogins(host, pluginapi.ManagementRequest) (int, any, error) {
+	files, errLoad := loadAuthFiles()
+	if errLoad != nil {
+		return 0, nil, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
+	}
+	views := []loginView{}
+	for _, stored := range files.Logins {
+		views = append(views, newLoginView(stored))
+	}
+	return http.StatusOK, map[string]any{"logins": views}, nil
+}
+
+// handleUpdateLogin enables or disables a login. Deleting needs a host
+// callback plugins lack; the page sends the user to Auth Files for that.
+func handleUpdateLogin(_ host, req pluginapi.ManagementRequest) (int, any, error) {
+	var body struct {
+		ID       string `json:"id"`
+		Disabled *bool  `json:"disabled"`
+	}
+	if errDecode := decodeBody(req.Body, &body); errDecode != nil {
+		return 0, nil, errDecode
+	}
+	if body.Disabled == nil {
+		return 0, nil, failf(http.StatusBadRequest, "Nothing to change: send disabled.")
+	}
+	stored, errFind := findStoredLogin(body.ID)
+	if errFind != nil {
+		return 0, nil, errFind
+	}
+	errSave := editLoginFile(stored.Name, func(login *loginCredential) {
+		login.Disabled = *body.Disabled
+	})
+	if errors.Is(errSave, errFileGone) {
+		return 0, nil, failf(http.StatusNotFound, "That login is no longer stored. Reload the list.")
+	}
+	if errSave != nil {
+		return 0, nil, failf(http.StatusInternalServerError, "Could not save %s: %v", stored.Name, errSave)
+	}
+	saved, errReload := findStoredLogin(body.ID)
+	if errReload != nil {
+		return http.StatusOK, map[string]any{"login": nil}, nil
+	}
+	return http.StatusOK, map[string]any{"login": newLoginView(saved)}, nil
+}
+
+func handleLoginUsage(h host, req pluginapi.ManagementRequest) (int, any, error) {
+	stored, errFind := findStoredLogin(strings.TrimSpace(req.Query.Get("id")))
+	if errFind != nil {
+		return 0, nil, errFind
+	}
+	login := logins.current(stored.Login)
+	if login.expired(time.Now()) {
+		return 0, nil, failf(http.StatusUnprocessableEntity, "The login's token expired; %s.", logInAgain)
+	}
+	report, errFetch := fetchUsage(context.Background(), h, currentSettings(), login.AccessToken)
+	var upstream *upstreamError
+	if errors.As(errFetch, &upstream) && upstream.Status == http.StatusUnauthorized {
+		return 0, nil, failf(http.StatusUnprocessableEntity, "OpenCode rejected the login's token: %s. If CLIProxyAPI cannot refresh it, %s.", upstream.Error(), logInAgain)
+	}
+	if errFetch != nil {
+		return 0, nil, describeCheckFailure(errFetch, false)
+	}
+	return http.StatusOK, map[string]any{"usage": newUsageView(report)}, nil
+}
+
+// findStoredLogin reads the auth files and returns the login named id.
+func findStoredLogin(id string) (storedLogin, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return storedLogin{}, failf(http.StatusBadRequest, "Missing login id.")
+	}
+	stored, errFind := lookupLogin(id)
+	if errors.Is(errFind, errFileGone) {
+		return storedLogin{}, failf(http.StatusNotFound, "That login is no longer stored. Reload the list.")
+	}
+	if errFind != nil {
+		return storedLogin{}, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errFind)
+	}
+	return stored, nil
 }
 
 func decodeBody(raw []byte, out any) error {

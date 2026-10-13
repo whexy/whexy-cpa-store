@@ -40,7 +40,7 @@ type executorCall struct {
 	req   rpcExecutorRequest
 	host  host
 	cfg   settings
-	key   keyEntry
+	cred  credential
 	route modelRoute
 	plan  routePlan
 	// payload is the client's request in plan.Source; response translators
@@ -92,16 +92,16 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	}
 	h := newHost(req.HostCallbackID)
 	cfg := currentSettings()
-	key, errKey := resolveAuthKey(req.StorageJSON, req.AuthAttributes, req.AuthMetadata)
-	if errKey != nil {
-		return nil, errorEnvelope("invalid_auth", "OpenCode Go auth "+req.AuthID+": "+errKey.Error(), http.StatusUnauthorized)
+	cred, errCred := resolveCredential(req.StorageJSON, req.AuthAttributes, req.AuthMetadata)
+	if errCred != nil {
+		return nil, errorEnvelope("invalid_auth", "OpenCode Go auth "+req.AuthID+": "+errCred.Error(), http.StatusUnauthorized)
 	}
-	route, found := resolveRoute(ctx, h, cfg, req.Model, key)
+	route, found := resolveRoute(ctx, h, cfg, req.Model, cred)
 	if !found {
 		return nil, errorEnvelope("model_not_found", fmt.Sprintf("model %s is not in the OpenCode Go catalog", req.Model), http.StatusNotFound)
 	}
 	if !route.Free {
-		if block, blocked := exhaustion.active(key.ID, req.AuthID); blocked {
+		if block, blocked := exhaustion.active(cred.ID, req.AuthID); blocked {
 			return nil, errorEnvelope("usage_limit", block.message(), http.StatusTooManyRequests)
 		}
 	}
@@ -127,26 +127,26 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 		req:     req,
 		host:    h,
 		cfg:     cfg,
-		key:     key,
+		cred:    cred,
 		route:   route,
 		plan:    plan,
 		payload: payload,
 		body:    body,
-		headers: inferenceHeaders(cfg, key.APIKey, route.Protocol, req.Headers, stream, session),
+		headers: inferenceHeaders(cfg, cred.Bearer, route.Protocol, req.Headers, stream, session),
 	}, nil
 }
 
-// resolveRoute finds the requested model in the key's catalog, refreshing a
-// catalog older than its TTL once on a miss so a newly added Go model works
-// before the host next asks for the model list.
-func resolveRoute(ctx context.Context, h host, cfg settings, model string, key keyEntry) (modelRoute, bool) {
-	if route, ok := lookupModel(model, key.ID); ok {
+// resolveRoute finds the requested model in the credential's catalog,
+// refreshing a catalog older than its TTL once on a miss so a newly added
+// Go model works before the host next asks for the model list.
+func resolveRoute(ctx context.Context, h host, cfg settings, model string, cred credential) (modelRoute, bool) {
+	if route, ok := lookupModel(model, cred.ID); ok {
 		return route, true
 	}
-	if _, _, errFetch := catalogs.forKey(ctx, h, cfg, key); errFetch != nil {
+	if _, _, errFetch := catalogs.forKey(ctx, h, cfg, cred); errFetch != nil {
 		return modelRoute{}, false
 	}
-	return lookupModel(model, key.ID)
+	return lookupModel(model, cred.ID)
 }
 
 func (c *executorCall) upstreamRequest() pluginapi.HTTPRequest {
@@ -295,17 +295,17 @@ func (c *executorCall) upstreamFailure(ctx context.Context, status int, headers 
 	}
 }
 
-// blockForUsageLimit asks /v1/usage which window ran out and blocks the key
-// until it resets.
+// blockForUsageLimit asks /v1/usage which window ran out and blocks the
+// credential until it resets.
 func (c *executorCall) blockForUsageLimit(ctx context.Context) usageBlock {
-	report, errUsage := fetchUsage(ctx, c.host, c.cfg, c.key.APIKey)
+	report, errUsage := fetchUsage(ctx, c.host, c.cfg, c.cred.Bearer)
 	until, windows := blockFromUsage(report, errUsage, exhaustion.now())
-	block := exhaustion.block(c.key.ID, c.req.AuthID, until, windows)
+	block := exhaustion.block(c.cred.ID, c.req.AuthID, until, windows)
 	fields := map[string]any{"auth_id": c.req.AuthID, "until": block.Until.UTC().Format(time.RFC3339)}
 	if errUsage != nil {
 		fields["usage_error"] = errUsage.Error()
 	}
-	c.host.Log("info", "OpenCode Go usage limit reached; blocking paid models on this key", fields)
+	c.host.Log("info", "OpenCode Go usage limit reached; blocking paid models on this credential", fields)
 	return block
 }
 

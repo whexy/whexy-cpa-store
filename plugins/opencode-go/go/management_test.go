@@ -108,7 +108,7 @@ func (fx *managementFixture) call(method, path string, query url.Values, body an
 	resp := decodeResult[pluginapi.ManagementResponse](fx.t, out)
 	result := managementResult{Status: resp.StatusCode, Headers: resp.Headers, Body: resp.Body}
 	assertNoFullKey(fx.t, result.Body)
-	if path != resourcePagePath {
+	if !strings.HasPrefix(path, "/v0/resource/") {
 		if resp.Headers.Get("Content-Type") != "application/json; charset=utf-8" || resp.Headers.Get("Cache-Control") != "no-store" {
 			fx.t.Fatalf("%s %s headers = %v", method, path, resp.Headers)
 		}
@@ -163,6 +163,9 @@ func assertNoFullKey(t *testing.T, body []byte) {
 	if secretPattern.Match(body) {
 		t.Fatalf("response carries an oc_sk_ token: %s", body)
 	}
+	if loginTokenPattern.Match(body) {
+		t.Fatalf("response carries a login token: %s", body)
+	}
 }
 
 func decodeBodyAs[T any](t *testing.T, result managementResult) T {
@@ -208,11 +211,18 @@ func TestManagementRegistrationWireShape(t *testing.T) {
 		"DELETE /v0/management/opencode-go/keys",
 		"POST /v0/management/opencode-go/keys/test",
 		"GET /v0/management/opencode-go/keys/usage",
+		"GET /v0/management/opencode-go/logins",
+		"PATCH /v0/management/opencode-go/logins",
+		"GET /v0/management/opencode-go/logins/usage",
+		"GET /v0/management/opencode-go/models",
+		"POST /v0/management/opencode-go/models/refresh",
+		"GET /v0/management/opencode-go/routing",
+		"PUT /v0/management/opencode-go/routing",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("routes =\n%s", strings.Join(got, "\n"))
 	}
-	if len(reg.Resources) != 1 || reg.Resources[0].Menu != displayName {
+	if len(reg.Resources) != 2 || reg.Resources[0].Path != resourcePagePath || reg.Resources[0].Menu != displayName || reg.Resources[1].Path != logoPath || reg.Resources[1].Menu != "" {
 		t.Fatalf("resources = %+v", reg.Resources)
 	}
 }
@@ -232,14 +242,22 @@ func TestManagementPageServed(t *testing.T) {
 
 	page := string(managementPage)
 	csp := resp.Headers.Get("Content-Security-Policy")
-	for _, tag := range []string{"script", "style"} {
-		if strings.Count(page, "<"+tag) != 1 {
-			t.Fatalf("page must hold exactly one inline <%s>", tag)
+	// One style, and two scripts: the config-editing logic, then the UI.
+	for tag, count := range map[string]int{"script": 2, "style": 1} {
+		if strings.Count(page, "<"+tag) != count {
+			t.Fatalf("page must hold %d inline <%s>", count, tag)
 		}
-		inner := page[strings.Index(page, "<"+tag+">")+len(tag)+2 : strings.Index(page, "</"+tag+">")]
-		sum := sha256.Sum256([]byte(inner))
-		if want := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"; !strings.Contains(csp, tag+"-src "+want) {
-			t.Fatalf("CSP %q does not allow the inline %s", csp, tag)
+		rest := page
+		var hashes []string
+		for range count {
+			start := strings.Index(rest, "<"+tag+">") + len(tag) + 2
+			stop := strings.Index(rest, "</"+tag+">")
+			sum := sha256.Sum256([]byte(rest[start:stop]))
+			hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'")
+			rest = rest[stop+len(tag)+3:]
+		}
+		if want := tag + "-src " + strings.Join(hashes, " ") + ";"; !strings.Contains(csp, want) {
+			t.Fatalf("CSP %q does not allow exactly the inline %ss", csp, tag)
 		}
 	}
 	if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "connect-src 'self'") {
@@ -679,6 +697,103 @@ func TestManagementKeyUsage(t *testing.T) {
 	}
 	if resp := fx.call(http.MethodGet, keysPath+"/usage", nil, nil); resp.Status != http.StatusBadRequest {
 		t.Fatalf("no id: status %d: %s", resp.Status, resp.Body)
+	}
+}
+
+func TestManagementLogins(t *testing.T) {
+	loginName := "opencode-go-oauth-" + testOrgID + ".json"
+	fx := newManagementFixture(t, map[string]string{
+		"opencode-go.json": `{"type":"opencode-go","keys":[{"label":"Work","api_key":"` + testKeyA + `"}]}`,
+		loginName:          string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"priority": 2})),
+	})
+	store := useLoginStore(t, time.Now())
+
+	resp := fx.call(http.MethodGet, loginsPath, nil, nil)
+	listed := decodeBodyAs[struct {
+		Logins []loginView `json:"logins"`
+	}](t, resp).Logins
+	if resp.Status != http.StatusOK || len(listed) != 1 || strings.Contains(string(resp.Body), "redacted") {
+		t.Fatalf("status %d: %s", resp.Status, resp.Body)
+	}
+	got := listed[0]
+	if got.ID != loginName || got.Workspace != "Acme" || got.Email != "dev@example.test" || got.OrgID != testOrgID ||
+		got.ExpiresAt != "2099-01-31T00:00:00Z" || got.Expired || got.Disabled || got.Runtime == nil || got.Runtime.State != "active" {
+		t.Fatalf("login = %+v", got)
+	}
+	keys := decodeBodyAs[struct {
+		Keys []keyView `json:"keys"`
+	}](t, fx.call(http.MethodGet, keysPath, nil, nil)).Keys
+	if len(keys) != 1 || keys[0].Label != "Work" {
+		t.Fatalf("keys = %+v", keys)
+	}
+
+	// The page writes the newest tokens this process holds, never the
+	// spent ones still on disk.
+	previous, _ := parseLoginFile([]byte(fx.files[loginName]))
+	next := previous
+	next.AccessToken, next.RefreshToken = testAccessToken2, testRefreshToken2
+	store.rotated(previous, next)
+	resp = fx.call(http.MethodPatch, loginsPath, nil, map[string]any{"id": loginName, "disabled": true})
+	updated := decodeBodyAs[struct {
+		Login loginView `json:"login"`
+	}](t, resp).Login
+	if resp.Status != http.StatusOK || !updated.Disabled {
+		t.Fatalf("status %d: %s", resp.Status, resp.Body)
+	}
+	saved, errParse := parseLoginFile([]byte(fx.files[loginName]))
+	if errParse != nil || !saved.Disabled || saved.AccessToken != testAccessToken2 || saved.RefreshToken != testRefreshToken2 || string(saved.extra["priority"]) != "2" {
+		t.Fatalf("saved = %+v, %v", saved, errParse)
+	}
+
+	fx.upstream = func(req hostHTTPRequest) (any, error) {
+		if req.URL != usageURL(defaultSettings()) || req.Headers.Get("Authorization") != "Bearer "+testAccessToken2 {
+			t.Errorf("usage request = %+v", req)
+		}
+		return upstreamJSON(200, string(readFixture(t, "usage.json")))
+	}
+	resp = fx.call(http.MethodGet, loginsPath+"/usage", url.Values{"id": {loginName}}, nil)
+	if usage := decodeBodyAs[struct {
+		Usage usageView `json:"usage"`
+	}](t, resp).Usage; resp.Status != http.StatusOK || len(usage.Windows) != 3 {
+		t.Fatalf("usage: status %d: %s", resp.Status, resp.Body)
+	}
+
+	for _, tc := range []struct {
+		method string
+		query  url.Values
+		body   any
+		status int
+	}{
+		{http.MethodPatch, nil, map[string]any{"id": loginName}, http.StatusBadRequest},
+		{http.MethodPatch, nil, map[string]any{"id": "opencode-go.json", "disabled": true}, http.StatusNotFound},
+		{http.MethodGet, url.Values{"id": {"nope.json"}}, nil, http.StatusNotFound},
+		{http.MethodGet, nil, nil, http.StatusBadRequest},
+	} {
+		path := loginsPath
+		if tc.method == http.MethodGet {
+			path += "/usage"
+		}
+		if resp := fx.call(tc.method, path, tc.query, tc.body); resp.Status != tc.status {
+			t.Fatalf("%s %v %v: status %d: %s", tc.method, tc.query, tc.body, resp.Status, resp.Body)
+		}
+	}
+}
+
+func TestManagementExpiredLoginUsage(t *testing.T) {
+	loginName := "opencode-go-oauth-" + testOrgID + ".json"
+	fx := newManagementFixture(t, map[string]string{
+		loginName: string(loginFileJSON(t, testAccessToken, testRefreshToken, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), nil)),
+	})
+	useLoginStore(t, time.Now())
+	listed := decodeBodyAs[struct {
+		Logins []loginView `json:"logins"`
+	}](t, fx.call(http.MethodGet, loginsPath, nil, nil)).Logins
+	if len(listed) != 1 || !listed[0].Expired {
+		t.Fatalf("logins = %+v", listed)
+	}
+	resp := fx.call(http.MethodGet, loginsPath+"/usage", url.Values{"id": {loginName}}, nil)
+	if resp.Status != http.StatusUnprocessableEntity || !strings.Contains(resp.errorText(t), "log in again") || len(fx.httpCalls()) != 0 {
+		t.Fatalf("status %d: %s", resp.Status, resp.Body)
 	}
 }
 

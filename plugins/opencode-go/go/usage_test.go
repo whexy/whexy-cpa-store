@@ -78,7 +78,7 @@ func TestFetchUsageRequestAndErrors(t *testing.T) {
 
 func TestQuotaResponse(t *testing.T) {
 	report, _ := parseUsage([]byte(`{"usage":{"rolling":{"status":"limited","percent":100,"resetsAt":"2026-10-13T04:56:11.000Z"},"weekly":{"status":"ok","percent":25,"resetsAt":"2026-10-19T00:00:00.000Z"},"monthly":{"status":"ok","percent":0}}}`))
-	resp := quotaResponse(report, keyEntry{Label: "Work", APIKey: "oc_sk_test_abcd1234"})
+	resp := quotaResponse(report, keyCredential(keyEntry{Label: "Work", APIKey: "oc_sk_test_abcd1234"}).Name)
 	if resp.Subscription == nil || resp.Subscription.Plan != "OpenCode Go" || len(resp.Groups) != 1 || resp.Groups[0].DisplayName != "Work · oc_sk_…1234" {
 		t.Fatalf("resp = %+v", resp)
 	}
@@ -133,6 +133,41 @@ func TestQuotaFetchUsesPhysicalFileAndKeyID(t *testing.T) {
 	resp := decodeResult[pluginapi.QuotaFetchResponse](t, raw)
 	if len(resp.Groups) != 1 || len(resp.Groups[0].Buckets) != 3 || resp.Groups[0].Buckets[1].RemainingFraction != 0.625 {
 		t.Fatalf("resp = %+v", resp)
+	}
+}
+
+func TestQuotaFetchWithLogin(t *testing.T) {
+	useSettings(t, defaultSettings())
+	fake := installFakeHost(t)
+	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req hostHTTPRequest
+		_ = json.Unmarshal(payload, &req)
+		if req.URL != "https://opencode.ai/inference/go/v1/usage" || req.Headers.Get("Authorization") != "Bearer "+testAccessToken {
+			t.Errorf("request = %+v", req)
+		}
+		return pluginapi.HTTPResponse{StatusCode: 200, Body: readFixture(t, "usage.json")}, nil
+	})
+	fetch := func(file []byte) []byte {
+		auth := parseLoginAuth("opencode-go-oauth-"+testOrgID+".json", file)
+		raw, _ := handleMethod(pluginabi.MethodQuotaFetch, mustJSON(t, rpcQuotaFetchRequest{QuotaFetchRequest: pluginapi.QuotaFetchRequest{
+			AuthID:      auth.ID,
+			Provider:    "opencode-go",
+			StorageJSON: file,
+			Attributes:  auth.Attributes,
+			Metadata:    auth.Metadata,
+		}}))
+		return raw
+	}
+	resp := decodeResult[pluginapi.QuotaFetchResponse](t, fetch(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil)))
+	if len(resp.Groups) != 1 || resp.Groups[0].DisplayName != "Acme · dev@example.test" || len(resp.Groups[0].Buckets) != 3 {
+		t.Fatalf("resp = %+v", resp)
+	}
+	raw := fetch(loginFileJSON(t, testAccessToken, testRefreshToken, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), nil))
+	if env := decodeEnvelope(t, raw); env.OK || env.Error.HTTPStatus != 401 || !strings.Contains(env.Error.Message, "log in again") {
+		t.Fatalf("expired = %s", raw)
+	}
+	if len(fake.callsTo(pluginabi.MethodHostHTTPDo)) != 1 {
+		t.Fatal("expired login fetched usage")
 	}
 }
 

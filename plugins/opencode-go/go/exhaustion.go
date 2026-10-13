@@ -9,13 +9,13 @@ import (
 	"time"
 )
 
-// unknownResetBlock is how long a key stays blocked when the gateway reports
+// unknownResetBlock is how long a credential stays blocked when the gateway reports
 // GoUsageLimitError but /v1/usage names no exhausted window with a reset
 // time. It is short because the next request simply asks the gateway again.
 const unknownResetBlock = time.Minute
 
-// usageBlock stops paid-model requests on a key whose subscription quota is
-// used up, so they fail fast instead of reaching the gateway.
+// usageBlock stops paid-model requests on a credential whose subscription
+// quota is used up, so they fail fast instead of reaching the gateway.
 type usageBlock struct {
 	Until   time.Time
 	Windows []string
@@ -30,7 +30,7 @@ func (b usageBlock) message() string {
 	if len(b.Windows) > 0 {
 		window = strings.Join(b.Windows, " and ")
 	}
-	return fmt.Sprintf("OpenCode Go %s limit reached on this key; paid models are blocked until %s, free models stay available",
+	return fmt.Sprintf("OpenCode Go %s limit reached on this credential; paid models are blocked until %s, free models stay available",
 		window, b.Until.UTC().Format(time.RFC3339))
 }
 
@@ -56,11 +56,11 @@ func newExhaustionTracker() *exhaustionTracker {
 
 var exhaustion = newExhaustionTracker()
 
-// active returns the block on keyID, remembering authID as blocked.
-func (t *exhaustionTracker) active(keyID, authID string) (usageBlock, bool) {
+// active returns the block on credID, remembering authID as blocked.
+func (t *exhaustionTracker) active(credID, authID string) (usageBlock, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	block, ok := t.blocks[keyID]
+	block, ok := t.blocks[credID]
 	if !ok {
 		return usageBlock{}, false
 	}
@@ -73,15 +73,15 @@ func (t *exhaustionTracker) active(keyID, authID string) (usageBlock, bool) {
 	return *block, true
 }
 
-// block blocks keyID until until and arranges for CPA's cooldowns on the
+// block blocks credID until until and arranges for CPA's cooldowns on the
 // blocked auths to be cleared then: CPA backs a 429 off for up to 30
 // minutes on its own, which would outlast a window that just reset.
-func (t *exhaustionTracker) block(keyID, authID string, until time.Time, windows []string) usageBlock {
+func (t *exhaustionTracker) block(credID, authID string, until time.Time, windows []string) usageBlock {
 	t.mu.Lock()
 	t.gen++
 	gen := t.gen
 	block := &usageBlock{Until: until, Windows: windows, authIDs: make(map[string]struct{}), gen: gen}
-	if previous, ok := t.blocks[keyID]; ok {
+	if previous, ok := t.blocks[credID]; ok {
 		for id := range previous.authIDs {
 			block.authIDs[id] = struct{}{}
 		}
@@ -89,21 +89,21 @@ func (t *exhaustionTracker) block(keyID, authID string, until time.Time, windows
 	if authID != "" {
 		block.authIDs[authID] = struct{}{}
 	}
-	t.blocks[keyID] = block
+	t.blocks[credID] = block
 	snapshot := *block
 	t.mu.Unlock()
-	t.schedule(until, func() { t.expire(keyID, gen) })
+	t.schedule(until, func() { t.expire(credID, gen) })
 	return snapshot
 }
 
-func (t *exhaustionTracker) expire(keyID string, gen uint64) {
+func (t *exhaustionTracker) expire(credID string, gen uint64) {
 	t.mu.Lock()
-	block, ok := t.blocks[keyID]
+	block, ok := t.blocks[credID]
 	if !ok || block.gen != gen {
 		t.mu.Unlock()
 		return
 	}
-	delete(t.blocks, keyID)
+	delete(t.blocks, credID)
 	authIDs := make([]string, 0, len(block.authIDs))
 	for id := range block.authIDs {
 		authIDs = append(authIDs, id)

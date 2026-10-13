@@ -38,7 +38,7 @@ func TestRegistrationDeclaresProviderCapabilities(t *testing.T) {
 	for _, field := range reg.Metadata.ConfigFields {
 		names = append(names, field.Name)
 	}
-	if strings.Join(names, ",") != "base_url,model_prefix,user_agent" {
+	if strings.Join(names, ",") != "base_url,console_url,model_prefix,user_agent" {
 		t.Fatalf("config fields = %v", names)
 	}
 }
@@ -62,9 +62,12 @@ func TestParseSettings(t *testing.T) {
 		{name: "defaults", yaml: "enabled: true\npriority: 0\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go"}},
 		{name: "values", yaml: "base_url: https://example.test/go/\nmodel_prefix: /go/\nuser_agent: my-agent/1\n", want: settings{BaseURL: "https://example.test/go", ModelPrefix: "go", UserAgent: "my-agent/1"}},
 		{name: "null fields keep defaults", yaml: "base_url: null\nmodel_prefix: null\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go"}},
-		{name: "none disables prefix", yaml: "model_prefix: None\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: ""}},
+		{name: "none is a prefix like any other", yaml: "model_prefix: none\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "none"}},
+		{name: "console url", yaml: "console_url: https://console.test/c/\n", want: settings{BaseURL: defaultBaseURL, ConsoleURL: "https://console.test/c", ModelPrefix: "opencode-go"}},
 		{name: "relative base url", yaml: "base_url: opencode.ai/inference/go\n", wantErr: "base_url"},
+		{name: "relative console url", yaml: "console_url: opencode.ai/console\n", wantErr: "console_url"},
 		{name: "prefix with space", yaml: "model_prefix: open code\n", wantErr: "model_prefix"},
+		{name: "prefix with wildcard", yaml: "model_prefix: go*\n", wantErr: "model_prefix"},
 		{name: "bad yaml", yaml: "base_url: [\n", wantErr: "decode plugin config"},
 	}
 	for _, tt := range tests {
@@ -120,8 +123,6 @@ func TestUnsupportedMethodsReturnStatusErrors(t *testing.T) {
 		method string
 		status int
 	}{
-		{pluginabi.MethodAuthLoginStart, http.StatusBadRequest},
-		{pluginabi.MethodAuthLoginPoll, http.StatusBadRequest},
 		{pluginabi.MethodQuotaReset, http.StatusBadRequest},
 		{"no.such.method", 0},
 	}
