@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.2.0...opencode-go-v0.2.1) (2026-10-13)
+
+
+### Features
+
+* **opencode-go:** serve bare model IDs only with disable_prefix
+
 ## [0.2.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.1.0...opencode-go-v0.2.0) (2026-10-13)
 
 
