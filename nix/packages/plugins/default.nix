@@ -52,6 +52,8 @@ let
       '';
 
       doCheck = true;
+      # Tests of a plugin's management page script run under node.
+      nativeCheckInputs = [ pkgs.nodejs_24 ];
       checkPhase = ''
         runHook preCheck
         go test ./...
