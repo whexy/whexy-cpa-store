@@ -935,6 +935,286 @@
       </div>
     </form>
     <script>
+      // The editor's model catalog. This block touches no DOM, so
+      // testdata/page_test.mjs runs it under node with fake fetchers.
+      //
+      // CPA lists the plugin's own groups as models owned by the plugin; a
+      // group is never a member.
+      const PLUGIN_ID = "model-groups";
+      // Provider keys of CPA's api-keys families. Each is also the channel of
+      // the family's default models, which a key that lists none serves.
+      const KEY_FAMILIES = {
+        gemini: "gemini",
+        interactions: "gemini-interactions",
+        vertex: "vertex",
+        codex: "codex",
+        claude: "claude",
+        xai: "xai",
+        meta: "meta",
+      };
+      function text(value) {
+        return String(value ?? "").trim();
+      }
+      function emptyCounts() {
+        return { credentials: 0, ready: 0, cooling: 0, disabled: 0 };
+      }
+      function addCredential(models, model, provider, credential) {
+        if (!models.has(model.id))
+          models.set(model.id, {
+            display_name: model.display_name,
+            providers: new Map(),
+          });
+        const entry = models.get(model.id);
+        entry.display_name ||= model.display_name;
+        if (!entry.providers.has(provider))
+          entry.providers.set(provider, emptyCounts());
+        const info = entry.providers.get(provider);
+        if (credential.disabled) info.disabled++;
+        else {
+          info.credentials++;
+          if (credential.cooling) info.cooling++;
+          else info.ready++;
+        }
+      }
+      function compatProvider(name) {
+        const key = text(name).toLowerCase();
+        if (!key) return "openai-compatibility";
+        return key === "openai-compatibility" ||
+          key.startsWith("openai-compatible-")
+          ? key
+          : "openai-compatible-" + key;
+      }
+      function listedModels(models) {
+        return (Array.isArray(models) ? models : [])
+          .map((model) => ({
+            id: text(model?.alias) || text(model?.name),
+            display_name: text(model?.["display-name"]) || undefined,
+          }))
+          .filter((model) => model.id);
+      }
+      function excludes(pattern, id) {
+        const source = pattern
+          .split("*")
+          .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+          .join(".*");
+        return new RegExp("^" + source + "$").test(id);
+      }
+      function withoutExcluded(models, excluded) {
+        const patterns = (Array.isArray(excluded) ? excluded : [])
+          .map((pattern) => text(pattern).toLowerCase())
+          .filter(Boolean);
+        return models.filter(
+          (model) =>
+            !patterns.some((pattern) =>
+              excludes(pattern, model.id.toLowerCase()),
+            ),
+        );
+      }
+      function withPrefix(models, rawPrefix, forcePrefix) {
+        let prefix = text(rawPrefix).replace(/^\/+|\/+$/g, "");
+        if (prefix.includes("/")) prefix = "";
+        const out = new Map();
+        for (const model of models) {
+          const bare = !prefix || !forcePrefix || prefix === model.id;
+          if (bare && !out.has(model.id)) out.set(model.id, model);
+          const id = prefix + "/" + model.id;
+          if (prefix && !out.has(id)) out.set(id, { ...model, id });
+        }
+        return [...out.values()];
+      }
+      async function listModels(key) {
+        const response = await fetch("/v1/models", {
+          headers: key ? { Authorization: "Bearer " + key } : {},
+          cache: "no-store",
+          credentials: "omit",
+        });
+        let data;
+        try {
+          data = await response.json();
+        } catch (_) {
+          throw new Error("/v1/models · HTTP " + response.status);
+        }
+        if (!response.ok || !Array.isArray(data.data))
+          throw new Error(
+            "/v1/models · " +
+              (typeof data.error === "string"
+                ? data.error
+                : data.error?.message || "HTTP " + response.status),
+          );
+        return data.data;
+      }
+      // The models CPA serves are the ones its /v1/models lists. Every client
+      // key reads it, because a client-keys policy shortens one key's list;
+      // with no client keys CPA serves it without one.
+      async function servedModels(get, list, errors) {
+        const saved = await get("/config/access/api-keys", []);
+        const keys = [
+          ...new Set(
+            (Array.isArray(saved) ? saved : [])
+              .map((key) =>
+                text(typeof key === "string" ? key : key?.["api-key"]),
+              )
+              .filter(Boolean),
+          ),
+        ];
+        const results = await Promise.allSettled(
+          (keys.length ? keys : [""]).map(list),
+        );
+        const served = new Set();
+        for (const result of results) {
+          if (result.status === "rejected") {
+            errors.push(result.reason.message);
+            continue;
+          }
+          for (const model of result.value)
+            if (model.id && model.owned_by !== PLUGIN_ID) served.add(model.id);
+        }
+        if (!results.some((result) => result.status === "fulfilled"))
+          throw results[0].reason;
+        return served;
+      }
+      async function credentialModels(get, errors) {
+        const data = await get("/credentials");
+        const credentials = Array.isArray(data)
+          ? data
+          : data.files || data.credentials;
+        if (!Array.isArray(credentials))
+          throw new Error("credentials · models");
+        const results = await Promise.allSettled(
+          credentials.map((credential) =>
+            get(
+              "/credentials/models?name=" + encodeURIComponent(credential.name),
+            ),
+          ),
+        );
+        const models = new Map();
+        results.forEach((result, index) => {
+          const credential = credentials[index];
+          if (result.status === "rejected") {
+            errors.push(credential.name + " · " + result.reason.message);
+            return;
+          }
+          const list = Array.isArray(result.value)
+            ? result.value
+            : result.value.models;
+          if (!Array.isArray(list)) {
+            errors.push(credential.name + " · models");
+            return;
+          }
+          const seen = new Set();
+          for (const model of list) {
+            if (!model.id || !credential.provider || seen.has(model.id))
+              continue;
+            seen.add(model.id);
+            addCredential(models, model, credential.provider, {
+              disabled: credential.disabled,
+              cooling:
+                credential.unavailable || credential.status === "cooling",
+            });
+          }
+        });
+        return models;
+      }
+      // Config API keys have no auth file, so the models each serves are
+      // worked out the way CPA registers them: alias or name (the family's
+      // defaults when none are listed), minus excluded-models, then the
+      // prefix. loadModelCatalog keeps only IDs that /v1/models lists.
+      async function configuredModels(get, errors) {
+        const [families, forcePrefix] = await Promise.all([
+          get("/config/api-keys", {}),
+          get("/config/routing/force-model-prefix", false),
+        ]);
+        const defaults = new Map();
+        function familyDefaults(provider) {
+          if (!defaults.has(provider))
+            defaults.set(
+              provider,
+              get("/routing/model-definitions/" + provider).then((data) =>
+                (data.models || []).map((model) => ({
+                  id: model.id,
+                  display_name: model.display_name,
+                })),
+              ),
+            );
+          return defaults.get(provider);
+        }
+        const models = new Map();
+        for (const [family, groups] of Object.entries(families || {})) {
+          if (!Array.isArray(groups)) continue;
+          for (const group of groups) {
+            if (!group || typeof group !== "object") continue;
+            if (family === "openai-compatibility") {
+              if (group.disabled) continue;
+              const served = withPrefix(
+                listedModels(group.models),
+                group.prefix,
+                forcePrefix,
+              );
+              const keys = Array.isArray(group.keys) ? group.keys.length : 0;
+              for (let i = 0; i < Math.max(keys, 1); i++)
+                for (const model of served)
+                  addCredential(models, model, compatProvider(group.name), {});
+              continue;
+            }
+            const provider = KEY_FAMILIES[family];
+            if (!provider) continue;
+            for (const key of Array.isArray(group.keys) ? group.keys : []) {
+              const entry = { ...group };
+              for (const [field, value] of Object.entries(key || {}))
+                if (value !== null && value !== undefined) entry[field] = value;
+              if (!text(entry["api-key"]) && !text(group["base-url"])) continue;
+              let listed = listedModels(entry.models);
+              if (!listed.length)
+                try {
+                  listed = await familyDefaults(provider);
+                } catch (error) {
+                  errors.push(provider + " · " + error.message);
+                  continue;
+                }
+              const served = withPrefix(
+                withoutExcluded(listed, entry["excluded-models"]),
+                entry.prefix,
+                forcePrefix,
+              );
+              for (const model of served)
+                addCredential(models, model, provider, {});
+            }
+          }
+        }
+        return models;
+      }
+      // get(path, missing) reads the v8 Management API; list(key) reads
+      // /v1/models with one client key. Recoverable failures go to errors.
+      async function loadModelCatalog({ get, list, errors }) {
+        const [served, ...sources] = await Promise.all([
+          servedModels(get, list, errors),
+          credentialModels(get, errors),
+          configuredModels(get, errors),
+        ]);
+        const catalog = new Map();
+        for (const id of served) {
+          const entry = {
+            model: id,
+            display_name: undefined,
+            providers: new Map(),
+          };
+          for (const source of sources) {
+            const found = source.get(id);
+            if (!found) continue;
+            entry.display_name ||= found.display_name;
+            for (const [provider, counts] of found.providers) {
+              const info = entry.providers.get(provider) || emptyCounts();
+              for (const field of Object.keys(info))
+                info[field] += counts[field];
+              entry.providers.set(provider, info);
+            }
+          }
+          catalog.set(id, entry);
+        }
+        return catalog;
+      }
+    </script>
+    <script>
       const $ = (id) => document.getElementById(id);
       const API = "/v0/management/model-groups";
       const CPA = "/v8/management";
@@ -1188,68 +1468,13 @@
       async function loadCatalog() {
         if (catalogPromise) return catalogPromise;
         catalogPromise = (async () => {
-          const data = await request(CPA + "/credentials");
-          const credentials = Array.isArray(data)
-            ? data
-            : data.files || data.credentials;
-          if (!Array.isArray(credentials))
-            throw new Error("credentials · models");
-          const results = await Promise.allSettled(
-            credentials.map((credential) =>
-              request(
-                CPA +
-                  "/credentials/models?name=" +
-                  encodeURIComponent(credential.name),
-              ),
-            ),
-          );
-          const next = new Map();
           catalogErrors = [];
-          results.forEach((result, index) => {
-            const credential = credentials[index];
-            if (result.status === "rejected") {
-              catalogErrors.push(
-                credential.name + " · " + result.reason.message,
-              );
-              return;
-            }
-            const models = Array.isArray(result.value)
-              ? result.value
-              : result.value.models;
-            if (!Array.isArray(models)) {
-              catalogErrors.push(credential.name + " · models");
-              return;
-            }
-            const seen = new Set();
-            for (const model of models) {
-              if (seen.has(model.id)) continue;
-              seen.add(model.id);
-              if (!model.id || !credential.provider) continue;
-              if (!next.has(model.id))
-                next.set(model.id, {
-                  model: model.id,
-                  display_name: model.display_name,
-                  providers: new Map(),
-                });
-              const providers = next.get(model.id).providers;
-              if (!providers.has(credential.provider))
-                providers.set(credential.provider, {
-                  credentials: 0,
-                  ready: 0,
-                  cooling: 0,
-                  disabled: 0,
-                });
-              const info = providers.get(credential.provider);
-              if (credential.disabled) info.disabled++;
-              else {
-                info.credentials++;
-                if (credential.unavailable || credential.status === "cooling")
-                  info.cooling++;
-                else info.ready++;
-              }
-            }
+          catalog = await loadModelCatalog({
+            get: (path, missing) =>
+              request(CPA + path, "GET", undefined, missing),
+            list: listModels,
+            errors: catalogErrors,
           });
-          catalog = next;
           catalogLoaded = true;
         })().catch((error) => {
           catalogErrors = [error.message];
@@ -1259,7 +1484,7 @@
       }
       function catalogErrorText() {
         return catalogErrors.length > 1
-          ? catalogErrors.length + " credentials · " + catalogErrors[0]
+          ? catalogErrors.length + " errors · " + catalogErrors[0]
           : catalogErrors[0] || "";
       }
       function renderFacts() {
@@ -1978,6 +2203,7 @@
               const box = h("input", {
                 type: "checkbox",
                 "aria-label": model.model,
+                disabled: !providers.length && !selected,
                 onchange: (event) => {
                   if (event.target.checked)
                     draft.members.push({
@@ -2011,7 +2237,9 @@
                   h(
                     "span",
                     { class: "st " + tone(status) },
-                    prefix + " · " + detail,
+                    providers.length
+                      ? prefix + " · " + detail
+                      : "provider unknown",
                   ),
                 ),
               );

@@ -57,6 +57,10 @@ per request. The plugin's own session lifetime is `affinity.ttl` (default 1h).
 
 ## Notes
 
+- The editor's models are what `GET /v1/models` lists, read with every client
+  key in `access.api-keys`. Each model's providers come from auth files and
+  from `api-keys` (OpenAI-compatible providers and API keys); a model neither
+  accounts for shows "provider unknown" and cannot be added.
 - The plugin resolves a member's providers when the group is saved, and stores
   them. After adding a provider for one of a member's models, open the group in
   the editor and save it: every member's providers are resolved again against

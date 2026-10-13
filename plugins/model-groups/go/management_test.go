@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -265,5 +266,18 @@ func TestPageAndLogoRoutes(t *testing.T) {
 	missing := routeManagement(pluginapi.ManagementRequest{Method: http.MethodPost, Path: statePath})
 	if missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown route status %d, want 404", missing.StatusCode)
+	}
+}
+
+// TestManagementPageLogic runs the page's model catalog script under node,
+// which the nix build provides to the check phase.
+func TestManagementPageLogic(t *testing.T) {
+	node, errLook := exec.LookPath("node")
+	if errLook != nil {
+		t.Skip("node is not installed")
+	}
+	out, errRun := exec.Command(node, "--test", "testdata/page_test.mjs").CombinedOutput()
+	if errRun != nil {
+		t.Fatalf("node --test: %v\n%s", errRun, out)
 	}
 }
