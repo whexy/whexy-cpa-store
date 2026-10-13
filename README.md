@@ -104,6 +104,10 @@ passing push or a manual pipeline on `main` tags what it missed. Published
 releases are immutable, so a broken version is fixed by releasing a new one.
 To republish the registry, start a manual pipeline on `main`.
 
+A tag without any pipeline means Woodpecker missed the tag's webhook delivery,
+which GitHub does not retry. In the repository's webhook settings, open Recent
+Deliveries, find the push for that tag and redeliver it.
+
 The pipeline acts as whexy-bot through the `github_app_id`,
 `github_app_installation_id` and `github_app_private_key` organization
 secrets.
