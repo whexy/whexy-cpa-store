@@ -6,6 +6,7 @@ plugins directly from this repo's GitHub release assets.
 
 ## Plugins
 
+- `client-keys` — policies per client API key, set on a Management Center page: which models a key may use and see listed, and whether it may use the OpenAI Responses API.
 - `disable-response-api` — returns an empty 404 for OpenAI Responses API requests from configured client API keys or carrying the `WHEXY_CPA_DISABLE_RESPONSE_API` header, so clients fall back to Chat Completions.
 - `opencode-go` — serves an OpenCode Go subscription: the workspace's Go models under `opencode-go/<model>`, an OpenCode login from the OAuth Login page or keys managed on a Management Center page that also disables models and shares bare IDs with other providers, quota in the Plugin tab.
 - `usage-dashboard` — adds a Usage page to Management Center: tokens, estimated cost and sessions over the past day to quarter, grouped by model family or account, kept on disk.

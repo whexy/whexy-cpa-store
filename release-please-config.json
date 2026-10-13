@@ -9,6 +9,10 @@
   "draft": true,
   "force-tag-creation": true,
   "packages": {
+    "plugins/client-keys": {
+      "component": "client-keys",
+      "extra-files": ["go/main.go"]
+    },
     "plugins/disable-response-api": {
       "component": "disable-response-api",
       "extra-files": ["go/main.go"]

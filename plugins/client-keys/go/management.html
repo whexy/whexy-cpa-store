@@ -1,0 +1,3590 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Client keys</title>
+    <style>
+      :root {
+        --bg-page: #faf9f5;
+        --bg-card: #f0eee8;
+        --bg-subtle: #e9e6df;
+        --bg-input: #faf9f5;
+        --text-primary: #2d2a26;
+        --text-secondary: #6d6760;
+        --text-tertiary: #a29c95;
+        --text-quaternary: #c0bab3;
+        --border: #e3e1db;
+        --border-hover: #cecac4;
+        --primary: #8b8680;
+        --primary-hover: #7f7a74;
+        --primary-contrast: #ffffff;
+        --error: #c65746;
+        --error-text: #b04a3b;
+        --ok-text: #065f46;
+        --ok-badge-bg: #d1fae5;
+        --ok-badge-border: #6ee7b7;
+        --bad-badge-bg: rgba(198, 87, 70, 0.14);
+        --bad-badge-text: #8a3a30;
+        --bad-badge-border: rgba(198, 87, 70, 0.35);
+        --warn-badge-bg: color-mix(in srgb, #d97706 10%, transparent);
+        --warn-badge-text: #92400e;
+        --warn-badge-border: color-mix(in srgb, #d97706 30%, transparent);
+        --switch-on: #10b981;
+        --shadow: 0 1px 2px 0 rgb(0 0 0 / 0.08);
+        --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.12);
+        --font-sans:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+          "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+          sans-serif;
+        --font-mono:
+          ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
+          "Fira Code", Menlo, Consolas, "Liberation Mono", monospace;
+        color-scheme: light;
+      }
+
+      [data-theme="white"] {
+        --bg-page: #ffffff;
+        --bg-card: #ffffff;
+        --bg-subtle: #f6f6f6;
+        --bg-input: #ffffff;
+        --border: #e5e5e5;
+        --border-hover: #cccccc;
+      }
+
+      [data-theme="dark"] {
+        --bg-page: #151412;
+        --bg-card: #1d1b18;
+        --bg-subtle: #262320;
+        --bg-input: #151412;
+        --text-primary: #f6f4f1;
+        --text-secondary: #c9c3bb;
+        --text-tertiary: #9c958d;
+        --text-quaternary: #6f6962;
+        --border: #3a3530;
+        --border-hover: #5a544d;
+        --primary-hover: #9a948e;
+        --error-text: #f1b0a6;
+        --ok-text: #6ee7b7;
+        --ok-badge-bg: rgba(6, 78, 59, 0.3);
+        --ok-badge-border: #059669;
+        --bad-badge-bg: rgba(198, 87, 70, 0.24);
+        --bad-badge-text: #f1b0a6;
+        --bad-badge-border: rgba(198, 87, 70, 0.5);
+        --warn-badge-bg: color-mix(in srgb, #f59e0b 14%, transparent);
+        --warn-badge-text: #fcd34d;
+        --warn-badge-border: color-mix(in srgb, #f59e0b 38%, transparent);
+        --switch-on: #0fae78;
+        --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3);
+        --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.45);
+        color-scheme: dark;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: var(--bg-page);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      /* Management Center floats its toolbar (and, when narrow, its menu
+         button) over the top 76px of the frame. */
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 84px clamp(16px, 3vw, 32px) 48px;
+      }
+
+      code {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      h2,
+      h3 {
+        margin: 0;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .bar-actions {
+        display: flex;
+        gap: 8px;
+        margin-left: auto;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 8px 12px;
+        background: var(--bg-subtle);
+        color: var(--text-primary);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          background-color 150ms ease,
+          border-color 150ms ease,
+          color 150ms ease;
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .btn-sm {
+        padding: 5px 9px;
+      }
+
+      .btn:not(:disabled):hover {
+        border-color: var(--border-hover);
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: var(--primary-contrast);
+      }
+
+      .btn-primary:not(:disabled):hover {
+        background: var(--primary-hover);
+        border-color: var(--primary-hover);
+      }
+
+      .btn-ghost {
+        background: transparent;
+        color: var(--text-secondary);
+      }
+
+      .btn-ghost:not(:disabled):hover {
+        background: var(--bg-subtle);
+        border-color: transparent;
+        color: var(--text-primary);
+      }
+
+      .btn-danger-solid {
+        background: var(--error);
+        border-color: var(--error);
+        color: #ffffff;
+      }
+
+      .btn-danger-solid:not(:disabled):hover {
+        border-color: var(--error-text);
+      }
+
+      [data-theme="dark"] .btn-ghost {
+        color: var(--text-primary);
+      }
+
+      button:focus-visible,
+      a:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+      }
+
+      .input {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: var(--bg-input);
+        color: var(--text-primary);
+        font: inherit;
+        transition:
+          border-color 150ms ease,
+          box-shadow 150ms ease;
+      }
+
+      .input::placeholder,
+      .chip-input::placeholder {
+        color: var(--text-tertiary);
+      }
+
+      .input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(139, 134, 128, 0.18);
+      }
+
+      .input-mono {
+        font-family: var(--font-mono);
+        font-size: 13px;
+      }
+
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 16px 18px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .row > .input {
+        flex: 1 1 200px;
+        width: auto;
+        min-width: 0;
+      }
+
+      .hint {
+        color: var(--text-tertiary);
+        font-size: 13px;
+      }
+
+      .error {
+        color: var(--error-text);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .warn {
+        color: var(--warn-badge-text);
+        font-size: 13px;
+      }
+
+      .alert {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        border: 1px solid var(--bad-badge-border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: var(--bad-badge-bg);
+        color: var(--bad-badge-text);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .alert strong {
+        font-weight: 650;
+      }
+
+      .auth {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-width: 420px;
+      }
+
+      .alerts {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .alerts:empty {
+        display: none;
+      }
+
+      .notice {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+      }
+
+      .notice .error {
+        flex-basis: 100%;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 230px minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+      }
+
+      .layout.is-single {
+        grid-template-columns: minmax(0, 560px);
+      }
+
+      .side {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .side-tools {
+        display: flex;
+        gap: 8px;
+      }
+
+      .side-tools .input {
+        flex: 1;
+        min-width: 0;
+        padding: 5px 9px;
+        font-size: 13px;
+      }
+
+      .side-tools .btn {
+        margin-left: auto;
+      }
+
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .list-empty {
+        padding: 6px 2px;
+      }
+
+      .strays {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+        font-size: 12px;
+      }
+
+      .list:empty + .strays {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .strays ul {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .strays .hint,
+      .strays .error {
+        font-size: 12px;
+      }
+
+      .stray-name {
+        color: var(--text-secondary);
+        font-size: 11.5px;
+        overflow-wrap: anywhere;
+      }
+
+      .item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .item:hover {
+        background: var(--bg-subtle);
+      }
+
+      .item.is-selected {
+        background: var(--bg-card);
+        border-color: var(--border);
+        box-shadow: var(--shadow);
+      }
+
+      .item-top {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .item-name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .item-key {
+        color: var(--text-tertiary);
+        font-size: 11.5px;
+        white-space: nowrap;
+      }
+
+      .is-unnamed {
+        color: var(--text-secondary);
+        font-style: italic;
+        font-weight: 500;
+      }
+
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0 7px;
+        color: var(--text-secondary);
+        font-size: 11.5px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .badge-bad {
+        background: var(--bad-badge-bg);
+        border-color: var(--bad-badge-border);
+        color: var(--bad-badge-text);
+      }
+
+      .detail {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        min-width: 0;
+        padding: 18px 20px;
+        scroll-margin-top: 84px;
+      }
+
+      .d-head {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .d-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .d-title h2 {
+        min-width: 0;
+      }
+
+      .add-form h2 {
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .name-btn {
+        margin-left: -6px;
+        border: 0;
+        border-radius: 6px;
+        padding: 1px 6px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-size: 18px;
+        font-weight: 700;
+        text-align: left;
+        overflow-wrap: anywhere;
+        cursor: pointer;
+      }
+
+      .name-btn::after {
+        content: "\270E";
+        margin-left: 8px;
+        color: var(--text-tertiary);
+        font-size: 13px;
+        font-style: normal;
+        font-weight: 400;
+        opacity: 0;
+      }
+
+      .name-btn:not(:disabled):hover {
+        background: var(--bg-subtle);
+      }
+
+      .name-btn:not(:disabled):hover::after,
+      .name-btn:focus-visible::after {
+        opacity: 1;
+      }
+
+      .name-btn.is-unnamed {
+        font-weight: 600;
+      }
+
+      .rename {
+        display: flex;
+        flex: 1;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .rename .input {
+        flex: 1 1 200px;
+        width: auto;
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .menu-wrap {
+        position: relative;
+        margin-left: auto;
+      }
+
+      .menu-btn {
+        font-size: 16px;
+        line-height: 1;
+        padding: 5px 10px;
+      }
+
+      .menu {
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        min-width: 150px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px;
+        background: var(--bg-card);
+        box-shadow: var(--shadow-pop);
+      }
+
+      .menu button {
+        border: 0;
+        border-radius: 6px;
+        padding: 7px 10px;
+        background: transparent;
+        color: var(--text-primary);
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .menu button:hover,
+      .menu button:focus-visible {
+        outline: none;
+        background: var(--bg-subtle);
+      }
+
+      .menu .danger {
+        color: var(--error-text);
+      }
+
+      .d-key {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 2px;
+      }
+
+      .key-text {
+        margin-right: 6px;
+        border-radius: 6px;
+        padding: 3px 8px;
+        background: var(--bg-subtle);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .note-btn {
+        align-self: flex-start;
+        margin-left: -6px;
+        border: 0;
+        border-radius: 6px;
+        padding: 1px 6px;
+        background: transparent;
+        color: var(--text-secondary);
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        overflow-wrap: anywhere;
+        cursor: pointer;
+      }
+
+      .note-btn:not(:disabled):hover {
+        background: var(--bg-subtle);
+      }
+
+      .panel {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: var(--bg-subtle);
+        font-size: 13px;
+      }
+
+      .panel > .input {
+        flex: 1 1 240px;
+        width: auto;
+        min-width: 0;
+      }
+
+      .panel > p {
+        flex-basis: 100%;
+      }
+
+      .panel-text {
+        flex: 1 1 240px;
+      }
+
+      .sec {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        border-top: 1px solid var(--border);
+        padding-top: 14px;
+      }
+
+      .sec-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
+        min-height: 30px;
+      }
+
+      .sec-head h3 {
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .sec-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+      }
+
+      .seg {
+        display: inline-flex;
+        gap: 2px;
+        border-radius: 8px;
+        padding: 2px;
+        background: var(--bg-subtle);
+      }
+
+      .seg button {
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 4px 10px;
+        background: transparent;
+        color: var(--text-secondary);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+
+      .seg button[aria-checked="true"] {
+        background: var(--bg-page);
+        border-color: var(--border);
+        box-shadow: var(--shadow);
+        color: var(--text-primary);
+      }
+
+      .seg button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .seg button:focus-visible {
+        outline-offset: 0;
+      }
+
+      .pattern-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .chipbox {
+        position: relative;
+        display: flex;
+        flex: 1;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        min-height: 38px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 5px 8px;
+        background: var(--bg-input);
+        cursor: text;
+        transition:
+          border-color 150ms ease,
+          box-shadow 150ms ease;
+      }
+
+      .chipbox:focus-within {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(139, 134, 128, 0.18);
+      }
+
+      .chips {
+        display: contents;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        max-width: 100%;
+        border-radius: 6px;
+        padding: 1px 2px 1px 8px;
+        background: var(--bg-subtle);
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        overflow-wrap: anywhere;
+        cursor: default;
+      }
+
+      .chip-x {
+        flex: none;
+        width: 20px;
+        height: 20px;
+        border: 0;
+        border-radius: 4px;
+        padding: 0;
+        background: transparent;
+        color: var(--text-tertiary);
+        font-size: 15px;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .chip-x:not(:disabled):hover {
+        background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+        color: var(--text-primary);
+      }
+
+      .chip-input {
+        flex: 1 1 140px;
+        min-width: 140px;
+        border: 0;
+        padding: 3px 2px;
+        background: transparent;
+        color: inherit;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        outline: none;
+      }
+
+      .suggest {
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        left: 0;
+        z-index: 10;
+        max-height: 248px;
+        margin: 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px;
+        overflow: auto;
+        background: var(--bg-card);
+        box-shadow: var(--shadow-pop);
+        list-style: none;
+      }
+
+      .suggest li {
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+
+      .suggest li:hover,
+      .suggest li[aria-selected="true"] {
+        background: var(--bg-subtle);
+      }
+
+      .suggest mark {
+        background: transparent;
+        color: inherit;
+        font-weight: 700;
+      }
+
+      .tip {
+        position: relative;
+        flex: none;
+        width: 22px;
+        height: 22px;
+        margin-top: 8px;
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        padding: 0;
+        background: transparent;
+        color: var(--text-tertiary);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: help;
+      }
+
+      .tip::after {
+        content: attr(data-tip);
+        position: absolute;
+        right: 0;
+        bottom: calc(100% + 6px);
+        z-index: 30;
+        width: max-content;
+        max-width: 260px;
+        border-radius: 6px;
+        padding: 6px 9px;
+        background: var(--text-primary);
+        color: var(--bg-page);
+        font-size: 12px;
+        font-weight: 500;
+        text-align: left;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease;
+      }
+
+      .tip:hover::after,
+      .tip:focus-visible::after {
+        opacity: 1;
+      }
+
+      .preview {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .preview:empty,
+      .hints:empty,
+      .actions:empty {
+        display: none;
+      }
+
+      .preview-count {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .preview-count.is-warn {
+        color: var(--warn-badge-text);
+      }
+
+      .matches {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .mchip {
+        border-radius: 5px;
+        padding: 0 6px;
+        background: var(--bg-subtle);
+        color: var(--text-secondary);
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+      }
+
+      .mchip.is-blocked {
+        background: var(--bad-badge-bg);
+        color: var(--bad-badge-text);
+        text-decoration: line-through;
+      }
+
+      .link-btn {
+        border: 0;
+        padding: 0 4px;
+        background: transparent;
+        color: var(--text-secondary);
+        font: inherit;
+        font-size: 12px;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+      }
+
+      .hints {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .switch {
+        position: relative;
+        flex: none;
+        width: 36px;
+        height: 20px;
+        border: 0;
+        border-radius: 999px;
+        padding: 0;
+        background: var(--border-hover);
+        cursor: pointer;
+        transition: background-color 150ms ease;
+      }
+
+      .switch::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+        transition: transform 150ms ease;
+      }
+
+      .switch[aria-checked="true"] {
+        background: var(--switch-on);
+      }
+
+      .switch[aria-checked="true"]::after {
+        transform: translateX(16px);
+      }
+
+      .switch:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .switch-state {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .add-form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .offscreen {
+        position: fixed;
+        top: 0;
+        left: -9999px;
+        opacity: 0;
+      }
+
+      @media (max-width: 640px) {
+        .layout,
+        .layout.is-single {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .detail {
+          padding: 16px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .btn,
+        .input,
+        .chipbox,
+        .switch,
+        .switch::after,
+        .tip::after {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="bar">
+        <h1>Client keys</h1>
+        <div class="bar-actions" id="bar-actions" hidden>
+          <button class="btn btn-ghost" id="reload" type="button">
+            Reload
+          </button>
+        </div>
+      </div>
+
+      <form class="card auth" id="auth" hidden>
+        <label class="field">
+          Management key
+          <input
+            class="input"
+            id="auth-key"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+        </label>
+        <p class="hint">Kept in this tab only.</p>
+        <p class="error" id="auth-error" hidden></p>
+        <div class="row">
+          <button class="btn btn-primary" id="auth-submit" type="submit">
+            Continue
+          </button>
+        </div>
+      </form>
+
+      <div id="content" hidden>
+        <div class="alerts" id="alerts"></div>
+        <p class="hint" id="loading">Loading…</p>
+        <div class="layout" id="layout" hidden>
+          <aside class="side" id="side">
+            <div class="side-tools" id="side-tools">
+              <input
+                class="input"
+                id="filter"
+                type="search"
+                placeholder="Filter"
+                aria-label="Filter keys"
+                autocomplete="off"
+                spellcheck="false"
+                data-focus="filter"
+              />
+              <button
+                class="btn btn-primary btn-sm"
+                id="add-open"
+                type="button"
+                data-focus="add-open"
+              >
+                Add
+              </button>
+            </div>
+            <p class="warn" id="list-warning" hidden>
+              The key list changed while saving. Check it before continuing.
+            </p>
+            <ul class="list" id="list" aria-label="Client keys"></ul>
+            <div class="strays" id="strays" hidden></div>
+          </aside>
+          <section class="card detail" id="detail"></section>
+        </div>
+      </div>
+    </main>
+    <script>
+      "use strict";
+
+      // The page is served at <base>/v0/resource/plugins/client-keys/index.html,
+      // where <base> is empty unless a reverse proxy adds a path prefix.
+      const BASE = location.pathname.replace(
+        /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
+        "",
+      );
+      const CONFIG = BASE + "/v8/management/config";
+      const KEY_LIST = CONFIG + "/access/api-keys";
+      const PLUGIN_CONFIG = CONFIG + "/plugins/configs/client-keys";
+      const PLUGIN = BASE + "/v0/management/client-keys";
+      const SESSION_KEY = "client-keys.management-key";
+      const REJECTED_KEY = "client-keys.rejected-mc-auth";
+      const MC_AUTH_KEY = "cli-proxy-auth";
+      const MC_THEME_KEY = "cli-proxy-theme";
+      const MC_NAMES_PREFIX = "api-key-names:v1:";
+      const NAME_MAX = 64;
+      const NOTE_MAX = 500;
+      const PREVIEW_CAP = 40;
+      const SUGGEST_CAP = 50;
+      const POLL_MS = 500;
+      const POLL_TRIES = 20;
+      const MAX_PATTERNS = 500;
+      const MAX_PATTERN_LENGTH = 200;
+      const PATTERN_TIP =
+        "* matches any characters. Matching ignores case. Enter or comma adds a pattern.";
+
+      const $ = (id) => document.getElementById(id);
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+      function storageGet(storage, key) {
+        try {
+          return storage.getItem(key);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function storageSet(storage, key, value) {
+        try {
+          storage.setItem(key, value);
+        } catch (_) {}
+      }
+
+      function storageRemove(storage, key) {
+        try {
+          storage.removeItem(key);
+        } catch (_) {}
+      }
+
+      // Theme: follow Management Center's own setting. Its document carries
+      // data-theme ("dark", "white", or none for its light theme); when the
+      // page cannot reach it, read the persisted setting instead.
+      function managementCenterTheme() {
+        try {
+          if (window.parent !== window) {
+            return (
+              window.parent.document.documentElement.getAttribute(
+                "data-theme",
+              ) || "light"
+            );
+          }
+        } catch (_) {}
+        let saved = "auto";
+        try {
+          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
+          if (persisted && persisted.state && persisted.state.theme) {
+            saved = persisted.state.theme;
+          }
+        } catch (_) {}
+        if (saved === "auto") {
+          return matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "white";
+        }
+        return saved;
+      }
+
+      function applyTheme() {
+        document.documentElement.setAttribute(
+          "data-theme",
+          managementCenterTheme(),
+        );
+      }
+
+      applyTheme();
+      matchMedia("(prefers-color-scheme: dark)").addEventListener(
+        "change",
+        applyTheme,
+      );
+      window.addEventListener("storage", (event) => {
+        if (event.key === MC_THEME_KEY) applyTheme();
+      });
+      try {
+        if (window.parent !== window) {
+          new MutationObserver(applyTheme).observe(
+            window.parent.document.documentElement,
+            { attributes: true, attributeFilter: ["data-theme"] },
+          );
+        }
+      } catch (_) {}
+
+      // Management Center persists its connection, when "remember" is on, as
+      // zustand state {"state":{"apiBase","managementKey"}} and its key names
+      // as {fingerprint: name}, both obfuscated by src/utils/encryption.ts.
+      // A management key typed here lives in sessionStorage.
+      function deobfuscate(payload) {
+        const prefix = "enc::v1::";
+        if (!payload.startsWith(prefix)) return payload;
+        const binary = atob(payload.slice(prefix.length));
+        const secret = new TextEncoder().encode(
+          "cli-proxy-api-webui::secure-storage|" +
+            location.host +
+            "|" +
+            navigator.userAgent,
+        );
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
+        }
+        return new TextDecoder().decode(bytes);
+      }
+
+      function readObfuscated(key) {
+        const raw = storageGet(localStorage, key);
+        if (!raw) return null;
+        try {
+          return JSON.parse(deobfuscate(raw));
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function managementCenterState() {
+        const persisted = readObfuscated(MC_AUTH_KEY);
+        return persisted && typeof persisted.state === "object"
+          ? persisted.state || {}
+          : {};
+      }
+
+      function managementCenterKey() {
+        const raw = storageGet(localStorage, MC_AUTH_KEY);
+        if (!raw || storageGet(sessionStorage, REJECTED_KEY) === raw) return "";
+        const key = managementCenterState().managementKey;
+        return typeof key === "string" ? key.trim() : "";
+      }
+
+      function managementCenterApiBase() {
+        const base = managementCenterState().apiBase;
+        return typeof base === "string" ? base : "";
+      }
+
+      function readLocalNames() {
+        if (!apiBase) return {};
+        const names = readObfuscated(MC_NAMES_PREFIX + apiBase);
+        return names && typeof names === "object" && !Array.isArray(names)
+          ? names
+          : {};
+      }
+
+      const auth = { key: "", source: "" };
+      const apiBase = managementCenterApiBase();
+
+      function resolveKey() {
+        const typed = storageGet(sessionStorage, SESSION_KEY);
+        if (typed) return { key: typed, source: "session" };
+        const shared = managementCenterKey();
+        if (shared) return { key: shared, source: "mc" };
+        return { key: "", source: "" };
+      }
+
+      // A rejected key is never retried: five failures ban the address for
+      // 30 minutes.
+      function forgetKey() {
+        if (auth.source === "session")
+          storageRemove(sessionStorage, SESSION_KEY);
+        if (auth.source === "mc") {
+          storageSet(
+            sessionStorage,
+            REJECTED_KEY,
+            storageGet(localStorage, MC_AUTH_KEY) || "",
+          );
+        }
+        auth.key = "";
+        auth.source = "";
+      }
+
+      class AuthError extends Error {}
+
+      class ApiError extends Error {
+        constructor(message, status) {
+          super(message);
+          this.status = status;
+        }
+      }
+
+      function errorMessage(data) {
+        if (!data || typeof data !== "object") return "";
+        for (const field of ["message", "error"]) {
+          if (typeof data[field] === "string" && data[field])
+            return data[field];
+        }
+        return "";
+      }
+
+      async function api(method, url, body) {
+        if (!auth.key) throw new AuthError("No management key.");
+        const headers = { Authorization: "Bearer " + auth.key };
+        if (body !== undefined) headers["Content-Type"] = "application/json";
+        let response;
+        try {
+          response = await fetch(url, {
+            method,
+            headers,
+            body: body === undefined ? undefined : JSON.stringify(body),
+            cache: "no-store",
+            credentials: "omit",
+          });
+        } catch (err) {
+          throw new Error("CLIProxyAPI did not answer: " + err.message);
+        }
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (_) {}
+        if (response.status === 401) {
+          forgetKey();
+          showAuth(
+            "Management key rejected. Five wrong keys block this address for 30 minutes.",
+          );
+          throw new AuthError(errorMessage(data));
+        }
+        if (!response.ok) {
+          throw new ApiError(
+            errorMessage(data) ||
+              "CLIProxyAPI answered HTTP " + response.status + ".",
+            response.status,
+          );
+        }
+        return data;
+      }
+
+      // The v8 config API answers 404 for a path that does not exist yet.
+      async function getOr(url, fallback) {
+        try {
+          const data = await api("GET", url);
+          return data === null || data === undefined ? fallback : data;
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) return fallback;
+          throw err;
+        }
+      }
+
+      // Resolves to whether something was removed.
+      async function remove(url) {
+        try {
+          await api("DELETE", url);
+          return true;
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) return false;
+          throw err;
+        }
+      }
+
+      // DOM helper: strings become text nodes, never markup.
+      function h(tag, props, ...children) {
+        const el = document.createElement(tag);
+        for (const [name, value] of Object.entries(props || {})) {
+          if (value === null || value === undefined || value === false)
+            continue;
+          if (name === "class") el.className = value;
+          else if (name.startsWith("on"))
+            el.addEventListener(name.slice(2), value);
+          else el.setAttribute(name, value === true ? "" : String(value));
+        }
+        for (const child of children.flat()) {
+          if (child === null || child === undefined || child === false)
+            continue;
+          el.append(child instanceof Node ? child : String(child));
+        }
+        return el;
+      }
+
+      const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
+      const chars = (text) => [...text].length;
+
+      function clean(text) {
+        return String(text || "")
+          .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
+          .trim();
+      }
+
+      function mask(value) {
+        return value.length > 12
+          ? value.slice(0, 4) + "…" + value.slice(-4)
+          : "••••••••";
+      }
+
+      function generateKey() {
+        const bytes = new Uint8Array(32);
+        crypto.getRandomValues(bytes);
+        return (
+          "sk-" +
+          Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
+        );
+      }
+
+      function keyProblem(value, existing) {
+        if (!value) return "Enter a key or generate one.";
+        if (/[\s\u0000-\u001f\u007f]/.test(value))
+          return "Keys cannot contain spaces or control characters.";
+        if (existing.includes(value)) return "This key already exists.";
+        return "";
+      }
+
+      // The plugin refuses a models policy that breaks these limits, and a
+      // refused policy makes it refuse every request with that key.
+      function patternProblem(pattern) {
+        if (!pattern) return "Patterns cannot be empty.";
+        if (/[\u0000-\u001f\u007f-\u009f]/.test(pattern))
+          return "Patterns cannot contain control characters.";
+        if (chars(pattern) > MAX_PATTERN_LENGTH)
+          return (
+            "Patterns are limited to " + MAX_PATTERN_LENGTH + " characters."
+          );
+        return "";
+      }
+
+      function patternsProblem(patterns) {
+        if (patterns.length > MAX_PATTERNS)
+          return "A rule holds at most " + MAX_PATTERNS + " patterns.";
+        for (const pattern of patterns) {
+          const problem = patternProblem(pattern.trim());
+          if (problem) return problem;
+        }
+        return "";
+      }
+
+      // Model patterns: "*" matches any run of characters, the rest is
+      // literal, and the whole ID must match, ignoring case.
+      function patternRegex(pattern) {
+        const body = pattern
+          .split("*")
+          .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join(".*");
+        return new RegExp("^" + body + "$", "i");
+      }
+
+      function matching(patterns) {
+        if (!state.catalog) return null;
+        const regexes = patterns.map(patternRegex);
+        return state.catalog.filter((id) => regexes.some((r) => r.test(id)));
+      }
+
+      function samePatterns(a, b) {
+        if (a.length !== b.length) return false;
+        const norm = (list) =>
+          list
+            .map((p) => p.toLowerCase())
+            .sort()
+            .join("\n");
+        return norm(a) === norm(b);
+      }
+
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch (_) {}
+        const area = h("textarea", { class: "offscreen", readonly: true });
+        area.value = text;
+        document.body.append(area);
+        area.select();
+        let ok = false;
+        try {
+          ok = document.execCommand("copy");
+        } catch (_) {}
+        area.remove();
+        return ok;
+      }
+
+      // State
+      const state = {
+        loaded: false,
+        keys: [],
+        config: {},
+        status: null,
+        statusError: "",
+        catalog: null,
+        localNames: {},
+      };
+      const fingerprints = new Map();
+      const drafts = new Map();
+      const pending = new Map();
+      const errors = new Map();
+      const ui = {
+        selected: null,
+        filter: "",
+        adding: false,
+        add: { key: "", name: "", note: "" },
+        panel: null,
+        nameDraft: "",
+        noteDraft: "",
+        rotateDraft: "",
+        revealed: false,
+        allMatches: false,
+      };
+      let patternText = { scope: "", text: "" };
+      let busy = null;
+      let notice = "";
+      let pageError = "";
+      let afterWriteFocus = null;
+      let listChanged = false;
+      let confirmStrays = false;
+      let entryNames = new Map();
+
+      function objectOr(value) {
+        return value && typeof value === "object" && !Array.isArray(value)
+          ? value
+          : {};
+      }
+
+      const keysConfig = () => objectOr(objectOr(state.config).keys);
+
+      // Config entry names match key scopes ignoring case. Writes go to the
+      // name as stored, so they never add a second entry for one key.
+      function indexEntries() {
+        entryNames = new Map();
+        for (const name of Object.keys(keysConfig())) {
+          const lower = name.toLowerCase();
+          if (name === lower || !entryNames.has(lower))
+            entryNames.set(lower, name);
+        }
+      }
+
+      const storedScope = (scope) => entryNames.get(scope) || scope;
+      const entryFor = (key) => objectOr(keysConfig()[storedScope(key.scope)]);
+      const policiesOf = (entry) => objectOr(entry.policies);
+      const entryName = (entry) =>
+        typeof entry.name === "string" ? entry.name : "";
+      const entryNote = (entry) =>
+        typeof entry.note === "string" ? entry.note : "";
+      const selectedKey = () =>
+        state.keys.find((key) => key.value === ui.selected) || null;
+      const entryUrl = (scope) =>
+        PLUGIN_CONFIG + "/keys/" + encodeURIComponent(scope);
+      const policyUrl = (scope, type) =>
+        entryUrl(scope) + "/policies/" + encodeURIComponent(type);
+
+      const statusKeys = () =>
+        state.status ? objectOr(state.status.keys) : {};
+
+      function statusError(name) {
+        const keys = statusKeys();
+        let match = Object.hasOwn(keys, name) ? name : null;
+        if (match === null) {
+          const lower = name.toLowerCase();
+          match = Object.keys(keys).find((k) => k.toLowerCase() === lower);
+        }
+        const error = match === undefined ? "" : objectOr(keys[match]).error;
+        return typeof error === "string" ? error : "";
+      }
+
+      const keyError = (key) => statusError(storedScope(key.scope));
+
+      // Entries no key in the list uses: saved for a key removed elsewhere,
+      // hand-edited, or a second spelling of a key's scope. They apply
+      // again if their key comes back, so they are shown and removable.
+      // Status errors for names neither in the list nor in the config are
+      // listed with them.
+      function strayEntries() {
+        const used = new Set(state.keys.map((key) => storedScope(key.scope)));
+        const config = keysConfig();
+        const out = [];
+        for (const name of Object.keys(config)) {
+          if (used.has(name)) continue;
+          out.push({
+            stored: name,
+            name: entryName(objectOr(config[name])),
+            error: statusError(name),
+          });
+        }
+        const scopes = new Set(state.keys.map((key) => key.scope));
+        const stored = new Set(Object.keys(config).map((n) => n.toLowerCase()));
+        for (const [name, value] of Object.entries(statusKeys())) {
+          const lower = name.toLowerCase();
+          const error = objectOr(value).error;
+          if (scopes.has(lower) || stored.has(lower)) continue;
+          if (typeof error !== "string" || !error) continue;
+          out.push({ stored: null, label: name, name: "", error });
+        }
+        return out;
+      }
+
+      function sameMembers(a, b) {
+        const left = new Set(a);
+        const right = new Set(b);
+        return left.size === right.size && [...left].every((v) => right.has(v));
+      }
+
+      // exact is false when the stored policy is not what this editor
+      // would write (both lists, an empty list, extra fields), so saving
+      // the editor's reading of it is a real change.
+      function savedModels(policy) {
+        if (policy === undefined || policy === null)
+          return { mode: "all", patterns: [], exact: true };
+        const p = objectOr(policy);
+        const allow = Array.isArray(p.allow);
+        const deny = Array.isArray(p.deny);
+        const list = allow ? p.allow : deny ? p.deny : [];
+        return {
+          mode: allow ? "allow" : deny ? "deny" : "all",
+          patterns: list.map(String),
+          exact:
+            allow !== deny &&
+            list.length > 0 &&
+            list.every((item) => typeof item === "string") &&
+            Object.keys(p).length === 1,
+        };
+      }
+
+      function modelsChanged(saved, draft) {
+        if (draft.mode !== saved.mode) return true;
+        return (
+          draft.mode !== "all" && !samePatterns(draft.patterns, saved.patterns)
+        );
+      }
+
+      const modelsDirty = (saved, draft) =>
+        !saved.exact || modelsChanged(saved, draft);
+
+      // Policy editors. Each entry gives one section of the detail pane and
+      // one summary tag in the list; a new policy type is a new entry.
+      const POLICIES = [
+        {
+          type: "models",
+          title: "Models",
+          summary: modelsSummary,
+          render: renderModels,
+        },
+        {
+          type: "responses-api",
+          title: "Responses API",
+          summary: responsesSummary,
+          render: renderResponses,
+        },
+      ];
+
+      function modelsSummary(policy) {
+        const saved = savedModels(policy);
+        if (saved.mode === "all") return { text: "all models" };
+        const matched = matching(saved.patterns);
+        if (saved.mode === "allow") {
+          return {
+            text: matched
+              ? plural(matched.length, "model")
+              : plural(saved.patterns.length, "rule"),
+          };
+        }
+        return {
+          text: matched
+            ? "all but " + matched.length
+            : "all but " + plural(saved.patterns.length, "rule"),
+        };
+      }
+
+      function responsesSummary(policy) {
+        return objectOr(policy).enabled === false
+          ? { text: "no Responses", tone: "bad" }
+          : null;
+      }
+
+      function renderModels(ctx) {
+        const { key, titleId, disabled } = ctx;
+        const saved = savedModels(ctx.policy);
+        const draft = drafts.get(key.scope) || {
+          mode: saved.mode,
+          patterns: saved.patterns.slice(),
+        };
+        const isFirst = state.keys.length > 0 && state.keys[0] === key;
+        const listId = "suggest-" + key.scope.slice(0, 12);
+        const modes = [
+          ["all", "All"],
+          ["allow", "Only these"],
+          ["deny", "All except"],
+        ];
+
+        const segButtons = modes.map(([mode, label]) =>
+          h(
+            "button",
+            {
+              type: "button",
+              role: "radio",
+              "data-focus": "mode-" + mode,
+              disabled,
+              onclick: () => setMode(mode),
+            },
+            label,
+          ),
+        );
+        const seg = h(
+          "div",
+          { class: "seg", role: "radiogroup", "aria-labelledby": titleId },
+          segButtons,
+        );
+        seg.addEventListener("keydown", (event) => {
+          const step = {
+            ArrowRight: 1,
+            ArrowDown: 1,
+            ArrowLeft: -1,
+            ArrowUp: -1,
+          }[event.key];
+          if (!step) return;
+          event.preventDefault();
+          const index = modes.findIndex(([mode]) => mode === draft.mode);
+          const next = (index + step + modes.length) % modes.length;
+          setMode(modes[next][0]);
+          segButtons[next].focus();
+        });
+
+        const input = h("input", {
+          class: "chip-input",
+          type: "text",
+          role: "combobox",
+          "aria-autocomplete": "list",
+          "aria-expanded": "false",
+          "aria-controls": listId,
+          "aria-label": "Model or pattern",
+          placeholder: "Add model or pattern",
+          autocomplete: "off",
+          spellcheck: "false",
+          "data-focus": "pattern-input",
+          disabled,
+        });
+        input.value = patternText.scope === key.scope ? patternText.text : "";
+        const chips = h("span", { class: "chips" });
+        const suggest = h("ul", {
+          class: "suggest",
+          id: listId,
+          role: "listbox",
+          "aria-label": "Models",
+          hidden: true,
+        });
+        const box = h("div", { class: "chipbox" }, chips, input, suggest);
+        box.addEventListener("mousedown", (event) => {
+          if (event.target === box) {
+            event.preventDefault();
+            input.focus();
+          }
+        });
+        const editor = h(
+          "div",
+          { class: "pattern-row" },
+          box,
+          h(
+            "button",
+            {
+              class: "tip",
+              type: "button",
+              "aria-label": PATTERN_TIP,
+              "data-tip": PATTERN_TIP,
+            },
+            "?",
+          ),
+        );
+        const problemLine = h("p", {
+          class: "error",
+          id: listId + "-problem",
+          hidden: true,
+        });
+        input.setAttribute("aria-describedby", problemLine.id);
+        const preview = h("div", { class: "preview" });
+        const hints = h("div", { class: "hints" });
+        const actions = h("div", { class: "actions" });
+
+        let options = [];
+        let active = -1;
+        // A rejected pattern stays in the input with its reason until edited.
+        let inputProblem = "";
+
+        function renderProblem() {
+          const problem =
+            draft.mode === "all"
+              ? ""
+              : inputProblem || patternsProblem(draft.patterns);
+          problemLine.textContent = problem;
+          problemLine.hidden = !problem;
+          if (problem) input.setAttribute("aria-invalid", "true");
+          else input.removeAttribute("aria-invalid");
+        }
+
+        function rememberText() {
+          patternText = { scope: key.scope, text: input.value };
+        }
+
+        function commit() {
+          if (modelsDirty(saved, draft)) drafts.set(key.scope, draft);
+          else drafts.delete(key.scope);
+          update();
+        }
+
+        function setMode(mode) {
+          if (draft.mode === mode) return;
+          draft.mode = mode;
+          commit();
+        }
+
+        // Adds every comma-separated pattern in text, or none of them when
+        // one would make the policy invalid.
+        function addPatterns(text) {
+          const fresh = [];
+          for (const part of text.split(",")) {
+            const pattern = part.trim();
+            if (!pattern) continue;
+            const problem = patternProblem(pattern);
+            if (problem) return { added: false, problem };
+            const lower = pattern.toLowerCase();
+            if (
+              draft.patterns.some((p) => p.toLowerCase() === lower) ||
+              fresh.some((p) => p.toLowerCase() === lower)
+            )
+              continue;
+            fresh.push(pattern);
+          }
+          if (draft.patterns.length + fresh.length > MAX_PATTERNS) {
+            return {
+              added: false,
+              problem: "A rule holds at most " + MAX_PATTERNS + " patterns.",
+            };
+          }
+          draft.patterns.push(...fresh);
+          return { added: fresh.length > 0, problem: "" };
+        }
+
+        function takeText(text) {
+          const result = addPatterns(text);
+          inputProblem = result.problem;
+          if (!result.problem) {
+            input.value = "";
+            rememberText();
+          }
+          closeSuggest();
+          commit();
+        }
+
+        const takeInput = () => takeText(input.value);
+
+        function pick(id) {
+          takeText(id);
+          input.focus();
+        }
+
+        function closeSuggest() {
+          options = [];
+          active = -1;
+          suggest.hidden = true;
+          suggest.replaceChildren();
+          input.setAttribute("aria-expanded", "false");
+          input.removeAttribute("aria-activedescendant");
+        }
+
+        function highlight(id, query) {
+          const at = query ? id.toLowerCase().indexOf(query) : -1;
+          if (at < 0) return id;
+          return [
+            id.slice(0, at),
+            h("mark", {}, id.slice(at, at + query.length)),
+            id.slice(at + query.length),
+          ];
+        }
+
+        function openSuggest(force) {
+          const query = input.value.trim().toLowerCase();
+          if (!state.catalog || (!query && !force)) return closeSuggest();
+          const taken = new Set(draft.patterns.map((p) => p.toLowerCase()));
+          options = state.catalog
+            .filter(
+              (id) =>
+                !taken.has(id.toLowerCase()) &&
+                id.toLowerCase().includes(query),
+            )
+            .slice(0, SUGGEST_CAP);
+          if (options.length === 0) return closeSuggest();
+          active = -1;
+          suggest.replaceChildren(
+            ...options.map((id, index) =>
+              h(
+                "li",
+                {
+                  id: listId + "-" + index,
+                  role: "option",
+                  "aria-selected": "false",
+                  onmousedown: (event) => {
+                    event.preventDefault();
+                    pick(id);
+                  },
+                },
+                highlight(id, query),
+              ),
+            ),
+          );
+          suggest.hidden = false;
+          input.setAttribute("aria-expanded", "true");
+          input.removeAttribute("aria-activedescendant");
+        }
+
+        function move(step) {
+          if (options.length === 0) return;
+          if (active < 0) active = step > 0 ? 0 : options.length - 1;
+          else active = (active + step + options.length) % options.length;
+          [...suggest.children].forEach((li, index) =>
+            li.setAttribute(
+              "aria-selected",
+              index === active ? "true" : "false",
+            ),
+          );
+          const current = suggest.children[active];
+          input.setAttribute("aria-activedescendant", current.id);
+          current.scrollIntoView({ block: "nearest" });
+        }
+
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            if (suggest.hidden) openSuggest(true);
+            else move(1);
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            move(-1);
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            if (active >= 0) pick(options[active]);
+            else if (input.value.trim()) takeInput();
+          } else if (event.key === ",") {
+            event.preventDefault();
+            if (input.value.trim()) takeInput();
+          } else if (event.key === "Escape") {
+            if (!suggest.hidden) {
+              event.preventDefault();
+              closeSuggest();
+            }
+          } else if (
+            event.key === "Backspace" &&
+            input.value === "" &&
+            draft.patterns.length > 0
+          ) {
+            event.preventDefault();
+            draft.patterns.pop();
+            inputProblem = "";
+            commit();
+          }
+        });
+        input.addEventListener("input", () => {
+          inputProblem = "";
+          // A pasted "a, b, c" becomes chips for all but the last part.
+          if (input.value.includes(",")) {
+            const parts = input.value.split(",");
+            const rest = parts.pop();
+            const result = addPatterns(parts.join(","));
+            inputProblem = result.problem;
+            if (!result.problem) input.value = rest.trimStart();
+            if (result.added) commit();
+          }
+          renderProblem();
+          rememberText();
+          openSuggest(false);
+        });
+        input.addEventListener("blur", closeSuggest);
+
+        function renderChips() {
+          chips.replaceChildren(
+            ...draft.patterns.map((pattern, index) =>
+              h(
+                "span",
+                { class: "chip" },
+                pattern,
+                h(
+                  "button",
+                  {
+                    class: "chip-x",
+                    type: "button",
+                    "aria-label": "Remove " + pattern,
+                    disabled,
+                    onclick: () => {
+                      draft.patterns.splice(index, 1);
+                      inputProblem = "";
+                      commit();
+                      input.focus();
+                    },
+                  },
+                  "×",
+                ),
+              ),
+            ),
+          );
+        }
+
+        function renderPreview() {
+          preview.replaceChildren();
+          if (
+            draft.mode === "all" ||
+            !state.catalog ||
+            draft.patterns.length === 0
+          )
+            return;
+          const matched = matching(draft.patterns);
+          const blocked = draft.mode === "deny";
+          preview.append(
+            h(
+              "p",
+              {
+                class:
+                  "preview-count" +
+                  (!blocked && matched.length === 0 ? " is-warn" : ""),
+              },
+              "Matches " +
+                matched.length +
+                " of " +
+                plural(state.catalog.length, "model"),
+            ),
+          );
+          if (matched.length === 0) return;
+          const shown = ui.allMatches ? matched : matched.slice(0, PREVIEW_CAP);
+          const list = h(
+            "div",
+            { class: "matches" },
+            shown.map((id) =>
+              h(
+                "span",
+                { class: "mchip" + (blocked ? " is-blocked" : "") },
+                id,
+              ),
+            ),
+          );
+          if (matched.length > shown.length) {
+            list.append(
+              h(
+                "button",
+                {
+                  class: "link-btn",
+                  type: "button",
+                  onclick: () => {
+                    ui.allMatches = true;
+                    renderPreview();
+                  },
+                },
+                "+" + (matched.length - shown.length) + " more",
+              ),
+            );
+          }
+          preview.append(list);
+        }
+
+        function renderHints() {
+          hints.replaceChildren();
+          if (draft.mode === "all") return;
+          hints.append(
+            h(
+              "p",
+              { class: "hint" },
+              "Realtime (/v1/realtime, /v1/live) and alpha search (/v1/alpha/search) are not limited by this rule.",
+            ),
+          );
+          if (isFirst) {
+            hints.append(
+              h(
+                "p",
+                { class: "warn" },
+                "Management Center lists models with the first key, so its model list will show only what this key allows.",
+              ),
+            );
+          }
+        }
+
+        function save() {
+          if (input.value.trim()) {
+            takeInput();
+            if (inputProblem) {
+              input.focus();
+              return;
+            }
+          }
+          const mode = draft.mode;
+          const patterns = draft.patterns.map((p) => p.trim());
+          if (
+            mode !== "all" &&
+            (patterns.length === 0 || patternsProblem(patterns))
+          )
+            return;
+          write("models", async () => {
+            const before = await statusGeneration();
+            const url = policyUrl(storedScope(key.scope), "models");
+            let changed = true;
+            if (mode === "all") changed = await remove(url);
+            else await api("PUT", url, { [mode]: patterns });
+            drafts.delete(key.scope);
+            ui.allMatches = false;
+            afterWriteFocus = "mode-" + mode;
+            await settle(changed, before);
+          });
+        }
+
+        function renderActions() {
+          actions.replaceChildren();
+          if (!modelsDirty(saved, draft)) return;
+          const empty = draft.mode !== "all" && draft.patterns.length === 0;
+          const invalid =
+            draft.mode !== "all" && patternsProblem(draft.patterns) !== "";
+          actions.append(
+            h(
+              "button",
+              {
+                class: "btn btn-primary btn-sm",
+                type: "button",
+                "data-focus": "models-save",
+                disabled: disabled || empty || invalid,
+                onclick: save,
+              },
+              busy === "models" ? "Saving…" : "Save",
+            ),
+          );
+          if (modelsChanged(saved, draft)) {
+            actions.append(
+              h(
+                "button",
+                {
+                  class: "btn btn-ghost btn-sm",
+                  type: "button",
+                  "data-focus": "models-discard",
+                  disabled,
+                  onclick: () => {
+                    drafts.delete(key.scope);
+                    errors.delete("models");
+                    renderAll("mode-" + saved.mode);
+                  },
+                },
+                "Discard",
+              ),
+            );
+          }
+          if (empty) {
+            actions.append(
+              h(
+                "span",
+                { class: "hint" },
+                "Add at least one model or pattern.",
+              ),
+            );
+          }
+        }
+
+        function update() {
+          segButtons.forEach((button, index) => {
+            const on = modes[index][0] === draft.mode;
+            button.setAttribute("aria-checked", on ? "true" : "false");
+            button.tabIndex = on ? 0 : -1;
+          });
+          editor.hidden = draft.mode === "all";
+          renderChips();
+          renderProblem();
+          renderPreview();
+          renderHints();
+          renderActions();
+        }
+
+        update();
+        return {
+          control: seg,
+          body: [editor, problemLine, preview, hints, actions],
+        };
+      }
+
+      function renderResponses(ctx) {
+        const { key, titleId, disabled } = ctx;
+        const id = key.scope + ":responses-api";
+        const allowed = pending.has(id)
+          ? pending.get(id)
+          : objectOr(ctx.policy).enabled !== false;
+        const control = [
+          h(
+            "span",
+            { class: "switch-state" },
+            busy === "responses-api"
+              ? "Saving…"
+              : allowed
+                ? "Allowed"
+                : "Blocked",
+          ),
+          h("button", {
+            class: "switch",
+            type: "button",
+            role: "switch",
+            "aria-checked": allowed ? "true" : "false",
+            "aria-labelledby": titleId,
+            "data-focus": "responses",
+            disabled,
+            onclick: () => toggleResponses(key, !allowed),
+          }),
+        ];
+        const body = allowed
+          ? null
+          : h(
+              "p",
+              { class: "hint" },
+              "Blocked requests get an empty 404, so clients fall back to Chat Completions.",
+            );
+        return { control, body };
+      }
+
+      function toggleResponses(key, allow) {
+        const id = key.scope + ":responses-api";
+        pending.set(id, allow);
+        write("responses-api", async () => {
+          try {
+            const before = await statusGeneration();
+            const url = policyUrl(storedScope(key.scope), "responses-api");
+            let changed = true;
+            if (allow) changed = await remove(url);
+            else await api("PUT", url, { enabled: false });
+            afterWriteFocus = "responses";
+            await settle(changed, before);
+          } finally {
+            pending.delete(id);
+          }
+        });
+      }
+
+      // Rendering
+      function badge(text, tone) {
+        return h(
+          "span",
+          { class: "badge" + (tone ? " badge-" + tone : "") },
+          text,
+        );
+      }
+
+      function errorLine(where) {
+        const message = errors.get(where);
+        return message ? h("p", { class: "error" }, message) : null;
+      }
+
+      function summaryTags(key, entry) {
+        const policies = policiesOf(entry);
+        const tags = [];
+        for (const def of POLICIES) {
+          const summary = def.summary(policies[def.type]);
+          if (summary) tags.push(badge(summary.text, summary.tone));
+        }
+        if (keyError(key)) tags.push(badge("invalid", "bad"));
+        return tags;
+      }
+
+      function matchesFilter(key, query) {
+        const entry = entryFor(key);
+        return [entryName(entry), entryNote(entry), key.value].some((text) =>
+          text.toLowerCase().includes(query),
+        );
+      }
+
+      function buildItem(key) {
+        const entry = entryFor(key);
+        const name = entryName(entry);
+        const selected = !ui.adding && key.value === ui.selected;
+        return h(
+          "li",
+          {},
+          h(
+            "button",
+            {
+              class: "item" + (selected ? " is-selected" : ""),
+              type: "button",
+              "aria-current": selected ? "true" : null,
+              "data-focus": "item-" + key.scope,
+              onclick: (event) => {
+                select(key.value);
+                // Stacked layout: the detail sits below the list. A keyboard
+                // click (detail 0) keeps the list in view for arrow keys.
+                if (
+                  event.detail > 0 &&
+                  matchMedia("(max-width: 640px)").matches
+                )
+                  $("detail").scrollIntoView({ block: "start" });
+              },
+            },
+            h(
+              "span",
+              { class: "item-top" },
+              h(
+                "span",
+                { class: "item-name" + (name ? "" : " is-unnamed") },
+                name || "Unnamed",
+              ),
+              h("code", { class: "item-key" }, mask(key.value)),
+            ),
+            h("span", { class: "tags" }, summaryTags(key, entry)),
+          ),
+        );
+      }
+
+      const shortName = (name) =>
+        name.length > 14 ? name.slice(0, 10) + "…" : name;
+
+      function renderStrays(strays) {
+        const entries = strays.filter((item) => item.stored !== null);
+        $("strays").hidden = strays.length === 0;
+        if (strays.length === 0) {
+          $("strays").replaceChildren();
+          return;
+        }
+        const disabled = busy !== null;
+        const items = [];
+        if (entries.length > 0) {
+          items.push(
+            h(
+              "p",
+              {
+                class: "hint",
+                title: "They apply again if their key is added back.",
+              },
+              "Saved settings for " +
+                plural(entries.length, "key") +
+                (entries.length === 1 ? " that is" : " that are") +
+                " not in the key list.",
+            ),
+          );
+        }
+        items.push(
+          h(
+            "ul",
+            {},
+            strays.map((item) => {
+              const id = item.stored === null ? item.label : item.stored;
+              return h(
+                "li",
+                {},
+                h(
+                  "code",
+                  { class: "stray-name", title: id },
+                  item.name ? item.name + " · " + shortName(id) : shortName(id),
+                ),
+                item.error ? h("p", { class: "error" }, item.error) : null,
+              );
+            }),
+          ),
+        );
+        if (entries.length > 0) {
+          items.push(
+            confirmStrays
+              ? h(
+                  "div",
+                  { class: "row" },
+                  h("span", {}, "Remove these settings?"),
+                  smallButton(
+                    busy === "strays" ? "Removing…" : "Remove",
+                    () => removeStrays(entries),
+                    {
+                      tone: "btn-danger-solid",
+                      focus: "strays-confirm",
+                      disabled,
+                    },
+                  ),
+                  smallButton(
+                    "Cancel",
+                    () => {
+                      confirmStrays = false;
+                      renderAll("strays-remove");
+                    },
+                    { disabled },
+                  ),
+                )
+              : h(
+                  "div",
+                  { class: "row" },
+                  smallButton(
+                    "Remove",
+                    () => {
+                      confirmStrays = true;
+                      errors.delete("strays");
+                      renderAll("strays-confirm");
+                    },
+                    { tone: "", focus: "strays-remove", disabled },
+                  ),
+                ),
+          );
+        }
+        const error = errorLine("strays");
+        if (error) items.push(error);
+        $("strays").replaceChildren(...items);
+      }
+
+      function renderList() {
+        const empty = state.keys.length === 0;
+        const strays = state.loaded ? strayEntries() : [];
+        const sideHidden = empty && strays.length === 0 && !listChanged;
+        $("layout").hidden = !state.loaded;
+        $("layout").classList.toggle("is-single", sideHidden);
+        $("side").hidden = sideHidden;
+        $("side-tools").hidden = empty;
+        $("list-warning").hidden = !listChanged;
+        renderStrays(strays);
+        if (state.keys.length < 2 && ui.filter) {
+          ui.filter = "";
+          $("filter").value = "";
+        }
+        $("filter").hidden = state.keys.length < 2;
+        $("add-open").disabled = ui.adding;
+        const query = ui.filter.trim().toLowerCase();
+        const shown = query
+          ? state.keys.filter((key) => matchesFilter(key, query))
+          : state.keys;
+        if (shown.length === 0 && !empty) {
+          $("list").replaceChildren(
+            h("li", { class: "hint list-empty" }, "No keys match."),
+          );
+          return;
+        }
+        $("list").replaceChildren(...shown.map(buildItem));
+      }
+
+      function importCandidates() {
+        if (!apiBase) return [];
+        const seen = new Set();
+        const out = [];
+        for (const key of state.keys) {
+          if (seen.has(key.scope) || !key.nameFp) continue;
+          seen.add(key.scope);
+          if (entryName(entryFor(key))) continue;
+          const name = clean(state.localNames[key.nameFp]);
+          if (name)
+            out.push({
+              scope: storedScope(key.scope),
+              name: [...name].slice(0, NAME_MAX).join(""),
+            });
+        }
+        return out;
+      }
+
+      function renderAlerts() {
+        const items = [];
+        if (pageError) items.push(h("p", { class: "error" }, pageError));
+        const globalError =
+          state.status && typeof state.status.error === "string"
+            ? state.status.error
+            : "";
+        if (globalError) {
+          items.push(
+            h(
+              "div",
+              { class: "alert" },
+              h("strong", {}, "Plugin config error"),
+              h("span", {}, globalError),
+            ),
+          );
+        }
+        if (state.statusError) {
+          items.push(
+            h(
+              "p",
+              { class: "error" },
+              "Plugin status unavailable: " + state.statusError,
+            ),
+          );
+        }
+        if (notice) items.push(h("p", { class: "warn" }, notice));
+        const candidates = state.loaded ? importCandidates() : [];
+        if (candidates.length > 0) {
+          items.push(
+            h(
+              "div",
+              { class: "notice" },
+              h(
+                "span",
+                {},
+                candidates.length === 1
+                  ? "1 name is saved only in this browser."
+                  : candidates.length +
+                      " names are saved only in this browser.",
+              ),
+              h(
+                "button",
+                {
+                  class: "btn btn-sm",
+                  type: "button",
+                  "data-focus": "import",
+                  disabled: busy !== null,
+                  onclick: () => importNames(candidates),
+                },
+                busy === "import" ? "Importing…" : "Import",
+              ),
+              errorLine("import"),
+            ),
+          );
+        }
+        $("alerts").replaceChildren(...items);
+      }
+
+      function smallButton(label, onclick, options) {
+        const opts = options || {};
+        return h(
+          "button",
+          {
+            class:
+              "btn btn-sm" +
+              (opts.tone === undefined
+                ? " btn-ghost"
+                : opts.tone
+                  ? " " + opts.tone
+                  : ""),
+            type: opts.submit ? "submit" : "button",
+            "data-focus": opts.focus,
+            disabled: opts.disabled,
+            onclick,
+          },
+          label,
+        );
+      }
+
+      function textInput(props, value, onvalue, keys) {
+        const input = h("input", {
+          class: "input",
+          type: "text",
+          autocomplete: "off",
+          spellcheck: "false",
+          ...props,
+        });
+        input.value = value;
+        input.addEventListener("input", () => onvalue(input.value));
+        if (keys) {
+          input.addEventListener("keydown", (event) => {
+            const run = keys[event.key];
+            if (!run) return;
+            event.preventDefault();
+            run();
+          });
+        }
+        return input;
+      }
+
+      function buildMenu(entry) {
+        const disabled = busy !== null;
+        const button = h(
+          "button",
+          {
+            class: "btn btn-ghost menu-btn",
+            type: "button",
+            "aria-label": "More actions",
+            "aria-haspopup": "menu",
+            "aria-expanded": "false",
+            "data-focus": "menu",
+            disabled,
+          },
+          "⋯",
+        );
+        const items = [
+          [entryNote(entry) ? "Edit note" : "Add note", "note"],
+          ["Rotate", "rotate"],
+          ["Delete", "delete"],
+        ].map(([label, panel]) =>
+          h(
+            "button",
+            {
+              type: "button",
+              role: "menuitem",
+              tabindex: "-1",
+              class: panel === "delete" ? "danger" : null,
+              onclick: () => {
+                closeMenu(false);
+                openPanel(panel);
+              },
+            },
+            label,
+          ),
+        );
+        const menu = h(
+          "div",
+          {
+            class: "menu",
+            role: "menu",
+            "aria-label": "Key actions",
+            hidden: true,
+          },
+          items,
+        );
+        const wrap = h("div", { class: "menu-wrap" }, button, menu);
+
+        function outside(event) {
+          if (!wrap.contains(event.target)) closeMenu(false);
+        }
+        function openMenu() {
+          menu.hidden = false;
+          button.setAttribute("aria-expanded", "true");
+          items[0].focus();
+          document.addEventListener("mousedown", outside, true);
+        }
+        function closeMenu(refocus) {
+          menu.hidden = true;
+          button.setAttribute("aria-expanded", "false");
+          document.removeEventListener("mousedown", outside, true);
+          if (refocus) button.focus();
+        }
+
+        button.addEventListener("click", () =>
+          menu.hidden ? openMenu() : closeMenu(true),
+        );
+        button.addEventListener("keydown", (event) => {
+          if (event.key === "ArrowDown" && menu.hidden) {
+            event.preventDefault();
+            openMenu();
+          }
+        });
+        menu.addEventListener("keydown", (event) => {
+          const index = items.indexOf(document.activeElement);
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            const step = event.key === "ArrowDown" ? 1 : -1;
+            items[(index + step + items.length) % items.length].focus();
+          } else if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            items[event.key === "Home" ? 0 : items.length - 1].focus();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            closeMenu(true);
+          } else if (event.key === "Tab") {
+            closeMenu(false);
+          }
+        });
+        return wrap;
+      }
+
+      function buildHeader(key, entry) {
+        const name = entryName(entry);
+        const disabled = busy !== null;
+        let title;
+        if (ui.panel === "rename") {
+          title = h(
+            "div",
+            { class: "rename" },
+            textInput(
+              {
+                maxlength: NAME_MAX,
+                placeholder: "Unnamed",
+                "aria-label": "Name",
+                "data-focus": "name-input",
+                disabled,
+              },
+              ui.nameDraft,
+              (value) => (ui.nameDraft = value),
+              { Enter: () => saveName(key), Escape: () => closePanel("name") },
+            ),
+            smallButton(
+              busy === "name" ? "Saving…" : "Save",
+              () => saveName(key),
+              {
+                tone: "btn-primary",
+                disabled,
+              },
+            ),
+            smallButton("Cancel", () => closePanel("name"), { disabled }),
+          );
+        } else {
+          title = h(
+            "h2",
+            {},
+            h(
+              "button",
+              {
+                class: "name-btn" + (name ? "" : " is-unnamed"),
+                type: "button",
+                title: "Rename",
+                "data-focus": "name",
+                disabled,
+                onclick: () => openPanel("rename"),
+              },
+              name || "Unnamed",
+            ),
+          );
+        }
+
+        const copy = h(
+          "button",
+          {
+            class: "btn btn-ghost btn-sm",
+            type: "button",
+            "data-focus": "copy",
+          },
+          "Copy",
+        );
+        let copyTimer = 0;
+        copy.addEventListener("click", async () => {
+          const ok = await copyText(key.value);
+          copy.textContent = ok ? "Copied" : "Copy failed";
+          clearTimeout(copyTimer);
+          copyTimer = setTimeout(() => (copy.textContent = "Copy"), 1500);
+        });
+
+        const note = entryNote(entry);
+        return h(
+          "div",
+          { class: "d-head" },
+          h("div", { class: "d-title" }, title, buildMenu(entry)),
+          errorLine("name"),
+          h(
+            "div",
+            { class: "d-key" },
+            h(
+              "code",
+              { class: "key-text" },
+              ui.revealed ? key.value : mask(key.value),
+            ),
+            h(
+              "button",
+              {
+                class: "btn btn-ghost btn-sm",
+                type: "button",
+                "data-focus": "reveal",
+                onclick: () => {
+                  ui.revealed = !ui.revealed;
+                  renderAll();
+                },
+              },
+              ui.revealed ? "Hide" : "Show",
+            ),
+            copy,
+          ),
+          note && ui.panel !== "note"
+            ? h(
+                "button",
+                {
+                  class: "note-btn",
+                  type: "button",
+                  title: "Edit note",
+                  "data-focus": "note",
+                  disabled,
+                  onclick: () => openPanel("note"),
+                },
+                note,
+              )
+            : null,
+        );
+      }
+
+      function buildPanel(key) {
+        const disabled = busy !== null;
+        if (ui.panel === "note") {
+          return h(
+            "div",
+            { class: "panel" },
+            textInput(
+              {
+                maxlength: NOTE_MAX,
+                placeholder: "Note",
+                "aria-label": "Note",
+                "data-focus": "note-input",
+                disabled,
+              },
+              ui.noteDraft,
+              (value) => (ui.noteDraft = value),
+              { Enter: () => saveNote(key), Escape: () => closePanel("note") },
+            ),
+            smallButton(
+              busy === "note" ? "Saving…" : "Save",
+              () => saveNote(key),
+              {
+                tone: "btn-primary",
+                disabled,
+              },
+            ),
+            smallButton("Cancel", () => closePanel("note"), { disabled }),
+            errorLine("note"),
+          );
+        }
+        if (ui.panel === "rotate") {
+          const input = textInput(
+            {
+              class: "input input-mono",
+              placeholder: "New key",
+              "aria-label": "New key",
+              "data-focus": "rotate-input",
+              disabled,
+            },
+            ui.rotateDraft,
+            (value) => (ui.rotateDraft = value),
+            { Enter: () => rotateKey(key), Escape: () => closePanel("rotate") },
+          );
+          return h(
+            "div",
+            { class: "panel" },
+            input,
+            smallButton(
+              "Generate",
+              () => {
+                ui.rotateDraft = generateKey();
+                input.value = ui.rotateDraft;
+              },
+              { tone: "", disabled },
+            ),
+            smallButton(
+              busy === "rotate" ? "Rotating…" : "Rotate",
+              () => rotateKey(key),
+              { tone: "btn-primary", disabled },
+            ),
+            smallButton("Cancel", () => closePanel("rotate"), { disabled }),
+            h("p", { class: "hint" }, "The current key stops working at once."),
+            errorLine("rotate"),
+          );
+        }
+        if (ui.panel === "delete") {
+          const name = entryName(entryFor(key));
+          return h(
+            "div",
+            { class: "panel" },
+            h(
+              "span",
+              { class: "panel-text" },
+              "Delete " +
+                (name || mask(key.value)) +
+                "? Clients using it are refused at once.",
+            ),
+            smallButton(
+              busy === "delete" ? "Deleting…" : "Delete",
+              () => deleteKey(key),
+              { tone: "btn-danger-solid", disabled },
+            ),
+            smallButton("Cancel", () => closePanel("delete"), {
+              focus: "delete-cancel",
+              disabled,
+            }),
+            errorLine("delete"),
+          );
+        }
+        return null;
+      }
+
+      function buildSection(def, key, entry) {
+        const titleId = "sec-" + def.type;
+        const parts = def.render({
+          key,
+          entry,
+          policy: policiesOf(entry)[def.type],
+          titleId,
+          disabled: busy !== null,
+        });
+        return h(
+          "section",
+          { class: "sec", "aria-labelledby": titleId },
+          h(
+            "div",
+            { class: "sec-head" },
+            h("h3", { id: titleId }, def.title),
+            parts.control
+              ? h("div", { class: "sec-control" }, parts.control)
+              : null,
+          ),
+          parts.body,
+          errorLine(def.type),
+        );
+      }
+
+      function buildAddForm() {
+        const disabled = busy !== null;
+        const keyInput = textInput(
+          {
+            class: "input input-mono",
+            id: "add-key",
+            placeholder: "sk-…",
+            "data-focus": "add-key",
+            disabled,
+          },
+          ui.add.key,
+          (value) => (ui.add.key = value),
+        );
+        const form = h(
+          "form",
+          { class: "add-form", "aria-labelledby": "add-title" },
+          h("h2", { id: "add-title" }, "New key"),
+          h(
+            "div",
+            { class: "field" },
+            h("label", { for: "add-key" }, "Key"),
+            h(
+              "div",
+              { class: "row" },
+              keyInput,
+              smallButton(
+                "Generate",
+                () => {
+                  ui.add.key = generateKey();
+                  keyInput.value = ui.add.key;
+                },
+                { tone: "", focus: "add-generate", disabled },
+              ),
+            ),
+          ),
+          h(
+            "label",
+            { class: "field" },
+            "Name",
+            textInput(
+              {
+                maxlength: NAME_MAX,
+                placeholder: "Optional",
+                "data-focus": "add-name",
+                disabled,
+              },
+              ui.add.name,
+              (value) => (ui.add.name = value),
+            ),
+          ),
+          h(
+            "label",
+            { class: "field" },
+            "Note",
+            textInput(
+              {
+                maxlength: NOTE_MAX,
+                placeholder: "Optional",
+                "data-focus": "add-note",
+                disabled,
+              },
+              ui.add.note,
+              (value) => (ui.add.note = value),
+            ),
+          ),
+          h(
+            "div",
+            { class: "row" },
+            smallButton(busy === "add" ? "Adding…" : "Add", null, {
+              tone: "btn-primary",
+              submit: true,
+              focus: "add-submit",
+              disabled,
+            }),
+            state.keys.length > 0
+              ? smallButton("Cancel", closeAdd, { disabled })
+              : null,
+          ),
+          errorLine("add"),
+        );
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          addKey();
+        });
+        return form;
+      }
+
+      function renderDetail() {
+        const pane = $("detail");
+        if (ui.adding || state.keys.length === 0) {
+          pane.replaceChildren(buildAddForm());
+          return;
+        }
+        const key = selectedKey();
+        if (!key) {
+          pane.replaceChildren();
+          return;
+        }
+        const entry = entryFor(key);
+        const error = keyError(key);
+        const parts = [
+          buildHeader(key, entry),
+          error
+            ? h(
+                "div",
+                { class: "alert" },
+                h(
+                  "strong",
+                  {},
+                  "Requests with this key are refused until this is fixed.",
+                ),
+                h("span", {}, error),
+              )
+            : null,
+          buildPanel(key),
+          ...POLICIES.map((def) => buildSection(def, key, entry)),
+        ].filter(Boolean);
+        pane.replaceChildren(...parts);
+      }
+
+      function focusIdOf(el) {
+        return el && el !== document.body && el.dataset
+          ? el.dataset.focus || null
+          : null;
+      }
+
+      // Re-rendering replaces the controls, so focus is carried over by
+      // data-focus id: the explicit target if given, else the control that
+      // had focus.
+      function renderAll(target) {
+        const focusId = target || focusIdOf(document.activeElement);
+        renderAlerts();
+        renderList();
+        renderDetail();
+        if (!focusId) return;
+        const el = document.querySelector(
+          '[data-focus="' + CSS.escape(focusId) + '"]',
+        );
+        if (!el || el.disabled || el.closest("[hidden]")) return;
+        if (document.activeElement !== el) el.focus();
+        if (el.tagName === "INPUT" && el.type === "text") {
+          el.setSelectionRange(el.value.length, el.value.length);
+        }
+      }
+
+      // UI actions
+      function clearPanelErrors() {
+        for (const where of ["name", "note", "rotate", "delete"])
+          errors.delete(where);
+      }
+
+      function resetKeyUi() {
+        ui.panel = null;
+        ui.revealed = false;
+        ui.allMatches = false;
+        clearPanelErrors();
+        for (const def of POLICIES) errors.delete(def.type);
+      }
+
+      function select(value) {
+        if (ui.selected !== value || ui.adding) {
+          ui.selected = value;
+          ui.adding = false;
+          errors.delete("add");
+          resetKeyUi();
+        }
+        renderAll();
+      }
+
+      function openPanel(panel) {
+        const key = selectedKey();
+        if (!key) return;
+        const entry = entryFor(key);
+        clearPanelErrors();
+        ui.panel = panel;
+        if (panel === "rename") ui.nameDraft = entryName(entry);
+        if (panel === "note") ui.noteDraft = entryNote(entry);
+        if (panel === "rotate") ui.rotateDraft = "";
+        renderAll(
+          {
+            rename: "name-input",
+            note: "note-input",
+            rotate: "rotate-input",
+            delete: "delete-cancel",
+          }[panel],
+        );
+      }
+
+      function closePanel(where) {
+        ui.panel = null;
+        errors.delete(where);
+        const key = selectedKey();
+        const hasNote = key && entryNote(entryFor(key));
+        renderAll(
+          where === "name"
+            ? "name"
+            : where === "note" && hasNote
+              ? "note"
+              : "menu",
+        );
+      }
+
+      function openAdd() {
+        ui.adding = true;
+        errors.delete("add");
+        renderAll("add-key");
+      }
+
+      function closeAdd() {
+        ui.adding = false;
+        ui.add = { key: "", name: "", note: "" };
+        errors.delete("add");
+        const key = selectedKey();
+        renderAll(key ? "item-" + key.scope : "add-open");
+      }
+
+      // Data
+      async function ensureFingerprints(values) {
+        const missing = [...new Set(values)].filter(
+          (value) => !fingerprints.has(value),
+        );
+        if (missing.length === 0) return;
+        const body = { keys: missing };
+        if (apiBase) body.api_base = apiBase;
+        const data = await api("POST", PLUGIN + "/fingerprints", body);
+        const list =
+          data && Array.isArray(data.fingerprints) ? data.fingerprints : [];
+        if (list.length !== missing.length) {
+          throw new Error(
+            "The plugin returned " +
+              list.length +
+              " fingerprints for " +
+              missing.length +
+              " keys.",
+          );
+        }
+        missing.forEach((value, index) => {
+          const item = objectOr(list[index]);
+          const scope =
+            typeof item.scope === "string" ? item.scope.toLowerCase() : "";
+          if (!/^[0-9a-f]{64}$/.test(scope))
+            throw new Error("The plugin returned an invalid key fingerprint.");
+          fingerprints.set(value, {
+            scope,
+            nameFp:
+              typeof item.name_fingerprint === "string"
+                ? item.name_fingerprint
+                : "",
+          });
+        });
+      }
+
+      async function freshKeyList() {
+        const list = await getOr(KEY_LIST, []);
+        return Array.isArray(list)
+          ? list.filter((value) => typeof value === "string")
+          : [];
+      }
+
+      async function loadStatus() {
+        try {
+          const status = await api("GET", PLUGIN + "/status");
+          state.statusError = "";
+          return status && typeof status === "object" ? status : null;
+        } catch (err) {
+          if (err instanceof AuthError) throw err;
+          state.statusError = err.message;
+          return null;
+        }
+      }
+
+      async function loadData() {
+        const [list, config, status] = await Promise.all([
+          freshKeyList(),
+          getOr(PLUGIN_CONFIG, {}),
+          loadStatus(),
+        ]);
+        await ensureFingerprints(list);
+        state.keys = list.map((value) => ({
+          value,
+          ...fingerprints.get(value),
+        }));
+        state.config = objectOr(config);
+        indexEntries();
+        state.status = status;
+        state.localNames = readLocalNames();
+        state.loaded = true;
+        if (!selectedKey()) {
+          ui.selected = state.keys.length > 0 ? state.keys[0].value : null;
+          resetKeyUi();
+        }
+        if (state.keys.length === 0) ui.adding = true;
+        for (const [scope, draft] of drafts) {
+          const key = state.keys.find((item) => item.scope === scope);
+          const saved = key
+            ? savedModels(policiesOf(entryFor(key)).models)
+            : null;
+          if (!saved || !modelsDirty(saved, draft)) drafts.delete(scope);
+        }
+        $("loading").hidden = true;
+        renderAll();
+      }
+
+      function modelIds(list) {
+        if (!Array.isArray(list)) return null;
+        const ids = new Set();
+        for (const item of list) {
+          const id =
+            typeof item === "string"
+              ? item
+              : item && typeof item.id === "string"
+                ? item.id
+                : "";
+          if (id) ids.add(id);
+        }
+        return [...ids].sort((a, b) => a.localeCompare(b));
+      }
+
+      // /v1/models goes first: the plugin records the unfiltered list while
+      // serving it, even when the first key is itself restricted.
+      async function loadCatalog() {
+        let direct = null;
+        const first = state.keys[0];
+        if (first) {
+          try {
+            const response = await fetch(BASE + "/v1/models", {
+              headers: { Authorization: "Bearer " + first.value },
+              cache: "no-store",
+              credentials: "omit",
+            });
+            if (response.ok) direct = modelIds((await response.json()).data);
+          } catch (_) {}
+        }
+        let captured = null;
+        try {
+          captured = modelIds(
+            objectOr(await api("GET", PLUGIN + "/models")).models,
+          );
+        } catch (err) {
+          if (err instanceof AuthError) return;
+        }
+        const ids = captured && captured.length > 0 ? captured : direct;
+        state.catalog = ids && ids.length > 0 ? ids : null;
+        renderAll();
+      }
+
+      async function statusGeneration() {
+        try {
+          const status = await api("GET", PLUGIN + "/status");
+          if (status && typeof status.generation === "number")
+            return status.generation;
+        } catch (err) {
+          if (err instanceof AuthError) throw err;
+        }
+        return state.status && typeof state.status.generation === "number"
+          ? state.status.generation
+          : -1;
+      }
+
+      // Every config write reloads CLIProxyAPI asynchronously; the plugin
+      // bumps its generation once it has applied the new config.
+      async function waitApplied(before) {
+        for (let i = 0; i < POLL_TRIES; i++) {
+          await sleep(POLL_MS);
+          let status = null;
+          try {
+            status = await api("GET", PLUGIN + "/status");
+          } catch (err) {
+            if (err instanceof AuthError) throw err;
+          }
+          if (
+            status &&
+            typeof status.generation === "number" &&
+            status.generation > before
+          ) {
+            notice = "";
+            await loadData();
+            return;
+          }
+        }
+        await loadData();
+        notice = "Saved, but the plugin has not applied the change yet.";
+      }
+
+      function settle(pluginChanged, before) {
+        return pluginChanged ? waitApplied(before) : loadData();
+      }
+
+      async function write(where, work) {
+        if (busy) return;
+        const restore = focusIdOf(document.activeElement);
+        busy = where;
+        errors.delete(where);
+        afterWriteFocus = null;
+        renderAll();
+        try {
+          await work();
+        } catch (err) {
+          if (!(err instanceof AuthError)) errors.set(where, err.message);
+        } finally {
+          busy = null;
+          const target = focusIdOf(document.activeElement)
+            ? null
+            : afterWriteFocus || restore;
+          afterWriteFocus = null;
+          renderAll(target);
+        }
+      }
+
+      function lengthProblem(name, note) {
+        if (chars(name) > NAME_MAX)
+          return "Names are limited to " + NAME_MAX + " characters.";
+        if (chars(note) > NOTE_MAX)
+          return "Notes are limited to " + NOTE_MAX + " characters.";
+        return "";
+      }
+
+      function saveText(key, field, raw) {
+        const value = clean(raw);
+        const problem =
+          field === "name"
+            ? lengthProblem(value, "")
+            : lengthProblem("", value);
+        if (problem) {
+          errors.set(field, problem);
+          renderAll();
+          return;
+        }
+        const entry = entryFor(key);
+        const current = field === "name" ? entryName(entry) : entryNote(entry);
+        if (value === current) {
+          closePanel(field);
+          return;
+        }
+        write(field, async () => {
+          const before = await statusGeneration();
+          const url = entryUrl(storedScope(key.scope)) + "/" + field;
+          let changed = true;
+          if (value) await api("PUT", url, value);
+          else changed = await remove(url);
+          ui.panel = null;
+          afterWriteFocus = field === "name" ? "name" : value ? "note" : "menu";
+          await settle(changed, before);
+        });
+      }
+
+      const saveName = (key) => saveText(key, "name", ui.nameDraft);
+      const saveNote = (key) => saveText(key, "note", ui.noteDraft);
+
+      function addKey() {
+        const value = ui.add.key.trim();
+        const name = clean(ui.add.name);
+        const note = clean(ui.add.note);
+        const problem =
+          keyProblem(
+            value,
+            state.keys.map((key) => key.value),
+          ) || lengthProblem(name, note);
+        if (problem) {
+          errors.set("add", problem);
+          renderAll();
+          return;
+        }
+        write("add", async () => {
+          await ensureFingerprints([value]);
+          const { scope } = fingerprints.get(value);
+          const entry = {};
+          if (name) entry.name = name;
+          if (note) entry.note = note;
+          const withEntry = Object.keys(entry).length > 0;
+          const before = withEntry ? await statusGeneration() : -1;
+          const list = await freshKeyList();
+          if (list.includes(value)) throw new Error("This key already exists.");
+          const intended = [...list, value];
+          const patch = { access: { "api-keys": intended } };
+          if (withEntry) {
+            patch.plugins = {
+              configs: {
+                "client-keys": { keys: { [storedScope(scope)]: entry } },
+              },
+            };
+          }
+          listChanged = false;
+          await api("PATCH", CONFIG, patch);
+          await checkKeyList(intended);
+          ui.adding = false;
+          ui.add = { key: "", name: "", note: "" };
+          ui.selected = value;
+          resetKeyUi();
+          afterWriteFocus = "item-" + scope;
+          await settle(withEntry, before);
+          if (!state.catalog) loadCatalog();
+        });
+      }
+
+      function rotateKey(key) {
+        const value = ui.rotateDraft.trim();
+        const problem = keyProblem(
+          value,
+          state.keys.map((item) => item.value),
+        );
+        if (problem) {
+          errors.set("rotate", problem);
+          renderAll();
+          return;
+        }
+        write("rotate", async () => {
+          await ensureFingerprints([value]);
+          const { scope } = fingerprints.get(value);
+          const oldStored = storedScope(key.scope);
+          const entry = objectOr(await getOr(entryUrl(oldStored), null));
+          const carry = Object.keys(entry).length > 0;
+          // Settings left behind for the new value would merge into the
+          // rotated key's.
+          const stale = entryNames.get(scope);
+          const pluginChanged = carry || stale !== undefined;
+          const before = pluginChanged ? await statusGeneration() : -1;
+          const list = await freshKeyList();
+          if (!list.includes(key.value))
+            throw new Error(
+              "This key is no longer configured. Reload to see the current keys.",
+            );
+          if (list.includes(value)) throw new Error("This key already exists.");
+          const intended = list.map((item) =>
+            item === key.value ? value : item,
+          );
+          const patch = { access: { "api-keys": intended } };
+          if (carry) {
+            patch.plugins = {
+              configs: { "client-keys": { keys: { [scope]: entry } } },
+            };
+          }
+          if (stale !== undefined) await remove(entryUrl(stale));
+          listChanged = false;
+          await api("PATCH", CONFIG, patch);
+          await checkKeyList(intended);
+          if (carry) await remove(entryUrl(oldStored));
+          if (drafts.has(key.scope)) {
+            drafts.set(scope, drafts.get(key.scope));
+            drafts.delete(key.scope);
+          }
+          ui.selected = value;
+          ui.panel = null;
+          ui.rotateDraft = "";
+          afterWriteFocus = "copy";
+          await settle(pluginChanged, before);
+        });
+      }
+
+      function deleteKey(key) {
+        write("delete", async () => {
+          const before = await statusGeneration();
+          const list = await freshKeyList();
+          const next = list.filter((item) => item !== key.value);
+          listChanged = false;
+          if (next.length !== list.length) await api("PUT", KEY_LIST, next);
+          await checkKeyList(next);
+          const removed = await remove(entryUrl(storedScope(key.scope)));
+          drafts.delete(key.scope);
+          const index = state.keys.findIndex(
+            (item) => item.value === key.value,
+          );
+          const rest = state.keys.filter((item) => item.value !== key.value);
+          const neighbor = rest[Math.min(Math.max(index, 0), rest.length - 1)];
+          ui.selected = neighbor ? neighbor.value : null;
+          resetKeyUi();
+          afterWriteFocus = neighbor ? "item-" + neighbor.scope : "add-key";
+          await settle(removed, before);
+        });
+      }
+
+      // There is no compare-and-swap on access.api-keys: a write landing
+      // between our read and our whole-list write is lost or revived.
+      async function checkKeyList(intended) {
+        listChanged = !sameMembers(await freshKeyList(), intended);
+      }
+
+      function removeStrays(entries) {
+        write("strays", async () => {
+          const before = await statusGeneration();
+          let changed = false;
+          for (const item of entries) {
+            if (await remove(entryUrl(item.stored))) changed = true;
+          }
+          confirmStrays = false;
+          afterWriteFocus = "filter";
+          await settle(changed, before);
+        });
+      }
+
+      function importNames(candidates) {
+        write("import", async () => {
+          const before = await statusGeneration();
+          const keys = {};
+          for (const item of candidates) keys[item.scope] = { name: item.name };
+          await api("PATCH", CONFIG, {
+            plugins: { configs: { "client-keys": { keys } } },
+          });
+          await waitApplied(before);
+        });
+      }
+
+      // Static controls
+      $("filter").addEventListener("input", () => {
+        ui.filter = $("filter").value;
+        renderList();
+      });
+      $("add-open").addEventListener("click", openAdd);
+      $("list").addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        const items = [...$("list").querySelectorAll(".item")];
+        const index = items.indexOf(document.activeElement);
+        if (index < 0) return;
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        const next =
+          items[Math.min(items.length - 1, Math.max(0, index + step))];
+        next.focus();
+        next.click();
+      });
+
+      function showPageError(message) {
+        pageError = message;
+        renderAlerts();
+      }
+
+      async function refresh() {
+        showPageError("");
+        try {
+          await loadData();
+          loadCatalog();
+        } catch (err) {
+          if (!(err instanceof AuthError)) {
+            $("loading").hidden = true;
+            showPageError(err.message);
+          }
+        }
+      }
+
+      $("reload").addEventListener("click", async () => {
+        $("reload").disabled = true;
+        notice = "";
+        listChanged = false;
+        confirmStrays = false;
+        await refresh();
+        $("reload").disabled = false;
+      });
+
+      // Authentication
+      function showContent() {
+        $("auth").hidden = true;
+        $("content").hidden = false;
+        $("bar-actions").hidden = false;
+      }
+
+      function showAuth(message) {
+        $("content").hidden = true;
+        $("bar-actions").hidden = true;
+        $("auth").hidden = false;
+        $("auth-error").textContent = message;
+        $("auth-error").hidden = !message;
+        $("auth-key").value = "";
+        $("auth-key").focus();
+      }
+
+      $("auth").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const typed = $("auth-key").value.trim();
+        if (!typed) return;
+        auth.key = typed;
+        auth.source = "typed";
+        const submit = $("auth-submit");
+        submit.disabled = true;
+        try {
+          await loadData();
+          storageSet(sessionStorage, SESSION_KEY, typed);
+          auth.source = "session";
+          showContent();
+          loadCatalog();
+        } catch (err) {
+          if (!(err instanceof AuthError)) {
+            $("auth-error").textContent = err.message;
+            $("auth-error").hidden = false;
+          }
+        } finally {
+          submit.disabled = false;
+        }
+      });
+
+      Object.assign(auth, resolveKey());
+      if (auth.key) {
+        showContent();
+        refresh();
+      } else {
+        showAuth("");
+      }
+    </script>
+  </body>
+</html>

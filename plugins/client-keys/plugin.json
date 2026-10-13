@@ -1,0 +1,10 @@
+{
+  "id": "client-keys",
+  "name": "Client keys",
+  "description": "Policies per CLIProxyAPI client API key: which models a key may use and see in model lists, and whether it may use the OpenAI Responses API. Set them on a Management Center page.",
+  "author": "Whexy",
+  "repository": "https://github.com/whexy/whexy-cpa-store",
+  "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/client-keys",
+  "license": "MIT",
+  "tags": ["access", "models", "interceptor", "management"]
+}
