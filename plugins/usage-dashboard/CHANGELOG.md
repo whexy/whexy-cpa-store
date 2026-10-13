@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/whexy/whexy-cpa-store/compare/usage-dashboard-v0.2.0...usage-dashboard-v0.3.0) (2026-10-13)
+
+
+### Features
+
+* **usage-dashboard:** set custom model prices from the Usage page
+
 ## [0.2.0](https://github.com/whexy/whexy-cpa-store/compare/usage-dashboard-v0.1.0...usage-dashboard-v0.2.0) (2026-10-13)
 
 
