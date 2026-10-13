@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"net/http"
 	"strings"
 	"testing"
@@ -28,7 +30,7 @@ func manage(t *testing.T, method, path string, body string) pluginapi.Management
 		t.Fatal(errHandle)
 	}
 	resp := decodeResult[pluginapi.ManagementResponse](t, raw)
-	if path != resourcePagePath && (resp.Headers.Get("Content-Type") != "application/json; charset=utf-8" || resp.Headers.Get("Cache-Control") != "no-store") {
+	if path != resourcePagePath && path != logoPath && (resp.Headers.Get("Content-Type") != "application/json; charset=utf-8" || resp.Headers.Get("Cache-Control") != "no-store") {
 		t.Fatalf("%s %s headers = %v", method, path, resp.Headers)
 	}
 	return resp
@@ -62,8 +64,26 @@ func TestManagementRegistrationWireShape(t *testing.T) {
 	if strings.Join(routes, ",") != want {
 		t.Fatalf("routes = %v", routes)
 	}
-	if len(reg.Resources) != 1 || reg.Resources[0].Path != "/v0/resource/plugins/client-keys/index.html" || reg.Resources[0].Menu != "Client keys" || reg.Resources[0].Description == "" {
+	if len(reg.Resources) != 2 || reg.Resources[0].Path != "/v0/resource/plugins/client-keys/index.html" || reg.Resources[0].Menu != "Client keys" || reg.Resources[0].Description == "" ||
+		reg.Resources[1].Path != "/v0/resource/plugins/client-keys/logo.svg" || reg.Resources[1].Menu != "" {
 		t.Fatalf("resources = %+v", reg.Resources)
+	}
+}
+
+func TestLogo(t *testing.T) {
+	resp := manage(t, "GET", logoPath, "")
+	if resp.StatusCode != http.StatusOK || !bytes.Equal(resp.Body, logoSVG) || resp.Headers.Get("Content-Type") != "image/svg+xml" || resp.Headers.Get("Content-Security-Policy") != "default-src 'none'" {
+		t.Fatalf("logo = %d %v", resp.StatusCode, resp.Headers)
+	}
+	var svg struct {
+		XMLName xml.Name
+		ViewBox string `xml:"viewBox,attr"`
+	}
+	if errParse := xml.Unmarshal(logoSVG, &svg); errParse != nil || svg.XMLName.Local != "svg" || svg.ViewBox != "0 0 24 24" {
+		t.Fatalf("logo is not a 24x24 SVG: %+v %v", svg, errParse)
+	}
+	if pluginRegistration().Metadata.Logo != logoPath {
+		t.Fatalf("Metadata.Logo = %q", pluginRegistration().Metadata.Logo)
 	}
 }
 

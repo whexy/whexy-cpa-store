@@ -21,6 +21,9 @@ const (
 	// resourcePagePath is the page Management Center embeds under the
 	// "Client keys" menu. Resource routes are not authenticated.
 	resourcePagePath = "/v0/resource/plugins/" + pluginID + "/index.html"
+	// logoPath is Metadata.Logo: Management Center shows it on the sidebar
+	// entry and on the Plugins page.
+	logoPath = "/v0/resource/plugins/" + pluginID + "/logo.svg"
 	// managementBasePath prefixes the authenticated routes; the host
 	// matches exact paths.
 	managementBasePath = "/v0/management/" + pluginID
@@ -38,6 +41,12 @@ const (
 var managementPage []byte
 
 var managementPageCSP = pageCSP(managementPage)
+
+// logoSVG is the plugin mark; ../logo.svg is the copy the store registry
+// links to.
+//
+//go:embed logo.svg
+var logoSVG []byte
 
 type managementRegistration struct {
 	Routes    []managementRoute `json:"routes,omitempty"`
@@ -66,11 +75,10 @@ var managementRoutes = []managementRoute{
 func managementRegister() ([]byte, error) {
 	return okEnvelope(managementRegistration{
 		Routes: managementRoutes,
-		Resources: []resourceRoute{{
-			Path:        resourcePagePath,
-			Menu:        displayName,
-			Description: "Set model and Responses API policies per client API key.",
-		}},
+		Resources: []resourceRoute{
+			{Path: resourcePagePath, Menu: displayName, Description: "Set model and Responses API policies per client API key."},
+			{Path: logoPath, Description: displayName + " logo."},
+		},
 	})
 }
 
@@ -95,6 +103,18 @@ func routeManagement(req pluginapi.ManagementRequest) pluginapi.ManagementRespon
 				"Referrer-Policy":         {"no-referrer"},
 			},
 			Body: managementPage,
+		}
+	}
+	if method == http.MethodGet && req.Path == logoPath {
+		return pluginapi.ManagementResponse{
+			StatusCode: http.StatusOK,
+			Headers: http.Header{
+				"Content-Type":            {"image/svg+xml"},
+				"Cache-Control":           {"public, max-age=3600"},
+				"Content-Security-Policy": {"default-src 'none'"},
+				"X-Content-Type-Options":  {"nosniff"},
+			},
+			Body: logoSVG,
 		}
 	}
 	for _, route := range managementRoutes {

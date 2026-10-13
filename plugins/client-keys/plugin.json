@@ -5,6 +5,7 @@
   "author": "Whexy",
   "repository": "https://github.com/whexy/whexy-cpa-store",
   "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/client-keys",
+  "logo": "https://raw.githubusercontent.com/whexy/whexy-cpa-store/main/plugins/client-keys/logo.svg",
   "license": "MIT",
   "tags": ["access", "models", "interceptor", "management"]
 }

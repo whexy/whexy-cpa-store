@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Client keys">
+  <g fill="none" stroke="#8b8680" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="7" cy="7.5" r="3.5" />
+    <path d="M10.5 7.5h10M17.5 7.5V10M20.5 7.5v2" />
+    <path d="M9 14.5h11.5M9 19h7" />
+  </g>
+  <g fill="#8b8680">
+    <circle cx="5" cy="14.5" r="1.4" />
+    <circle cx="5" cy="19" r="1.4" />
+  </g>
+</svg>

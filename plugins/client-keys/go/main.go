@@ -184,6 +184,7 @@ func pluginRegistration() registration {
 			Version:          pluginVersion,
 			Author:           "Whexy",
 			GitHubRepository: "https://github.com/whexy/whexy-cpa-store",
+			Logo:             logoPath,
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "keys", Type: pluginapi.ConfigFieldTypeObject, Description: "Policies per client API key, keyed by the key's caller scope (64 hex characters). Edit them on the Client keys page in Management Center."},
 			},
