@@ -47,7 +47,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.1.0"
+	pluginVersion = "0.2.0"
 
 	pluginID    = "client-keys"
 	displayName = "Client keys"
