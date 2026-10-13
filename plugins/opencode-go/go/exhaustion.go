@@ -25,6 +25,15 @@ type usageBlock struct {
 	gen     uint64
 }
 
+// retryAfter is the cooldown CPA should apply for a request this block
+// rejects: the time left until the exhausted window resets.
+func (b usageBlock) retryAfter(now time.Time) time.Duration {
+	if retryAfter := b.Until.Sub(now); retryAfter > 0 {
+		return retryAfter
+	}
+	return 0
+}
+
 func (b usageBlock) message() string {
 	window := "usage"
 	if len(b.Windows) > 0 {

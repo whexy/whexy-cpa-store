@@ -102,7 +102,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	}
 	if !route.Free {
 		if block, blocked := exhaustion.active(cred.ID, req.AuthID); blocked {
-			return nil, errorEnvelope("usage_limit", block.message(), http.StatusTooManyRequests)
+			return nil, errorEnvelopeWithRetryAfter("usage_limit", block.message(), http.StatusTooManyRequests, block.retryAfter(exhaustion.now()))
 		}
 	}
 	source := normalizeFormat(req.SourceFormat)
@@ -276,7 +276,7 @@ func (c *executorCall) upstreamFailure(ctx context.Context, status int, headers 
 	switch {
 	case upstream.Type == upstreamUsageLimit:
 		block := c.blockForUsageLimit(ctx)
-		return errorEnvelope("usage_limit", block.message()+": "+message, http.StatusTooManyRequests)
+		return errorEnvelopeWithRetryAfter("usage_limit", block.message()+": "+message, http.StatusTooManyRequests, block.retryAfter(exhaustion.now()))
 	case upstream.Type == upstreamProtocolUnsupported:
 		c.host.Log("error", "OpenCode Go rejected the endpoint the catalog names for a model", map[string]any{
 			"model":    c.route.UpstreamID,

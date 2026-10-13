@@ -100,6 +100,9 @@ type envelopeError struct {
 	Code       string `json:"code"`
 	Message    string `json:"message"`
 	HTTPStatus int    `json:"http_status,omitempty"`
+	// RetryAfterSeconds tells CPA how long to cool the failed (auth, model)
+	// down; older CPA versions ignore it and use their generic 429 backoff.
+	RetryAfterSeconds float64 `json:"retry_after_seconds,omitempty"`
 }
 
 type lifecycleRequest struct {
@@ -491,6 +494,13 @@ func errorEnvelope(code, message string, httpStatus ...int) []byte {
 		status = httpStatus[0]
 	}
 	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: redactSecrets(message), HTTPStatus: status}})
+	return raw
+}
+
+// errorEnvelopeWithRetryAfter is errorEnvelope plus the cooldown CPA should
+// apply to the failed (auth, model) instead of its generic status backoff.
+func errorEnvelopeWithRetryAfter(code, message string, httpStatus int, retryAfter time.Duration) []byte {
+	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: redactSecrets(message), HTTPStatus: httpStatus, RetryAfterSeconds: retryAfter.Seconds()}})
 	return raw
 }
 

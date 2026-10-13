@@ -115,6 +115,9 @@ func TestUsageLimitBlocksPaidModelsUntilReset(t *testing.T) {
 	if env.OK || env.Error.HTTPStatus != http.StatusTooManyRequests || !strings.Contains(env.Error.Message, "weekly limit") || !strings.Contains(env.Error.Message, "2026-10-14T02:00:00Z") || !strings.Contains(env.Error.Message, "GoUsageLimitError") {
 		t.Fatalf("first request = %+v", env.Error)
 	}
+	if env.Error.RetryAfterSeconds != (30 * time.Hour).Seconds() {
+		t.Fatalf("first request retry_after_seconds = %v, want %v", env.Error.RetryAfterSeconds, (30 * time.Hour).Seconds())
+	}
 	var usageCalls []hostHTTPRequest
 	for _, req := range gateway.requests {
 		if strings.HasSuffix(req.URL, "/v1/usage") {
@@ -133,6 +136,9 @@ func TestUsageLimitBlocksPaidModelsUntilReset(t *testing.T) {
 		env = paid(testKeyA, stream)
 		if env.OK || env.Error.HTTPStatus != http.StatusTooManyRequests || !strings.Contains(env.Error.Message, "free models stay available") {
 			t.Fatalf("blocked request stream=%v = %+v", stream, env.Error)
+		}
+		if env.Error.RetryAfterSeconds != (30 * time.Hour).Seconds() {
+			t.Fatalf("blocked request stream=%v retry_after_seconds = %v, want %v", stream, env.Error.RetryAfterSeconds, (30 * time.Hour).Seconds())
 		}
 	}
 	if got := len(gateway.inferenceRequests()); got != before {
