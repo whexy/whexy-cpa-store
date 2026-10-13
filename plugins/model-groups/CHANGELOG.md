@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.1.2...model-groups-v0.1.3) (2026-10-13)
+
+
+### Bug Fixes
+
+* **model-groups:** answer request.intercept_before as a no-op
+
 ## [0.1.2](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.1.1...model-groups-v0.1.2) (2026-10-13)
 
 
