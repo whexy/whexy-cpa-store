@@ -243,6 +243,7 @@ func pluginRegistration() registration {
 			Version:          pluginVersion,
 			Author:           "Whexy",
 			GitHubRepository: "https://github.com/whexy/whexy-cpa-store",
+			Logo:             logoPath,
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "data_dir", Type: pluginapi.ConfigFieldTypeString, Description: "Directory for the usage files. Default: data/usage-dashboard beside the plugins directory that holds this plugin, so it lands on the same volume. Relative paths resolve from CLIProxyAPI's working directory."},
 				{Name: "retention_days", Type: pluginapi.ConfigFieldTypeInteger, Description: fmt.Sprintf("Days of usage to keep, 1 to %d. Default %d. The page offers the 90-day range only when this is at least 90.", maxRetentionDays, defaultRetentionDays)},

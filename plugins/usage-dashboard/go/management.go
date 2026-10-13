@@ -17,6 +17,9 @@ const (
 	// pagePath is the page Management Center embeds under the "Usage" menu.
 	// Resource routes are not authenticated, so the page holds no data.
 	pagePath = "/v0/resource/plugins/" + pluginID + "/index.html"
+	// logoPath is Metadata.Logo: Management Center shows it on the sidebar
+	// entry and on the Plugins page.
+	logoPath = "/v0/resource/plugins/" + pluginID + "/logo.svg"
 	// summaryPath is the authenticated route the page reads.
 	summaryPath = "/v0/management/" + pluginID + "/summary"
 )
@@ -25,6 +28,12 @@ const (
 var dashboardPage []byte
 
 var dashboardCSP = pageCSP(dashboardPage)
+
+// logoSVG is the plugin mark; ../logo.svg is the copy the store registry
+// links to.
+//
+//go:embed logo.svg
+var logoSVG []byte
 
 type rpcManagementRequest struct {
 	pluginapi.ManagementRequest
@@ -55,11 +64,10 @@ func managementRegister(_ []byte) ([]byte, error) {
 			Path:        summaryPath,
 			Description: "Usage totals, per-group series and per-model rows: ?range=24h|7d|30d|90d&group=family|account&tz=<IANA zone>.",
 		}},
-		Resources: []resourceRoute{{
-			Path:        pagePath,
-			Menu:        menuLabel,
-			Description: "Token usage and estimated cost by model family or account.",
-		}},
+		Resources: []resourceRoute{
+			{Path: pagePath, Menu: menuLabel, Description: "Token usage and estimated cost by model family or account."},
+			{Path: logoPath, Description: displayName + " logo."},
+		},
 	})
 }
 
@@ -85,6 +93,17 @@ func routeManagement(req pluginapi.ManagementRequest) pluginapi.ManagementRespon
 				"Referrer-Policy":         {"no-referrer"},
 			},
 			Body: dashboardPage,
+		}
+	case method == http.MethodGet && req.Path == logoPath:
+		return pluginapi.ManagementResponse{
+			StatusCode: http.StatusOK,
+			Headers: http.Header{
+				"Content-Type":            {"image/svg+xml"},
+				"Cache-Control":           {"public, max-age=3600"},
+				"Content-Security-Policy": {"default-src 'none'"},
+				"X-Content-Type-Options":  {"nosniff"},
+			},
+			Body: logoSVG,
 		}
 	case method == http.MethodGet && req.Path == summaryPath:
 		report, errReport := summary(reportQuery{

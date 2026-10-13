@@ -5,6 +5,7 @@
   "author": "Whexy",
   "repository": "https://github.com/whexy/whexy-cpa-store",
   "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/usage-dashboard",
+  "logo": "https://raw.githubusercontent.com/whexy/whexy-cpa-store/main/plugins/usage-dashboard/logo.svg",
   "license": "MIT",
   "tags": ["usage", "tokens", "cost", "dashboard"]
 }
