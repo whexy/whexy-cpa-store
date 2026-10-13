@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Model Groups">
+  <g fill="none" stroke="#8b8680" stroke-width="1.6" stroke-linecap="round">
+    <path d="M4 7h5.5M4 12h4M4 17h5.5" />
+    <path d="M14.5 5.5v13" />
+  </g>
+  <g fill="#8b8680">
+    <circle cx="17.5" cy="6.5" r="2.2" />
+    <circle cx="17.5" cy="12" r="2.2" />
+    <circle cx="17.5" cy="17.5" r="2.2" />
+  </g>
+  <g fill="none" stroke="#8b8680" stroke-width="1.6" stroke-linecap="round">
+    <path d="M9.5 7c2.5 0 3-0.5 5.5-0.5M9.5 12h5.5M9.5 17c2.5 0 3 0.5 5.5 0.5" />
+  </g>
+</svg>

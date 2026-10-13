@@ -1,0 +1,10 @@
+{
+  "id": "model-groups",
+  "name": "Model Groups",
+  "description": "Publishes one model ID per group of models served by CLIProxyAPI, for example auto-group/fast, and routes each request to one of the group's models by round robin, weighted round robin or fill first. Groups and their members are managed on a Management Center page; CLIProxyAPI keeps choosing the provider account.",
+  "author": "Whexy",
+  "repository": "https://github.com/whexy/whexy-cpa-store",
+  "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/model-groups",
+  "license": "MIT",
+  "tags": ["routing", "groups", "model-router", "load-balancing"]
+}

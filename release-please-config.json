@@ -24,6 +24,10 @@
     "plugins/usage-dashboard": {
       "component": "usage-dashboard",
       "extra-files": ["go/main.go"]
+    },
+    "plugins/model-groups": {
+      "component": "model-groups",
+      "extra-files": ["go/main.go"]
     }
   }
 }

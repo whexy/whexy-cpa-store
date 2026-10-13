@@ -1,0 +1,2185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Model Groups</title>
+    <style>
+      :root {
+        --font-sans:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu,
+          Cantarell, "Helvetica Neue", sans-serif;
+        --font-mono:
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 8px;
+        --bg-page: #faf9f5;
+        --bg-card: #f0eee8;
+        --bg-subtle: #e9e6df;
+        --bg-hover: #e2ded6;
+        --fg: #2d2a26;
+        --fg-2: #6d6760;
+        --fg-3: #a29c95;
+        --fg-4: #c0bab3;
+        --line: #e3e1db;
+        --line-2: #d5d2cb;
+        --line-3: #cecac4;
+        --accent: #8b8680;
+        --accent-hover: #7f7a74;
+        --accent-contrast: #ffffff;
+        --ok: #10b981;
+        --ok-text: #065f46;
+        --warn: #c65746;
+        --warn-text: #8a3a30;
+        --amber: #d97706;
+        --amber-text: #92400e;
+        --scrim: rgba(45, 42, 38, 0.28);
+        --hover-bg: rgba(0, 0, 0, 0.03);
+        color-scheme: light;
+      }
+      [data-theme="white"] {
+        --bg-page: #fff;
+        --bg-card: #fff;
+        --bg-subtle: #f6f6f6;
+        --bg-hover: #eee;
+        --line: #e5e5e5;
+        --line-2: #d5d5d5;
+        --line-3: #ccc;
+      }
+      [data-theme="dark"] {
+        --bg-page: #151412;
+        --bg-card: #1d1b18;
+        --bg-subtle: #262320;
+        --bg-hover: #2e2a26;
+        --fg: #f6f4f1;
+        --fg-2: #c9c3bb;
+        --fg-3: #9c958d;
+        --fg-4: #6f6962;
+        --line: #3a3530;
+        --line-2: #4a453f;
+        --line-3: #5a544d;
+        --accent-hover: #9a948e;
+        --ok: #0fae78;
+        --ok-text: #6ee7b7;
+        --warn-text: #f1b0a6;
+        --amber: #f59e0b;
+        --amber-text: #fcd34d;
+        --scrim: rgba(0, 0, 0, 0.45);
+        --hover-bg: rgba(255, 255, 255, 0.04);
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: var(--font-sans);
+        background: var(--bg-page);
+        color: var(--fg);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .page {
+        flex: 1;
+        min-width: 0;
+        padding: 16px 18px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        position: relative;
+      }
+      .head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .head h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+      .head .spacer {
+        flex: 1;
+      }
+      .facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .fact {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--fg-3);
+        background: var(--bg-subtle);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 9px;
+      }
+      .fact b {
+        color: var(--fg-2);
+        font-weight: 600;
+      }
+      .fact.warn {
+        color: var(--warn-text);
+        border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+        background: color-mix(in srgb, var(--warn) 12%, transparent);
+      }
+      .fact .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--ok);
+      }
+      .fact.warn .dot {
+        background: var(--warn);
+      }
+
+      .btn {
+        border: 1px solid var(--line-2);
+        background: var(--bg-card);
+        color: var(--fg);
+        font: inherit;
+        font-size: 12px;
+        padding: 5px 11px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .btn:hover {
+        background: var(--bg-hover);
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-contrast);
+        font-weight: 600;
+      }
+      .btn.ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--fg-2);
+      }
+      .btn.ghost:hover {
+        background: var(--hover-bg);
+        color: var(--fg);
+      }
+
+      .group {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--bg-card);
+        overflow: hidden;
+      }
+      .group + .group {
+        margin-top: 10px;
+      }
+      .group .row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 11px 12px;
+      }
+      .group.open .row {
+        border-bottom: 1px solid var(--line);
+      }
+      .gid {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        color: var(--fg);
+      }
+      .gid .copy {
+        margin-left: 6px;
+        color: var(--fg-4);
+        cursor: pointer;
+      }
+      .sub {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 7px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 1px 6px;
+        color: var(--fg-2);
+        background: var(--bg-page);
+      }
+      .chip .mono {
+        font-family: var(--font-mono);
+        font-size: 11px;
+      }
+      .chip .prov {
+        color: var(--fg-3);
+        font-size: 10px;
+        letter-spacing: 0.02em;
+        text-transform: lowercase;
+      }
+      .chip.warn {
+        color: var(--warn-text);
+        border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+        background: color-mix(in srgb, var(--warn) 10%, transparent);
+      }
+      .chip.amber {
+        color: var(--amber-text);
+        border-color: color-mix(in srgb, var(--amber) 35%, transparent);
+        background: color-mix(in srgb, var(--amber) 10%, transparent);
+      }
+      .chip.plain {
+        border-style: dashed;
+      }
+      .meta {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        color: var(--fg-3);
+        font-size: 11.5px;
+        white-space: nowrap;
+        padding-top: 2px;
+      }
+      .meta .num {
+        color: var(--fg-2);
+        font-variant-numeric: tabular-nums;
+      }
+      .caret {
+        color: var(--fg-4);
+        padding-top: 3px;
+      }
+
+      .body {
+        padding: 4px 12px 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--fg-3);
+        font-size: 10.5px;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        padding: 8px 6px 6px;
+      }
+      td {
+        padding: 7px 6px;
+        border-top: 1px solid var(--line);
+        vertical-align: middle;
+      }
+      td.mono,
+      th.mono {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+      }
+      td.num {
+        font-variant-numeric: tabular-nums;
+        color: var(--fg-2);
+        text-align: right;
+      }
+      .meter {
+        height: 5px;
+        border-radius: 3px;
+        background: var(--bg-subtle);
+        overflow: hidden;
+        min-width: 54px;
+      }
+      .meter span {
+        display: block;
+        height: 100%;
+        background: var(--accent);
+      }
+      .meter.zero span {
+        background: transparent;
+      }
+      .sec-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 12px 0 2px;
+        font-size: 11px;
+        color: var(--fg-3);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .sec-title .spacer {
+        flex: 1;
+      }
+
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+      }
+      .scrim {
+        background: rgba(45, 42, 38, 0.28);
+      }
+      .drawer {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 430px;
+        background: var(--bg-card);
+        border-left: 1px solid var(--line-2);
+        display: flex;
+        flex-direction: column;
+      }
+      .drawer .dhead {
+        padding: 12px 14px 10px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .drawer .dbody {
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        overflow: auto;
+      }
+      .drawer .dfoot {
+        margin-top: auto;
+        padding: 10px 14px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .drawer .dfoot .spacer {
+        flex: 1;
+      }
+      label.f {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        font-size: 11px;
+        color: var(--fg-3);
+      }
+      input[type="text"],
+      select {
+        font: inherit;
+        font-size: 12.5px;
+        color: var(--fg);
+        background: var(--bg-page);
+        border: 1px solid var(--line-2);
+        border-radius: 6px;
+        padding: 5px 8px;
+        width: 100%;
+      }
+      .seg {
+        display: flex;
+        border: 1px solid var(--line-2);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .seg button {
+        flex: 1;
+        font: inherit;
+        font-size: 11.5px;
+        padding: 5px 4px;
+        background: var(--bg-page);
+        color: var(--fg-3);
+        border: 0;
+        border-right: 1px solid var(--line);
+        cursor: pointer;
+      }
+      .seg button:last-child {
+        border-right: 0;
+      }
+      .seg button[aria-pressed="true"] {
+        background: var(--accent);
+        color: var(--accent-contrast);
+        font-weight: 600;
+      }
+      .note {
+        font-size: 11px;
+        color: var(--fg-3);
+      }
+      .mrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg-page);
+      }
+      .mrow + .mrow {
+        margin-top: 6px;
+      }
+      .mrow .grip {
+        color: var(--fg-4);
+        cursor: grab;
+        font-size: 12px;
+      }
+      .mrow .m {
+        flex: 1;
+        min-width: 0;
+      }
+      .mrow .m .id {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+      }
+      .mrow input[type="text"] {
+        width: 46px;
+        text-align: center;
+      }
+      .mrow select {
+        width: auto;
+        font-size: 11.5px;
+        padding: 4px 6px;
+      }
+      .pick {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .pick .search {
+        padding: 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      .pick ul {
+        list-style: none;
+        margin: 0;
+        padding: 4px;
+        max-height: 132px;
+        overflow: auto;
+      }
+      .pick li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 6px;
+        border-radius: 5px;
+        font-size: 12px;
+      }
+      .pick li:hover {
+        background: var(--hover-bg);
+      }
+      .pick li .box {
+        width: 13px;
+        height: 13px;
+        border: 1px solid var(--line-2);
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: var(--accent-contrast);
+      }
+      .pick li[data-on="1"] .box {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .pick li .m {
+        flex: 1;
+        min-width: 0;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .pick li .st {
+        font-size: 10.5px;
+        color: var(--fg-3);
+        white-space: nowrap;
+      }
+      .pick li .st.warn {
+        color: var(--warn-text);
+      }
+      .pick li .st.amber {
+        color: var(--amber-text);
+      }
+      .switch {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--fg-2);
+      }
+      .switch .t {
+        width: 30px;
+        height: 17px;
+        border-radius: 999px;
+        background: var(--bg-subtle);
+        border: 1px solid var(--line-2);
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .switch .t::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: var(--fg-3);
+      }
+      .switch[data-on="1"] .t {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .switch[data-on="1"] .t::after {
+        left: 15px;
+        background: #fff;
+      }
+      .stackrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+      }
+      .stackrow .k {
+        color: var(--fg-3);
+        font-size: 11.5px;
+      }
+
+      .page {
+        max-width: 1200px;
+        margin: auto;
+        min-height: 100vh;
+      }
+      .spacer,
+      .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .mono {
+        font-family: var(--font-mono);
+      }
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .btn.primary:hover {
+        background: var(--accent-hover);
+      }
+      .error {
+        color: var(--warn-text);
+        font-size: 12px;
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .empty {
+        padding: 32px;
+        text-align: center;
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+      }
+      .expander {
+        border: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        font: inherit;
+        padding: 0;
+        cursor: pointer;
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        flex: 1;
+        min-width: 0;
+      }
+      .gid {
+        overflow-wrap: anywhere;
+      }
+      .copy {
+        padding: 0 4px;
+        border: 0;
+        background: transparent;
+        font: inherit;
+        color: var(--fg-3);
+        cursor: pointer;
+      }
+      .copy-id {
+        position: relative;
+        width: 18px;
+        height: 18px;
+        vertical-align: middle;
+      }
+      .copy-id::before,
+      .copy-id::after {
+        content: "";
+        position: absolute;
+        width: 8px;
+        height: 9px;
+        border: 1px solid currentColor;
+        border-radius: 1px;
+      }
+      .copy-id::before {
+        top: 2px;
+        left: 3px;
+      }
+      .copy-id::after {
+        top: 5px;
+        left: 6px;
+        background: var(--bg-card);
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      th.num {
+        text-align: right;
+      }
+      .share {
+        width: 96px;
+      }
+      progress.meter {
+        appearance: none;
+        border: 0;
+        width: 100%;
+        display: block;
+        height: 5px;
+        background: var(--bg-subtle);
+      }
+      progress.meter::-webkit-progress-bar {
+        background: var(--bg-subtle);
+        border-radius: 3px;
+      }
+      progress.meter::-webkit-progress-value {
+        background: var(--accent);
+        border-radius: 3px;
+      }
+      progress.meter::-moz-progress-bar {
+        background: var(--accent);
+        border-radius: 3px;
+      }
+      .share-value {
+        font-size: 10.5px;
+        color: var(--fg-2);
+      }
+      .scrim {
+        background: var(--scrim);
+        position: fixed;
+        z-index: 2;
+      }
+      .drawer {
+        position: fixed;
+        z-index: 3;
+        width: min(430px, 100%);
+        margin: 0;
+      }
+      .dbody {
+        flex: 1;
+        min-height: 0;
+      }
+      .field-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .session-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .section-label {
+        margin-bottom: 6px;
+      }
+      .mrow {
+        flex-wrap: wrap;
+      }
+      .mrow .m {
+        min-width: 100px;
+      }
+      .mrow input[type="number"] {
+        width: 52px;
+        text-align: center;
+        font: inherit;
+        font-size: 12px;
+        color: var(--fg);
+        background: var(--bg-page);
+        border: 1px solid var(--line-2);
+        border-radius: 6px;
+        padding: 4px;
+      }
+      .mrow label {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 10px;
+        color: var(--fg-3);
+      }
+      .order {
+        display: flex;
+        flex-direction: column;
+      }
+      .order button {
+        border: 0;
+        background: transparent;
+        color: var(--fg-3);
+        cursor: pointer;
+        font-size: 10px;
+        padding: 0 3px;
+      }
+      .pick label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        cursor: pointer;
+      }
+      .pick input[type="checkbox"] {
+        accent-color: var(--accent);
+        margin: 0;
+      }
+      .switch {
+        position: relative;
+        cursor: pointer;
+      }
+      .switch input {
+        position: absolute;
+        opacity: 0;
+        width: 30px;
+        height: 17px;
+        margin: 0;
+      }
+      .switch input:focus-visible + .t {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+      }
+      .switch input:checked + .t {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .switch input:checked + .t::after {
+        left: 15px;
+        background: #fff;
+      }
+      .stackrow select {
+        width: auto;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+      }
+      #auth {
+        max-width: 360px;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      #auth input {
+        font: inherit;
+        padding: 7px;
+        color: var(--fg);
+        background: var(--bg-page);
+        border: 1px solid var(--line-2);
+        border-radius: 6px;
+      }
+      @media (max-width: 700px) {
+        .page {
+          padding: 14px 12px;
+        }
+        .group .row {
+          flex-wrap: wrap;
+        }
+        .expander {
+          flex-wrap: wrap;
+        }
+        .meta {
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .mrow select {
+          max-width: 140px;
+        }
+        .dfoot {
+          flex-wrap: wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page" id="page">
+      <div class="head">
+        <h1>Model Groups</h1>
+        <span class="spacer"></span
+        ><button class="btn" id="reload" type="button">Reload</button
+        ><button class="btn primary" id="new" type="button" disabled>
+          New group
+        </button>
+      </div>
+      <form id="auth" hidden>
+        <label class="f" for="auth-key">Management key</label
+        ><input
+          id="auth-key"
+          type="password"
+          autocomplete="current-password"
+          required
+        /><button class="btn primary" type="submit">Continue</button>
+      </form>
+      <p id="error" class="error" role="alert" hidden></p>
+      <div id="facts" class="facts"></div>
+      <p id="affinity-warning" class="error" hidden>
+        CPA accounts can change within a session. Set routing.session-affinity
+        in config.yaml.
+      </p>
+      <div id="groups" aria-live="polite">
+        <span class="note">Loading…</span>
+      </div>
+    </main>
+    <div id="scrim" class="scrim" hidden></div>
+    <form
+      id="editor"
+      class="drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="preview"
+      hidden
+    >
+      <div class="dhead">
+        <span id="preview" class="gid"></span
+        ><label class="f" for="name"
+          >Name<input
+            id="name"
+            type="text"
+            required
+            autocomplete="off" /></label
+        ><label class="f" for="slug"
+          >Slug<input
+            id="slug"
+            type="text"
+            required
+            pattern="[a-z0-9-]+"
+            autocomplete="off"
+        /></label>
+      </div>
+      <div class="dbody">
+        <div class="field-stack">
+          <span id="policy-label" class="note">Policy</span>
+          <div
+            id="policy"
+            class="seg"
+            role="group"
+            aria-labelledby="policy-label"
+          ></div>
+          <span class="note" id="policy-note"></span>
+        </div>
+        <div>
+          <div class="note section-label" id="members-label">Members</div>
+          <div id="members"></div>
+          <p class="note" id="weight-hint" hidden>
+            Weight for weighted round robin.
+          </p>
+        </div>
+        <div>
+          <div class="note section-label">Add models CPA serves now</div>
+          <div class="pick">
+            <div class="search">
+              <label class="sr-only" for="search"
+                >Search models or providers</label
+              ><input
+                id="search"
+                type="text"
+                placeholder="Search models or providers"
+                autocomplete="off"
+              />
+            </div>
+            <p id="catalog-error" class="error" role="alert" hidden></p>
+            <ul id="catalog"></ul>
+          </div>
+        </div>
+        <div class="session-controls">
+          <span class="note">Sessions</span
+          ><label class="switch"
+            ><input id="keep" type="checkbox" /><span class="t"></span
+            ><span>Keep a session on one member</span></label
+          ><label class="switch"
+            ><input id="rebind" type="checkbox" /><span class="t"></span
+            ><span>Move the session when that member fails</span></label
+          ><label class="stackrow" for="ttl"
+            ><span class="k">Keep for</span
+            ><select id="ttl"></select
+          ></label>
+        </div>
+        <p id="editor-error" class="error" role="alert" hidden></p>
+      </div>
+      <div class="dfoot">
+        <span class="note">Save reloads the CPA config.</span
+        ><span class="spacer"></span
+        ><button id="cancel" type="button" class="btn">Cancel</button
+        ><button id="save" class="btn primary" type="submit">Save</button>
+      </div>
+    </form>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const API = "/v0/management/model-groups";
+      const CPA = "/v8/management";
+      const CONFIG = CPA + "/config/plugins/configs/model-groups";
+      const SESSION_KEY = "model-groups.management-key";
+      const REJECTED_KEY = "model-groups.rejected-mc-auth";
+      const MC_AUTH_KEY = "cli-proxy-auth";
+      const MC_THEME_KEY = "cli-proxy-theme";
+      function storageGet(storage, key) {
+        try {
+          return storage.getItem(key);
+        } catch (_) {
+          return null;
+        }
+      }
+      function storageSet(storage, key, value) {
+        try {
+          storage.setItem(key, value);
+        } catch (_) {}
+      }
+      function storageRemove(storage, key) {
+        try {
+          storage.removeItem(key);
+        } catch (_) {}
+      }
+      function managementCenterTheme() {
+        try {
+          if (window.parent !== window)
+            return (
+              window.parent.document.documentElement.getAttribute(
+                "data-theme",
+              ) || "light"
+            );
+        } catch (_) {}
+        let saved = "auto";
+        try {
+          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
+          saved = persisted?.state?.theme || saved;
+        } catch (_) {}
+        return saved === "auto"
+          ? matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "white"
+          : saved;
+      }
+      function applyTheme() {
+        document.documentElement.setAttribute(
+          "data-theme",
+          managementCenterTheme(),
+        );
+      }
+      applyTheme();
+      matchMedia("(prefers-color-scheme: dark)").addEventListener(
+        "change",
+        applyTheme,
+      );
+      window.addEventListener("storage", (event) => {
+        if (event.key === MC_THEME_KEY) applyTheme();
+      });
+      try {
+        if (window.parent !== window)
+          new MutationObserver(applyTheme).observe(
+            window.parent.document.documentElement,
+            { attributes: true, attributeFilter: ["data-theme"] },
+          );
+      } catch (_) {}
+      function deobfuscate(payload) {
+        const prefix = "enc::v1::";
+        if (!payload.startsWith(prefix)) return payload;
+        const binary = atob(payload.slice(prefix.length));
+        const secret = new TextEncoder().encode(
+          "cli-proxy-api-webui::secure-storage|" +
+            location.host +
+            "|" +
+            navigator.userAgent,
+        );
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++)
+          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
+        return new TextDecoder().decode(bytes);
+      }
+      function resolveKey() {
+        const typed = storageGet(sessionStorage, SESSION_KEY);
+        if (typed) return { key: typed, source: "session" };
+        const raw = storageGet(localStorage, MC_AUTH_KEY);
+        if (raw && raw !== storageGet(sessionStorage, REJECTED_KEY)) {
+          try {
+            const key = JSON.parse(deobfuscate(raw))?.state?.managementKey;
+            if (typeof key === "string" && key.trim())
+              return { key: key.trim(), source: "mc" };
+          } catch (_) {}
+        }
+        return { key: "", source: "" };
+      }
+      const auth = resolveKey();
+      class AuthError extends Error {}
+      function forgetKey() {
+        if (auth.source === "mc")
+          storageSet(
+            sessionStorage,
+            REJECTED_KEY,
+            storageGet(localStorage, MC_AUTH_KEY) || "",
+          );
+        storageRemove(sessionStorage, SESSION_KEY);
+        auth.key = "";
+        auth.source = "";
+        closeEditor(true);
+        $("auth").hidden = false;
+        $("auth-key").focus();
+      }
+      async function request(path, method = "GET", body, missing) {
+        if (!auth.key) throw new AuthError("No management key.");
+        const headers = { Authorization: "Bearer " + auth.key };
+        if (body !== undefined) headers["Content-Type"] = "application/json";
+        const response = await fetch(path, {
+          method,
+          headers,
+          body: body === undefined ? undefined : JSON.stringify(body),
+          cache: "no-store",
+          credentials: "omit",
+        });
+        let data;
+        try {
+          data = await response.json();
+        } catch (_) {
+          throw new Error(path + " · HTTP " + response.status);
+        }
+        if (response.status === 401) {
+          forgetKey();
+          throw new AuthError(data.error || "Management key rejected.");
+        }
+        if (
+          response.status === 404 &&
+          missing !== undefined &&
+          data.error === "not_found"
+        )
+          return missing;
+        if (!response.ok)
+          throw new Error(data.error || path + " · HTTP " + response.status);
+        return data;
+      }
+      function h(tag, props = {}, ...children) {
+        const el = document.createElement(tag);
+        for (const [key, value] of Object.entries(props)) {
+          if (value === false || value === undefined || value === null)
+            continue;
+          if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
+          else el.setAttribute(key, value === true ? "" : String(value));
+        }
+        for (const child of children.flat(Infinity))
+          if (child !== null && child !== undefined && child !== false)
+            el.append(
+              child instanceof Node
+                ? child
+                : document.createTextNode(String(child)),
+            );
+        return el;
+      }
+      function button(text, action, className = "btn ghost", props = {}) {
+        return h(
+          "button",
+          { type: "button", class: className, onclick: action, ...props },
+          text,
+        );
+      }
+      function showError(id, message) {
+        $(id).textContent = message;
+        $(id).hidden = !message;
+      }
+      const policies = {
+        "round-robin": "round robin",
+        "weighted-round-robin": "weighted round robin",
+        "fill-first": "fill first",
+      };
+      const consequences = {
+        "round-robin": "Members share requests equally.",
+        "weighted-round-robin":
+          "Members share requests in proportion to weight.",
+        "fill-first": "Order matters for fill first.",
+      };
+      let state = null,
+        config = null,
+        routing = null,
+        configLoaded = false,
+        loading = false;
+      let catalogPromise = null,
+        catalogLoaded = false,
+        catalogErrors = [],
+        catalog = new Map();
+      let draft = null,
+        original = null,
+        originalSlug = null,
+        returnFocus = null,
+        saving = false;
+      const expanded = new Set();
+      const sessionViews = new Map();
+      function knownProviders(model) {
+        return [...(catalog.get(model)?.providers.keys() || [])];
+      }
+      function equalList(a, b) {
+        return a.length === b.length && a.every((value, i) => value === b[i]);
+      }
+      function resolvedProviders(model, current = []) {
+        const known = knownProviders(model);
+        return current.length === 1 && known.includes(current[0])
+          ? [...current]
+          : known;
+      }
+      function memberState(member) {
+        if (
+          catalogLoaded &&
+          (!member.providers?.length ||
+            !member.providers.some((provider) =>
+              catalog.get(member.model)?.providers.has(provider),
+            ))
+        )
+          return { state: "missing", detail: "not served by CPA" };
+        return {
+          state: member.state,
+          detail:
+            member.state_detail ||
+            (member.state === "unavailable"
+              ? "no credentials"
+              : member.state === "cooling"
+                ? "cooling"
+                : ""),
+        };
+      }
+      function tone(status) {
+        return status === "cooling"
+          ? "amber"
+          : status === "unavailable" || status === "missing"
+            ? "warn"
+            : "";
+      }
+      function chip(text, status = "") {
+        return h("span", { class: "chip " + tone(status) }, text);
+      }
+      function elapsed(timestamp) {
+        const seconds = Math.max(
+          0,
+          Math.floor((Date.now() - Date.parse(timestamp)) / 1000),
+        );
+        if (!Number.isFinite(seconds)) return "";
+        return seconds < 60
+          ? seconds + "s"
+          : seconds < 3600
+            ? Math.floor(seconds / 60) + "m"
+            : Math.floor(seconds / 3600) + "h";
+      }
+      async function loadCatalog() {
+        if (catalogPromise) return catalogPromise;
+        catalogPromise = (async () => {
+          const data = await request(CPA + "/credentials");
+          const credentials = Array.isArray(data)
+            ? data
+            : data.files || data.credentials;
+          if (!Array.isArray(credentials))
+            throw new Error("credentials · models");
+          const results = await Promise.allSettled(
+            credentials.map((credential) =>
+              request(
+                CPA +
+                  "/credentials/models?name=" +
+                  encodeURIComponent(credential.name),
+              ),
+            ),
+          );
+          const next = new Map();
+          catalogErrors = [];
+          results.forEach((result, index) => {
+            const credential = credentials[index];
+            if (result.status === "rejected") {
+              catalogErrors.push(
+                credential.name + " · " + result.reason.message,
+              );
+              return;
+            }
+            const models = Array.isArray(result.value)
+              ? result.value
+              : result.value.models;
+            if (!Array.isArray(models)) {
+              catalogErrors.push(credential.name + " · models");
+              return;
+            }
+            const seen = new Set();
+            for (const model of models) {
+              if (seen.has(model.id)) continue;
+              seen.add(model.id);
+              if (!model.id || !credential.provider) continue;
+              if (!next.has(model.id))
+                next.set(model.id, {
+                  model: model.id,
+                  display_name: model.display_name,
+                  providers: new Map(),
+                });
+              const providers = next.get(model.id).providers;
+              if (!providers.has(credential.provider))
+                providers.set(credential.provider, {
+                  credentials: 0,
+                  ready: 0,
+                  cooling: 0,
+                  disabled: 0,
+                });
+              const info = providers.get(credential.provider);
+              if (credential.disabled) info.disabled++;
+              else {
+                info.credentials++;
+                if (credential.unavailable || credential.status === "cooling")
+                  info.cooling++;
+                else info.ready++;
+              }
+            }
+          });
+          catalog = next;
+          catalogLoaded = true;
+        })().catch((error) => {
+          catalogErrors = [error.message];
+          throw error;
+        });
+        return catalogPromise;
+      }
+      function catalogErrorText() {
+        return catalogErrors.length > 1
+          ? catalogErrors.length + " credentials · " + catalogErrors[0]
+          : catalogErrors[0] || "";
+      }
+      function renderFacts() {
+        const items = [];
+        if (routing) {
+          const on = routing["session-affinity"];
+          items.push(
+            h(
+              "span",
+              { class: "fact" + (on ? "" : " warn") },
+              h("span", { class: "dot" }),
+              "Session affinity ",
+              h(
+                "b",
+                {},
+                (on ? "on" : "off") +
+                  (routing["session-affinity-ttl"]
+                    ? " · " + routing["session-affinity-ttl"]
+                    : ""),
+              ),
+            ),
+          );
+          items.push(
+            h(
+              "span",
+              { class: "fact" },
+              "CPA accounts ",
+              h("b", {}, policies[routing.strategy] || routing.strategy),
+            ),
+          );
+          $("affinity-warning").hidden = Boolean(on);
+        } else $("affinity-warning").hidden = true;
+        if (state)
+          items.push(
+            h(
+              "span",
+              { class: "fact" },
+              "Group prefix ",
+              h("b", {}, state.prefix + "/"),
+            ),
+          );
+        $("facts").replaceChildren(...items);
+      }
+      async function copyID(id) {
+        try {
+          await navigator.clipboard.writeText(id);
+        } catch (error) {
+          showError("error", error.message);
+        }
+      }
+      function memberTable(group) {
+        return h(
+          "div",
+          { class: "table-wrap" },
+          h(
+            "table",
+            {},
+            h(
+              "thead",
+              {},
+              h(
+                "tr",
+                {},
+                ["Member", "Provider", "Weight", "Share 1h", "Req"].map(
+                  (text, index) =>
+                    h(
+                      "th",
+                      {
+                        scope: "col",
+                        class:
+                          index === 2 || index === 4
+                            ? "num"
+                            : index === 3
+                              ? "share"
+                              : "",
+                      },
+                      text,
+                    ),
+                ),
+              ),
+            ),
+            h(
+              "tbody",
+              {},
+              group.members.map((member) => {
+                const status = memberState(member);
+                const share = Math.max(
+                  0,
+                  Math.min(1, Number(member.share) || 0),
+                );
+                return h(
+                  "tr",
+                  {},
+                  h("td", { class: "mono" }, member.model),
+                  h(
+                    "td",
+                    {},
+                    chip(
+                      (member.providers || []).join(", ") +
+                        (status.detail ? " · " + status.detail : ""),
+                      status.state,
+                    ),
+                  ),
+                  h("td", { class: "num" }, member.weight),
+                  h(
+                    "td",
+                    { class: "share" },
+                    h(
+                      "progress",
+                      {
+                        class: "meter",
+                        max: 1,
+                        value: share,
+                        "aria-label": "Share 1h · " + member.model,
+                      },
+                      Math.round(share * 100) + "%",
+                    ),
+                    h(
+                      "span",
+                      { class: "share-value" },
+                      Math.round(share * 100) + "%",
+                    ),
+                  ),
+                  h("td", { class: "num" }, member.requests_1h),
+                );
+              }),
+            ),
+          ),
+        );
+      }
+      function sessionTable(group, view) {
+        const items = [];
+        items.push(
+          h(
+            "div",
+            { class: "sec-title" },
+            "Sessions",
+            h("span", { class: "spacer" }),
+            button(
+              "Release all",
+              () => releaseSessions(group.slug, undefined),
+              "btn ghost",
+              { disabled: !view?.sessions?.length || view.busy },
+            ),
+          ),
+        );
+        if (view?.error)
+          items.push(h("p", { class: "error", role: "alert" }, view.error));
+        if (!view || view.loading)
+          items.push(h("span", { class: "note" }, "Loading…"));
+        if (view?.sessions)
+          items.push(
+            h(
+              "div",
+              { class: "table-wrap" },
+              h(
+                "table",
+                {},
+                h(
+                  "thead",
+                  {},
+                  h(
+                    "tr",
+                    {},
+                    ["Session", "Member", "Account", "Last", ""].map((text) =>
+                      h("th", { scope: "col" }, text),
+                    ),
+                  ),
+                ),
+                h(
+                  "tbody",
+                  {},
+                  view.sessions.map((session) => {
+                    const account = session.account || {};
+                    const label =
+                      account.state === "bound" ? account.label : account.state;
+                    const status =
+                      account.disabled || account.unavailable
+                        ? "unavailable"
+                        : "";
+                    return h(
+                      "tr",
+                      {},
+                      h(
+                        "td",
+                        { class: "mono", title: session.session },
+                        session.session.length > 18
+                          ? session.session.slice(0, 8) +
+                              "…" +
+                              session.session.slice(-4)
+                          : session.session,
+                      ),
+                      h("td", { class: "mono" }, session.member),
+                      h(
+                        "td",
+                        {},
+                        chip(
+                          [session.provider, label].filter(Boolean).join(" · "),
+                          status,
+                        ),
+                      ),
+                      h(
+                        "td",
+                        { class: "num" },
+                        [elapsed(session.last_used), session.last_outcome]
+                          .filter(Boolean)
+                          .join(" · "),
+                      ),
+                      h(
+                        "td",
+                        {},
+                        button(
+                          "Release",
+                          () =>
+                            releaseSessions(
+                              group.slug,
+                              session.session_full || session.session,
+                            ),
+                          "btn ghost",
+                          {
+                            disabled: view.busy,
+                            "aria-label": "Release · " + session.session,
+                          },
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ),
+          );
+        return items;
+      }
+      function renderGroups() {
+        const nodes = [];
+        if (!state) {
+          if (!loading) $("groups").replaceChildren();
+          return;
+        }
+        for (const group of state.groups) {
+          const open = expanded.has(group.slug);
+          const summary = h(
+            "div",
+            { class: "grow" },
+            h("span", { class: "gid" }, group.id),
+            h(
+              "div",
+              { class: "sub" },
+              group.members.map((member) => {
+                const status = memberState(member);
+                return h(
+                  "span",
+                  { class: "chip " + tone(status.state) },
+                  h("span", { class: "mono" }, member.model),
+                  h(
+                    "span",
+                    { class: "prov" },
+                    status.detail || (member.providers || []).join(", "),
+                  ),
+                );
+              }),
+            ),
+          );
+          const meta = h(
+            "div",
+            { class: "meta" },
+            h(
+              "span",
+              { class: "chip plain" },
+              policies[group.policy] || group.policy,
+            ),
+            h(
+              "span",
+              {},
+              h("span", { class: "num" }, group.sessions),
+              " sessions",
+            ),
+            h(
+              "span",
+              {},
+              h("span", { class: "num" }, group.requests_1h),
+              " req 1h",
+            ),
+            h(
+              "span",
+              { class: "caret", "aria-hidden": true },
+              open ? "▾" : "▸",
+            ),
+          );
+          const expander = button(
+            "",
+            () => toggleGroup(group.slug),
+            "expander",
+            {
+              "aria-expanded": String(open),
+              "aria-controls": "group-" + group.slug,
+            },
+          );
+          expander.replaceChildren(summary, meta);
+          const row = h(
+            "div",
+            { class: "row" },
+            expander,
+            button("", () => copyID(group.id), "copy copy-id", {
+              "aria-label": "Copy · " + group.id,
+            }),
+            button(
+              "Edit",
+              (event) => openEditor(group.slug, event.currentTarget),
+              "btn ghost",
+              { disabled: !configLoaded || !catalogLoaded },
+            ),
+          );
+          const body = h("div", {
+            class: "body",
+            id: "group-" + group.slug,
+            hidden: !open,
+          });
+          if (open)
+            body.append(
+              memberTable(group),
+              ...sessionTable(group, sessionViews.get(group.slug)),
+            );
+          nodes.push(
+            h("section", { class: "group" + (open ? " open" : "") }, row, body),
+          );
+        }
+        if (!nodes.length)
+          nodes.push(
+            h(
+              "div",
+              { class: "empty" },
+              button(
+                "New group",
+                (event) => openEditor(null, event.currentTarget),
+                "btn primary",
+                { disabled: !configLoaded || !catalogLoaded },
+              ),
+            ),
+          );
+        $("new").hidden = !state.groups.length;
+        $("groups").replaceChildren(...nodes);
+      }
+      function toggleGroup(slug) {
+        if (expanded.has(slug)) expanded.delete(slug);
+        else {
+          expanded.add(slug);
+          if (!sessionViews.has(slug)) loadSessions(slug);
+        }
+        renderGroups();
+      }
+      async function loadSessions(slug) {
+        const view = {
+          loading: true,
+          sessions: sessionViews.get(slug)?.sessions,
+        };
+        sessionViews.set(slug, view);
+        renderGroups();
+        try {
+          const data = await request(
+            API + "/sessions?group=" + encodeURIComponent(slug) + "&limit=100",
+          );
+          view.sessions = data.sessions;
+        } catch (error) {
+          view.error = error.message;
+        } finally {
+          view.loading = false;
+          if (sessionViews.get(slug) === view) renderGroups();
+        }
+      }
+      async function releaseSessions(slug, session) {
+        const view = sessionViews.get(slug);
+        if (view?.busy) return;
+        view.busy = true;
+        view.error = "";
+        renderGroups();
+        try {
+          await request(
+            API + "/sessions/release",
+            "POST",
+            session === undefined
+              ? { group: slug, all: true }
+              : { group: slug, session },
+          );
+          await reload();
+        } catch (error) {
+          view.error = error.message;
+        } finally {
+          view.busy = false;
+          renderGroups();
+        }
+      }
+      async function reload() {
+        if (loading) return;
+        loading = true;
+        $("reload").disabled = true;
+        $("new").disabled = true;
+        showError("error", "");
+        const errors = [];
+        try {
+          state = await request(API + "/state");
+          renderGroups();
+          const results = await Promise.allSettled([
+            request(CONFIG, "GET", undefined, null),
+            request(CPA + "/config/routing"),
+            loadCatalog(),
+          ]);
+          configLoaded = results[0].status === "fulfilled";
+          if (configLoaded) config = results[0].value;
+          else errors.push(results[0].reason.message);
+          if (results[1].status === "fulfilled") routing = results[1].value;
+          else {
+            routing = null;
+            errors.push(results[1].reason.message);
+          }
+          if (results[2].status === "rejected")
+            errors.push(results[2].reason.message);
+          else if (catalogErrors.length) errors.push(catalogErrorText());
+          if (state.config_error) errors.push(state.config_error);
+          renderFacts();
+          renderGroups();
+          await Promise.all(
+            [...expanded]
+              .filter((slug) =>
+                state.groups.some((group) => group.slug === slug),
+              )
+              .map(loadSessions),
+          );
+        } catch (error) {
+          errors.push(error.message);
+        } finally {
+          loading = false;
+          $("reload").disabled = false;
+          $("new").disabled = !configLoaded || !catalogLoaded || !auth.key;
+          showError("error", [...new Set(errors)].join("\n"));
+          renderGroups();
+        }
+      }
+      function configGroup(slug) {
+        return (config?.groups || []).find((group) => group.slug === slug);
+      }
+      function openEditor(slug, trigger) {
+        if (!configLoaded || !catalogLoaded || saving) return;
+        originalSlug = slug;
+        original = slug === null ? null : configGroup(slug);
+        if (slug !== null && !original) {
+          showError("error", "config · " + slug);
+          return;
+        }
+        returnFocus = trigger;
+        const affinity = config?.affinity || {};
+        draft = original
+          ? structuredClone(original)
+          : {
+              name: "",
+              slug: "",
+              policy: "weighted-round-robin",
+              enabled: true,
+              members: [],
+            };
+        draft.members = (draft.members || []).map((member) => {
+          const previous = member.providers || [];
+          const providers = resolvedProviders(member.model, previous);
+          return {
+            ...member,
+            providers,
+            weight: member.weight ?? 1,
+            previous: [...previous],
+            changed: !equalList(previous, providers),
+          };
+        });
+        $("name").value = draft.name;
+        $("slug").value = draft.slug;
+        $("slug").dataset.manual = slug === null ? "" : "true";
+        $("keep").checked = affinity.enabled ?? state.affinity?.enabled ?? true;
+        $("rebind").checked =
+          affinity.rebind_on_failure ??
+          state.affinity?.rebind_on_failure ??
+          false;
+        const configuredTTL = affinity.ttl || "";
+        const ttl =
+          configuredTTL === routing?.["session-affinity-ttl"]
+            ? ""
+            : configuredTTL;
+        const values = [...new Set(["", ...(ttl ? [ttl] : []), "24h"])];
+        $("ttl").replaceChildren(
+          ...values.map((value) =>
+            h(
+              "option",
+              { value },
+              value ||
+                "follow CPA" +
+                  (routing?.["session-affinity-ttl"]
+                    ? " · " + routing["session-affinity-ttl"]
+                    : ""),
+            ),
+          ),
+        );
+        $("ttl").value = ttl;
+        $("search").value = "";
+        showError("editor-error", "");
+        showError("catalog-error", catalogErrorText());
+        renderEditor();
+        renderPicker();
+        updatePreview();
+        $("editor").hidden = false;
+        $("scrim").hidden = false;
+        $("page").inert = true;
+        $("name").focus();
+      }
+      function updatePreview() {
+        draft.name = $("name").value;
+        draft.slug = $("slug").value;
+        const id = state.prefix + "/" + draft.slug;
+        $("preview").replaceChildren(
+          document.createTextNode(id),
+          button("", () => copyID(id), "copy copy-id", {
+            "aria-label": "Copy · " + id,
+          }),
+        );
+      }
+      function closeEditor(force = false) {
+        if (saving && force !== true) return;
+        $("editor").hidden = true;
+        $("scrim").hidden = true;
+        $("page").inert = false;
+        draft = null;
+        if (returnFocus?.isConnected) returnFocus.focus();
+        else $("new").focus();
+      }
+      function renderEditor() {
+        $("policy").replaceChildren(
+          ...Object.keys(policies).map((policy) =>
+            button(
+              policy === "weighted-round-robin"
+                ? "Weighted"
+                : policy === "fill-first"
+                  ? "Fill first"
+                  : "Round robin",
+              () => {
+                draft.policy = policy;
+                renderEditor();
+              },
+              "",
+              { "aria-pressed": String(draft.policy === policy) },
+            ),
+          ),
+        );
+        $("policy-note").textContent = consequences[draft.policy];
+        $("members-label").textContent = "Members · " + draft.members.length;
+        $("weight-hint").hidden =
+          draft.policy === "weighted-round-robin" || !draft.members.length;
+        $("members").replaceChildren(
+          ...draft.members.map((member, index) => {
+            const known = knownProviders(member.model);
+            const choices = [
+              ...new Set([...known, ...member.providers, ...member.previous]),
+            ];
+            const row = h(
+              "div",
+              { class: "mrow" },
+              h(
+                "div",
+                { class: "order" },
+                button("↑", () => moveMember(index, -1), "", {
+                  "aria-label": "Move up · " + member.model,
+                  disabled: index === 0,
+                }),
+                button("↓", () => moveMember(index, 1), "", {
+                  "aria-label": "Move down · " + member.model,
+                  disabled: index === draft.members.length - 1,
+                }),
+              ),
+              h(
+                "div",
+                { class: "m" },
+                h("span", { class: "id" }, member.model),
+                !known.length
+                  ? h("span", { class: "note error" }, "not served by CPA")
+                  : member.changed
+                    ? h(
+                        "span",
+                        { class: "note" },
+                        "Providers · " +
+                          (member.previous.join(", ") || "—") +
+                          " → " +
+                          member.providers.join(", "),
+                      )
+                    : null,
+              ),
+            );
+            if (known.length > 1) {
+              const id = "provider-" + index;
+              const select = h("select", {
+                id,
+                onchange: (event) => {
+                  member.providers =
+                    event.target.value === ""
+                      ? [...known]
+                      : [event.target.value];
+                  member.changed = !equalList(
+                    member.previous,
+                    member.providers,
+                  );
+                },
+              });
+              select.append(
+                h(
+                  "option",
+                  { value: "" },
+                  "auto · " + known.length + " providers",
+                ),
+                ...choices.map((provider) =>
+                  h(
+                    "option",
+                    { value: provider, disabled: !known.includes(provider) },
+                    provider,
+                  ),
+                ),
+              );
+              select.value =
+                member.providers.length === 1 ? member.providers[0] : "";
+              row.append(h("label", { for: id }, "Provider", select));
+            }
+            const weightID = "weight-" + index;
+            const weight = h("input", {
+              id: weightID,
+              type: "number",
+              min: 1,
+              max: 1000,
+              step: 1,
+              required: true,
+              value: member.weight,
+              disabled: draft.policy !== "weighted-round-robin",
+              oninput: (event) => {
+                member.weight = Number(event.target.value);
+              },
+            });
+            row.append(
+              h("label", { for: weightID }, "Weight", weight),
+              button(
+                "×",
+                () => {
+                  draft.members.splice(index, 1);
+                  renderEditor();
+                  renderPicker();
+                },
+                "copy",
+                { "aria-label": "Remove · " + member.model },
+              ),
+            );
+            return row;
+          }),
+        );
+      }
+      function moveMember(index, delta) {
+        [draft.members[index], draft.members[index + delta]] = [
+          draft.members[index + delta],
+          draft.members[index],
+        ];
+        renderEditor();
+        const buttons =
+          $("members").children[index + delta].querySelectorAll(
+            ".order button",
+          );
+        (buttons[delta < 0 ? 0 : 1].disabled
+          ? buttons[delta < 0 ? 1 : 0]
+          : buttons[delta < 0 ? 0 : 1]
+        ).focus();
+      }
+      function renderPicker() {
+        if (!draft) return;
+        const query = $("search").value.trim().toLowerCase();
+        $("catalog").replaceChildren(
+          ...[...catalog.values()]
+            .filter((model) =>
+              [model.model, model.display_name, ...model.providers.keys()]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase()
+                .includes(query),
+            )
+            .map((model) => {
+              const selected = draft.members.some(
+                (member) => member.model === model.model,
+              );
+              const counts = [...model.providers.values()];
+              const credentials = counts.reduce(
+                (sum, provider) => sum + provider.credentials,
+                0,
+              );
+              const ready = counts.reduce(
+                (sum, provider) => sum + provider.ready,
+                0,
+              );
+              const cooling = counts.reduce(
+                (sum, provider) => sum + provider.cooling,
+                0,
+              );
+              const providers = [...model.providers.keys()];
+              const prefix =
+                providers.length === 1
+                  ? providers[0]
+                  : providers.length + " providers";
+              const status = !credentials
+                ? "unavailable"
+                : !ready && cooling
+                  ? "cooling"
+                  : "ready";
+              const detail = !credentials
+                ? "no credentials"
+                : cooling
+                  ? cooling + " cooling"
+                  : credentials +
+                    (credentials === 1 ? " credential" : " credentials");
+              const box = h("input", {
+                type: "checkbox",
+                "aria-label": model.model,
+                onchange: (event) => {
+                  if (event.target.checked)
+                    draft.members.push({
+                      model: model.model,
+                      providers,
+                      weight: 1,
+                      previous: providers,
+                      changed: false,
+                    });
+                  else
+                    draft.members = draft.members.filter(
+                      (member) => member.model !== model.model,
+                    );
+                  renderEditor();
+                  renderPicker();
+                },
+              });
+              box.checked = selected;
+              return h(
+                "li",
+                { "data-on": selected ? "1" : "0" },
+                h(
+                  "label",
+                  {},
+                  box,
+                  h(
+                    "span",
+                    { class: "m", title: model.display_name },
+                    model.model,
+                  ),
+                  h(
+                    "span",
+                    { class: "st " + tone(status) },
+                    prefix + " · " + detail,
+                  ),
+                ),
+              );
+            }),
+        );
+      }
+      function validation() {
+        if (!/^[a-z0-9-]+$/.test(draft.slug)) return "Slug · [a-z0-9-]+";
+        if (!draft.members.length) return "Members · at least one member";
+        const pairs = new Set();
+        for (const member of draft.members) {
+          if (!knownProviders(member.model).length)
+            return member.model + " · no provider in CPA serves this model";
+          if (
+            !Number.isInteger(member.weight) ||
+            member.weight < 1 ||
+            member.weight > 1000
+          )
+            return member.model + " · Weight · 1..1000";
+          for (const provider of member.providers) {
+            const pair = JSON.stringify([member.model, provider]);
+            if (pairs.has(pair))
+              return member.model + " · " + provider + " · duplicate member";
+            pairs.add(pair);
+          }
+        }
+        return "";
+      }
+      $("name").addEventListener("input", () => {
+        if (!$("slug").dataset.manual)
+          $("slug").value = $("name")
+            .value.toLowerCase()
+            .normalize("NFKD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "");
+        updatePreview();
+      });
+      $("slug").addEventListener("input", () => {
+        $("slug").dataset.manual = "true";
+        updatePreview();
+      });
+      $("search").addEventListener("input", renderPicker);
+      $("cancel").addEventListener("click", closeEditor);
+      $("scrim").addEventListener("click", closeEditor);
+      $("new").addEventListener("click", (event) =>
+        openEditor(null, event.currentTarget),
+      );
+      $("reload").addEventListener("click", reload);
+      document.addEventListener("keydown", (event) => {
+        if ($("editor").hidden) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeEditor();
+        }
+        if (event.key === "Tab") {
+          const elements = [
+            ...$("editor").querySelectorAll(
+              "button:not(:disabled),input:not(:disabled),select:not(:disabled)",
+            ),
+          ].filter((element) => !element.closest("[hidden]"));
+          const first = elements[0],
+            last = elements.at(-1);
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
+      });
+      $("editor").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (saving) return;
+        draft.members.forEach((member) => {
+          member.providers = resolvedProviders(member.model, member.providers);
+        });
+        const error = validation();
+        showError("editor-error", error);
+        if (error) return;
+        saving = true;
+        $("save").disabled = true;
+        $("cancel").disabled = true;
+        $("editor").querySelector(".dhead").inert = true;
+        $("editor").querySelector(".dbody").inert = true;
+        try {
+          // PATCH replaces lists; preserve other groups from a fresh config read.
+          const latest = await request(CONFIG, "GET", undefined, null);
+          const groups = [...(latest?.groups || [])];
+          const index =
+            originalSlug === null
+              ? -1
+              : groups.findIndex((group) => group.slug === originalSlug);
+          if (
+            originalSlug !== null &&
+            (index < 0 ||
+              JSON.stringify(groups[index]) !== JSON.stringify(original))
+          )
+            throw new Error("config · " + originalSlug + " · Reload");
+          if (
+            groups.some((group, i) => i !== index && group.slug === draft.slug)
+          )
+            throw new Error("Slug · " + draft.slug + " · unique");
+          const next = {
+            ...draft,
+            members: draft.members.map(({ model, providers, weight }) => ({
+              model,
+              providers,
+              weight,
+            })),
+          };
+          if (index < 0) groups.push(next);
+          else groups[index] = next;
+          const affinity = {
+            ...latest?.affinity,
+            enabled: $("keep").checked,
+            rebind_on_failure: $("rebind").checked,
+          };
+          if ($("ttl").value) affinity.ttl = $("ttl").value;
+          else {
+            const currentRouting = await request(CPA + "/config/routing");
+            if (!currentRouting["session-affinity-ttl"])
+              throw new Error("routing.session-affinity-ttl");
+            affinity.ttl = currentRouting["session-affinity-ttl"];
+          }
+          const payload = {
+            ...latest,
+            prefix: latest?.prefix ?? state.prefix,
+            affinity,
+            groups,
+          };
+          await request(CONFIG, "PATCH", payload);
+          saving = false;
+          closeEditor();
+          await reload();
+        } catch (error) {
+          showError(
+            $("editor").hidden ? "error" : "editor-error",
+            error.message,
+          );
+        } finally {
+          saving = false;
+          $("save").disabled = false;
+          $("cancel").disabled = false;
+          $("editor").querySelector(".dhead").inert = false;
+          $("editor").querySelector(".dbody").inert = false;
+        }
+      });
+      $("auth").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        auth.key = $("auth-key").value.trim();
+        auth.source = "typed";
+        if (!auth.key) return;
+        $("auth").hidden = true;
+        await reload();
+        if (auth.key && state) {
+          storageSet(sessionStorage, SESSION_KEY, auth.key);
+          auth.source = "session";
+          $("auth-key").value = "";
+        } else $("auth").hidden = false;
+      });
+      if (auth.key) reload();
+      else {
+        $("auth").hidden = false;
+        $("groups").replaceChildren();
+        showError("error", "No management key.");
+      }
+    </script>
+  </body>
+</html>
