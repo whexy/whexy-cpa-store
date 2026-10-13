@@ -219,6 +219,9 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 	case pluginabi.MethodModelRoute:
 		return routeModel(request)
 
+	case pluginabi.MethodRequestInterceptBefore:
+		return interceptRequestBeforeAuth(request)
+
 	case pluginabi.MethodRequestInterceptAfter:
 		return interceptRequestAfterAuth(request)
 

@@ -9,6 +9,13 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// interceptRequestBeforeAuth is a no-op: the host calls it because the plugin
+// declares a request interceptor, but only the after-auth hook has the
+// selected credential this plugin records.
+func interceptRequestBeforeAuth(_ []byte) ([]byte, error) {
+	return okEnvelope(pluginapi.RequestInterceptResponse{})
+}
+
 // interceptRequestAfterAuth observes which credential CPA picked for a session.
 // It runs once per credential attempt, so the recorded credential is the last
 // one CPA tried for that session's request.
