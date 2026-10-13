@@ -7,7 +7,6 @@ plugins directly from this repo's GitHub release assets.
 ## Plugins
 
 - `client-keys` — policies per client API key, set on a Management Center page: which models a key may use and see listed, and whether it may use the OpenAI Responses API.
-- `disable-response-api` — returns an empty 404 for OpenAI Responses API requests from configured client API keys or carrying the `WHEXY_CPA_DISABLE_RESPONSE_API` header, so clients fall back to Chat Completions.
 - `extra-models` — adds model IDs to one built-in provider before CLIProxyAPI's model catalog lists them, so that provider's accounts serve a new model right away; entries use the catalog's format and are set in the plugin's settings.
 - `model-groups` — gives one model ID to a group of models, for example `auto-group/fast`, and routes each request to one of them by round robin, weighted round robin or fill first; groups are managed on a Management Center page and CLIProxyAPI keeps choosing the provider account.
 - `opencode-go` — serves an OpenCode Go subscription: the workspace's Go models under `opencode-go/<model>`, an OpenCode login from the OAuth Login page or keys managed on a Management Center page that also disables models, one setting that serves every model under its bare ID to share it with other providers, quota in the Plugin tab.
@@ -152,7 +151,7 @@ URL of the registry it came from and stops offering updates when it changes.
 nix develop                                # go, node, jq, gh + pre-commit hooks
 nix fmt                                    # treefmt: nixfmt, gofmt, shfmt, prettier
 nix flake check                            # lint, registry check, release tests, build + test every plugin
-nix build .#plugins.disable-response-api   # one plugin's release zip in ./result
+nix build .#plugins.usage-dashboard        # one plugin's release zip in ./result
 node --test release/release.test.mjs       # the release tooling's tests alone
 ```
 
