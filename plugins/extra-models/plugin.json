@@ -1,0 +1,11 @@
+{
+  "id": "extra-models",
+  "name": "Extra Models",
+  "description": "Adds model IDs to a built-in provider such as Codex, Claude or Antigravity before the CLIProxyAPI model catalog lists them, so that provider's accounts serve a new model on release day. Entries use the catalog's own format.",
+  "author": "Whexy",
+  "repository": "https://github.com/whexy/whexy-cpa-store",
+  "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/extra-models",
+  "logo": "https://raw.githubusercontent.com/whexy/whexy-cpa-store/main/plugins/extra-models/logo.svg",
+  "license": "MIT",
+  "tags": ["models", "catalog", "registry"]
+}
