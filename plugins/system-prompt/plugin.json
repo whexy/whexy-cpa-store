@@ -1,0 +1,10 @@
+{
+  "id": "system-prompt",
+  "name": "System Prompts",
+  "description": "Appends your own text to the system prompt of requests for the models you choose, before CLIProxyAPI translates or cloaks them. Rules pair model IDs or wildcard patterns with a prompt and are managed on a Management Center page.",
+  "author": "Whexy",
+  "repository": "https://github.com/whexy/whexy-cpa-store",
+  "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/system-prompt",
+  "license": "MIT",
+  "tags": ["system-prompt", "prompt", "interceptor"]
+}

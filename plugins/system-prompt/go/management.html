@@ -1,0 +1,1117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>System Prompts</title>
+    <style>
+      :root {
+        --font-sans:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu,
+          Cantarell, "Helvetica Neue", sans-serif;
+        --font-mono:
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 8px;
+        /* Management Center floats its toolbar (and, when narrow, its menu
+           button) over the top 76px of the frame. */
+        --toolbar-clearance: 84px;
+        --bg-page: #faf9f5;
+        --bg-card: #f0eee8;
+        --bg-subtle: #e9e6df;
+        --bg-hover: #e2ded6;
+        --fg: #2d2a26;
+        --fg-2: #6d6760;
+        --fg-3: #a29c95;
+        --fg-4: #c0bab3;
+        --line: #e3e1db;
+        --line-2: #d5d2cb;
+        --accent: #8b8680;
+        --accent-hover: #7f7a74;
+        --accent-contrast: #ffffff;
+        --warn: #c65746;
+        --warn-text: #8a3a30;
+        --amber: #d97706;
+        --amber-text: #92400e;
+        --scrim: rgba(45, 42, 38, 0.28);
+        --hover-bg: rgba(0, 0, 0, 0.03);
+        color-scheme: light;
+      }
+      [data-theme="white"] {
+        --bg-page: #fff;
+        --bg-card: #fff;
+        --bg-subtle: #f6f6f6;
+        --bg-hover: #eee;
+        --line: #e5e5e5;
+        --line-2: #d5d5d5;
+      }
+      [data-theme="dark"] {
+        --bg-page: #151412;
+        --bg-card: #1d1b18;
+        --bg-subtle: #262320;
+        --bg-hover: #2e2a26;
+        --fg: #f6f4f1;
+        --fg-2: #c9c3bb;
+        --fg-3: #9c958d;
+        --fg-4: #6f6962;
+        --line: #3a3530;
+        --line-2: #4a453f;
+        --accent-hover: #9a948e;
+        --warn-text: #f1b0a6;
+        --amber: #f59e0b;
+        --amber-text: #fcd34d;
+        --scrim: rgba(0, 0, 0, 0.45);
+        --hover-bg: rgba(255, 255, 255, 0.04);
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: var(--font-sans);
+        background: var(--bg-page);
+        color: var(--fg);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+      }
+      .page {
+        max-width: 1200px;
+        min-height: 100vh;
+        margin: auto;
+        padding: var(--toolbar-clearance) 18px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .head h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+      .spacer {
+        flex: 1;
+        min-width: 0;
+      }
+      .facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .fact {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--warn-text);
+        border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+        background: color-mix(in srgb, var(--warn) 12%, transparent);
+        border-radius: 999px;
+        padding: 2px 9px;
+      }
+      .btn {
+        border: 1px solid var(--line-2);
+        background: var(--bg-card);
+        color: var(--fg);
+        font: inherit;
+        font-size: 12px;
+        padding: 5px 11px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .btn:hover {
+        background: var(--bg-hover);
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-contrast);
+        font-weight: 600;
+      }
+      .btn.primary:hover {
+        background: var(--accent-hover);
+      }
+      .btn.ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--fg-2);
+      }
+      .btn.ghost:hover {
+        background: var(--hover-bg);
+        color: var(--fg);
+      }
+      .btn.danger,
+      .btn.danger:hover {
+        color: var(--warn-text);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .rule {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--bg-card);
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .rule:hover {
+        border-color: var(--line-2);
+      }
+      .rule + .rule {
+        margin-top: 10px;
+      }
+      .rule .order {
+        font-size: 11.5px;
+        color: var(--fg-3);
+        font-variant-numeric: tabular-nums;
+        padding-top: 1px;
+      }
+      .rule .main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .preview {
+        margin: 0;
+        color: var(--fg-2);
+        font-size: 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 1px 6px;
+        color: var(--fg-2);
+        background: var(--bg-page);
+      }
+      .chip.amber {
+        color: var(--amber-text);
+        border-color: color-mix(in srgb, var(--amber) 35%, transparent);
+        background: color-mix(in srgb, var(--amber) 10%, transparent);
+      }
+      .chip.warn {
+        font-family: var(--font-sans);
+        color: var(--warn-text);
+        border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+        background: color-mix(in srgb, var(--warn) 10%, transparent);
+      }
+      .chip button {
+        border: 0;
+        padding: 0 1px;
+        background: none;
+        color: var(--fg-3);
+        font: inherit;
+        cursor: pointer;
+      }
+      .chip button:hover {
+        color: var(--fg);
+      }
+      .note {
+        font-size: 11px;
+        color: var(--fg-3);
+      }
+      .empty {
+        padding: 32px;
+        text-align: center;
+        border: 1px dashed var(--line);
+        border-radius: var(--radius);
+      }
+      .error {
+        color: var(--warn-text);
+        font-size: 12px;
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        background: var(--scrim);
+      }
+      .drawer {
+        position: fixed;
+        z-index: 3;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(480px, 100%);
+        margin: 0;
+        background: var(--bg-card);
+        border-left: 1px solid var(--line-2);
+        display: flex;
+        flex-direction: column;
+      }
+      .drawer:focus {
+        outline: none;
+      }
+      .dhead {
+        padding: var(--toolbar-clearance) 14px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      .dhead h2 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .dbody {
+        flex: 1;
+        min-height: 0;
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        overflow: auto;
+      }
+      .dfoot {
+        padding: 10px 14px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      label.note {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      input[type="text"],
+      input[type="password"],
+      textarea {
+        font: inherit;
+        font-size: 12.5px;
+        color: var(--fg);
+        background: var(--bg-page);
+        border: 1px solid var(--line-2);
+        border-radius: 6px;
+        padding: 6px 8px;
+        width: 100%;
+      }
+      textarea {
+        min-height: 220px;
+        resize: vertical;
+        line-height: 1.5;
+      }
+      .pick {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .pick .search {
+        padding: 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      .pick ul {
+        list-style: none;
+        margin: 0;
+        padding: 4px;
+        max-height: 220px;
+        overflow: auto;
+      }
+      .pick li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 6px;
+        border-radius: 5px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .pick li:hover,
+      .pick li[aria-selected="true"] {
+        background: var(--hover-bg);
+      }
+      .pick li .box {
+        flex: none;
+        width: 13px;
+        height: 13px;
+        border: 1px solid var(--line-2);
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: var(--accent-contrast);
+      }
+      .pick li[data-on="1"] .box {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .pick li .m {
+        flex: 1;
+        min-width: 0;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .pick li .st {
+        font-size: 10.5px;
+        color: var(--fg-3);
+        white-space: nowrap;
+      }
+      .pick .none {
+        padding: 6px;
+      }
+      #auth {
+        max-width: 360px;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+      }
+      @media (max-width: 700px) {
+        .page {
+          padding-inline: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page" id="page">
+      <div class="head">
+        <h1>System Prompts</h1>
+        <span class="spacer"></span
+        ><button class="btn" id="reload" type="button">Reload</button
+        ><button class="btn primary" id="new" type="button" disabled>
+          New rule
+        </button>
+      </div>
+      <form id="auth" hidden>
+        <label class="note" for="auth-key">Management key</label
+        ><input
+          id="auth-key"
+          type="password"
+          autocomplete="current-password"
+          required
+        /><button class="btn primary" type="submit">Continue</button>
+      </form>
+      <p id="error" class="error" role="alert" hidden></p>
+      <div id="facts" class="facts"></div>
+      <div id="rules" aria-live="polite">
+        <span class="note">Loading…</span>
+      </div>
+    </main>
+    <div id="scrim" class="scrim" hidden></div>
+    <form
+      id="editor"
+      class="drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="editor-title"
+      tabindex="-1"
+      hidden
+    >
+      <div class="dhead"><h2 id="editor-title"></h2></div>
+      <div class="dbody">
+        <div class="field" role="group" aria-labelledby="models-label">
+          <span class="note" id="models-label">Models</span>
+          <div id="selected" class="chips"></div>
+          <div class="pick">
+            <div class="search">
+              <label class="sr-only" for="search">Model ID or pattern</label
+              ><input
+                id="search"
+                type="text"
+                placeholder="Model ID or pattern, * matches any text"
+                autocomplete="off"
+                spellcheck="false"
+                role="combobox"
+                aria-controls="catalog"
+                aria-expanded="true"
+              />
+            </div>
+            <p id="catalog-error" class="error" role="alert" hidden></p>
+            <ul id="catalog" role="listbox" aria-multiselectable="true"></ul>
+          </div>
+        </div>
+        <label class="note" for="prompt"
+          >Appended to the system prompt<textarea
+            id="prompt"
+            spellcheck="false"
+          ></textarea>
+        </label>
+        <p id="editor-error" class="error" role="alert" hidden></p>
+      </div>
+      <div class="dfoot">
+        <button id="delete" type="button" class="btn ghost danger" hidden>
+          Delete
+        </button>
+        <span class="spacer"></span
+        ><button id="cancel" type="button" class="btn">Cancel</button
+        ><button id="save" class="btn primary" type="submit">Save</button>
+      </div>
+    </form>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const PLUGIN_ID = "system-prompt";
+      const API = "/v0/management/" + PLUGIN_ID;
+      const CPA = "/v8/management";
+      const CONFIG = CPA + "/config/plugins/configs/" + PLUGIN_ID;
+      const SESSION_KEY = PLUGIN_ID + ".management-key";
+      const REJECTED_KEY = PLUGIN_ID + ".rejected-mc-auth";
+      const MC_AUTH_KEY = "cli-proxy-auth";
+      const MC_THEME_KEY = "cli-proxy-theme";
+
+      function storageGet(storage, key) {
+        try {
+          return storage.getItem(key);
+        } catch (_) {
+          return null;
+        }
+      }
+      function storageSet(storage, key, value) {
+        try {
+          storage.setItem(key, value);
+        } catch (_) {}
+      }
+      function storageRemove(storage, key) {
+        try {
+          storage.removeItem(key);
+        } catch (_) {}
+      }
+      function managementCenterTheme() {
+        try {
+          if (window.parent !== window)
+            return (
+              window.parent.document.documentElement.getAttribute(
+                "data-theme",
+              ) || "light"
+            );
+        } catch (_) {}
+        let saved = "auto";
+        try {
+          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
+          saved = persisted?.state?.theme || saved;
+        } catch (_) {}
+        return saved === "auto"
+          ? matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "white"
+          : saved;
+      }
+      function applyTheme() {
+        document.documentElement.setAttribute(
+          "data-theme",
+          managementCenterTheme(),
+        );
+      }
+      applyTheme();
+      matchMedia("(prefers-color-scheme: dark)").addEventListener(
+        "change",
+        applyTheme,
+      );
+      window.addEventListener("storage", (event) => {
+        if (event.key === MC_THEME_KEY) applyTheme();
+      });
+      try {
+        if (window.parent !== window)
+          new MutationObserver(applyTheme).observe(
+            window.parent.document.documentElement,
+            { attributes: true, attributeFilter: ["data-theme"] },
+          );
+      } catch (_) {}
+
+      // Management Center keeps its key obfuscated in localStorage.
+      function deobfuscate(payload) {
+        const prefix = "enc::v1::";
+        if (!payload.startsWith(prefix)) return payload;
+        const binary = atob(payload.slice(prefix.length));
+        const secret = new TextEncoder().encode(
+          "cli-proxy-api-webui::secure-storage|" +
+            location.host +
+            "|" +
+            navigator.userAgent,
+        );
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++)
+          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
+        return new TextDecoder().decode(bytes);
+      }
+      function resolveKey() {
+        const typed = storageGet(sessionStorage, SESSION_KEY);
+        if (typed) return { key: typed, source: "session" };
+        const raw = storageGet(localStorage, MC_AUTH_KEY);
+        if (raw && raw !== storageGet(sessionStorage, REJECTED_KEY)) {
+          try {
+            const key = JSON.parse(deobfuscate(raw))?.state?.managementKey;
+            if (typeof key === "string" && key.trim())
+              return { key: key.trim(), source: "mc" };
+          } catch (_) {}
+        }
+        return { key: "", source: "" };
+      }
+      const auth = resolveKey();
+      class AuthError extends Error {}
+      function forgetKey() {
+        if (auth.source === "mc")
+          storageSet(
+            sessionStorage,
+            REJECTED_KEY,
+            storageGet(localStorage, MC_AUTH_KEY) || "",
+          );
+        storageRemove(sessionStorage, SESSION_KEY);
+        auth.key = "";
+        auth.source = "";
+        closeEditor(true);
+        $("auth").hidden = false;
+        $("auth-key").focus();
+      }
+      async function request(path, method = "GET", body, missing) {
+        if (!auth.key) throw new AuthError("No management key.");
+        const headers = { Authorization: "Bearer " + auth.key };
+        if (body !== undefined) headers["Content-Type"] = "application/json";
+        const response = await fetch(path, {
+          method,
+          headers,
+          body: body === undefined ? undefined : JSON.stringify(body),
+          cache: "no-store",
+          credentials: "omit",
+        });
+        let data;
+        try {
+          data = await response.json();
+        } catch (_) {
+          throw new Error(path + " · HTTP " + response.status);
+        }
+        if (response.status === 401) {
+          forgetKey();
+          throw new AuthError(data.error || "Management key rejected.");
+        }
+        if (
+          response.status === 404 &&
+          missing !== undefined &&
+          data.error === "not_found"
+        )
+          return missing;
+        if (!response.ok)
+          throw new Error(data.error || path + " · HTTP " + response.status);
+        return data;
+      }
+      function h(tag, props = {}, ...children) {
+        const el = document.createElement(tag);
+        for (const [key, value] of Object.entries(props)) {
+          if (value === false || value === undefined || value === null)
+            continue;
+          if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
+          else el.setAttribute(key, value === true ? "" : String(value));
+        }
+        for (const child of children.flat(Infinity))
+          if (child !== null && child !== undefined && child !== false)
+            el.append(
+              child instanceof Node
+                ? child
+                : document.createTextNode(String(child)),
+            );
+        return el;
+      }
+      function showError(id, message) {
+        $(id).textContent = message;
+        $(id).hidden = !message;
+      }
+      function text(value) {
+        return typeof value === "string" ? value.trim() : "";
+      }
+
+      // Mirrors the plugin's matching: case-insensitive, * matches any run
+      // of characters, and a thinking suffix such as (high) is optional.
+      function matches(pattern, id) {
+        const source = pattern
+          .toLowerCase()
+          .split("*")
+          .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+          .join(".*");
+        const re = new RegExp("^" + source + "$");
+        const model = id.toLowerCase();
+        return re.test(model) || re.test(model.replace(/\([^()]*\)$/, ""));
+      }
+
+      // The models CPA serves are the ones its /v1/models lists. Every client
+      // key reads it, because a client-keys policy shortens one key's list;
+      // with no client keys CPA serves it without one.
+      async function listModels(key) {
+        const response = await fetch("/v1/models", {
+          headers: key ? { Authorization: "Bearer " + key } : {},
+          cache: "no-store",
+          credentials: "omit",
+        });
+        let data;
+        try {
+          data = await response.json();
+        } catch (_) {
+          throw new Error("/v1/models · HTTP " + response.status);
+        }
+        if (!response.ok || !Array.isArray(data.data))
+          throw new Error(
+            "/v1/models · " +
+              (typeof data.error === "string"
+                ? data.error
+                : data.error?.message || "HTTP " + response.status),
+          );
+        return data.data;
+      }
+      async function servedModels() {
+        const saved = await request(
+          CPA + "/config/access/api-keys",
+          "GET",
+          undefined,
+          [],
+        );
+        const keys = [
+          ...new Set(
+            (Array.isArray(saved) ? saved : [])
+              .map((key) =>
+                text(typeof key === "string" ? key : key?.["api-key"]),
+              )
+              .filter(Boolean),
+          ),
+        ];
+        const results = await Promise.allSettled(
+          (keys.length ? keys : [""]).map(listModels),
+        );
+        if (!results.some((result) => result.status === "fulfilled"))
+          throw results[0].reason;
+        const served = new Set();
+        for (const result of results)
+          if (result.status === "fulfilled")
+            for (const model of result.value)
+              if (text(model?.id)) served.add(text(model.id));
+        return [...served].sort((a, b) => a.localeCompare(b));
+      }
+
+      let config = null;
+      let rules = [];
+      let status = null;
+      let catalog = null;
+      let catalogError = "";
+      let editing = null;
+      let saving = false;
+      let lastTrigger = null;
+
+      function renderFacts() {
+        const facts = [];
+        if (status?.error) facts.push("Config not applied: " + status.error);
+        $("facts").replaceChildren(
+          ...facts.map((fact) => h("span", { class: "fact" }, fact)),
+        );
+      }
+      function problemOf(index) {
+        return status?.problems?.find((problem) => problem.rule === index + 1)
+          ?.error;
+      }
+      function modelChip(pattern) {
+        const unmatched =
+          catalog && !catalog.some((id) => matches(pattern, id));
+        return h(
+          "span",
+          {
+            class: unmatched ? "chip amber" : "chip",
+            title: unmatched ? "Matches no model CPA serves now" : null,
+          },
+          pattern,
+        );
+      }
+      function renderRules() {
+        const list = $("rules");
+        if (!rules.length) {
+          list.replaceChildren(h("div", { class: "empty note" }, "No rules"));
+          return;
+        }
+        list.replaceChildren(
+          ...rules.map((rule, index) => {
+            const problem = problemOf(index);
+            const models = Array.isArray(rule?.models) ? rule.models : [];
+            return h(
+              "button",
+              {
+                type: "button",
+                class: "rule",
+                "aria-label": "Edit rule " + (index + 1),
+                onclick: (event) => openEditor(index, event.currentTarget),
+              },
+              h("span", { class: "order" }, index + 1),
+              h(
+                "span",
+                { class: "main" },
+                h(
+                  "span",
+                  { class: "chips" },
+                  models.map((model) => modelChip(String(model))),
+                  problem && h("span", { class: "chip warn" }, problem),
+                ),
+                h(
+                  "span",
+                  { class: "preview" },
+                  typeof rule?.prompt === "string" ? rule.prompt.trim() : "",
+                ),
+              ),
+            );
+          }),
+        );
+      }
+
+      async function reload() {
+        showError("error", "");
+        $("new").disabled = true;
+        try {
+          const [loaded, applied] = await Promise.all([
+            request(CONFIG, "GET", undefined, null),
+            request(API + "/status"),
+          ]);
+          config = loaded;
+          rules = Array.isArray(config?.rules) ? config.rules : [];
+          status = applied;
+          $("new").disabled = false;
+        } catch (error) {
+          if (!(error instanceof AuthError)) showError("error", error.message);
+          $("rules").replaceChildren();
+          return;
+        }
+        renderFacts();
+        renderRules();
+        try {
+          catalog = await servedModels();
+          catalogError = "";
+        } catch (error) {
+          catalog = null;
+          catalogError = "Models · " + error.message;
+        }
+        renderRules();
+        if (editing) renderPicker();
+      }
+
+      function openEditor(index, trigger) {
+        const original = index === null ? null : rules[index];
+        editing = {
+          index,
+          original,
+          models: Array.isArray(original?.models)
+            ? original.models.map(String)
+            : [],
+          active: 0,
+        };
+        lastTrigger = trigger;
+        $("editor-title").textContent =
+          index === null ? "New rule" : "Rule " + (index + 1);
+        $("prompt").value =
+          typeof original?.prompt === "string" ? original.prompt : "";
+        $("search").value = "";
+        $("delete").hidden = index === null;
+        $("delete").textContent = "Delete";
+        showError("editor-error", "");
+        $("page").inert = true;
+        $("scrim").hidden = false;
+        $("editor").hidden = false;
+        renderSelected();
+        renderPicker();
+        (index === null ? $("search") : $("prompt")).focus();
+      }
+      function closeEditor(force = false) {
+        if (saving && !force) return;
+        editing = null;
+        $("editor").hidden = true;
+        $("scrim").hidden = true;
+        $("page").inert = false;
+        lastTrigger?.focus();
+        lastTrigger = null;
+      }
+      function hasModel(model) {
+        return editing.models.some(
+          (selected) => selected.toLowerCase() === model.toLowerCase(),
+        );
+      }
+      function toggleModel(model) {
+        if (hasModel(model))
+          editing.models = editing.models.filter(
+            (selected) => selected.toLowerCase() !== model.toLowerCase(),
+          );
+        else editing.models.push(model);
+        renderSelected();
+        renderPicker();
+      }
+      function renderSelected() {
+        $("selected").replaceChildren(
+          ...editing.models.map((model) => {
+            const chip = modelChip(model);
+            chip.append(
+              h(
+                "button",
+                {
+                  type: "button",
+                  "aria-label": "Remove " + model,
+                  onclick: () => {
+                    toggleModel(model);
+                    $("search").focus();
+                  },
+                },
+                "×",
+              ),
+            );
+            return chip;
+          }),
+        );
+      }
+      // The picker lists the served models the typed text matches, led by
+      // the text itself when it is not one of them, so a pattern or a model
+      // CPA does not serve yet can be added too.
+      function pickerOptions() {
+        const typed = text($("search").value);
+        const served = catalog || [];
+        const shown = typed
+          ? served.filter(
+              (id) =>
+                matches(typed, id) ||
+                id.toLowerCase().includes(typed.toLowerCase()),
+            )
+          : served;
+        const options = shown.map((id) => ({ model: id }));
+        if (
+          typed &&
+          !served.some((id) => id.toLowerCase() === typed.toLowerCase())
+        )
+          options.unshift({
+            model: typed,
+            typed: true,
+            count: served.filter((id) => matches(typed, id)).length,
+          });
+        return options;
+      }
+      function renderPicker() {
+        const options = pickerOptions();
+        editing.active = Math.min(
+          editing.active,
+          Math.max(options.length - 1, 0),
+        );
+        showError("catalog-error", catalogError);
+        const list = $("catalog");
+        if (!options.length) {
+          list.replaceChildren(
+            h(
+              "li",
+              { class: "none note", role: "presentation" },
+              catalog ? "No served models" : "Loading models…",
+            ),
+          );
+          $("search").removeAttribute("aria-activedescendant");
+          return;
+        }
+        list.replaceChildren(
+          ...options.map((option, index) => {
+            const on = hasModel(option.model);
+            const coveredBy = on
+              ? null
+              : editing.models.find((pattern) =>
+                  matches(pattern, option.model),
+                );
+            let note = null;
+            if (option.typed)
+              note = catalog
+                ? option.count === 1
+                  ? "matches 1 served model"
+                  : "matches " + option.count + " served models"
+                : null;
+            else if (coveredBy) note = "by " + coveredBy;
+            return h(
+              "li",
+              {
+                id: "option-" + index,
+                role: "option",
+                "aria-selected": index === editing.active ? "true" : "false",
+                "aria-checked": on ? "true" : "false",
+                "data-on": on ? "1" : "0",
+                onmousedown: (event) => event.preventDefault(),
+                onclick: () => {
+                  editing.active = index;
+                  toggleModel(option.model);
+                },
+              },
+              h("span", { class: "box", "aria-hidden": "true" }, on ? "✓" : ""),
+              h("span", { class: "m" }, option.model),
+              note && h("span", { class: "st" }, note),
+            );
+          }),
+        );
+        $("search").setAttribute(
+          "aria-activedescendant",
+          "option-" + editing.active,
+        );
+        $("option-" + editing.active)?.scrollIntoView({ block: "nearest" });
+      }
+      $("search").addEventListener("input", () => {
+        editing.active = 0;
+        renderPicker();
+      });
+      $("search").addEventListener("keydown", (event) => {
+        const options = pickerOptions();
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          const step = event.key === "ArrowDown" ? 1 : -1;
+          editing.active = Math.max(
+            0,
+            Math.min(options.length - 1, editing.active + step),
+          );
+          renderPicker();
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          const option = options[editing.active];
+          if (!option) return;
+          toggleModel(option.model);
+          if (option.typed) {
+            $("search").value = "";
+            editing.active = 0;
+            renderPicker();
+          }
+        }
+      });
+
+      // PATCH replaces lists, so every write starts from a fresh read and
+      // refuses to overwrite a rule someone else changed meanwhile.
+      async function writeRules(change) {
+        const latest = await request(CONFIG, "GET", undefined, null);
+        const next = Array.isArray(latest?.rules) ? [...latest.rules] : [];
+        if (
+          editing.index !== null &&
+          JSON.stringify(next[editing.index]) !==
+            JSON.stringify(editing.original)
+        )
+          throw new Error(
+            "Rule " +
+              (editing.index + 1) +
+              " changed since this page loaded. Reload.",
+          );
+        change(next);
+        await request(CONFIG, "PATCH", { ...latest, rules: next });
+      }
+      async function commit(change) {
+        saving = true;
+        for (const id of ["save", "cancel", "delete"]) $(id).disabled = true;
+        try {
+          await writeRules(change);
+          saving = false;
+          closeEditor();
+          await reload();
+        } catch (error) {
+          if (!(error instanceof AuthError))
+            showError("editor-error", error.message);
+        } finally {
+          saving = false;
+          for (const id of ["save", "cancel", "delete"]) $(id).disabled = false;
+        }
+      }
+      $("editor").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const prompt = $("prompt").value;
+        if (!editing.models.length) {
+          showError("editor-error", "Add at least one model.");
+          $("search").focus();
+          return;
+        }
+        if (!prompt.trim()) {
+          showError("editor-error", "The prompt is empty.");
+          $("prompt").focus();
+          return;
+        }
+        const rule = { ...editing.original, models: editing.models, prompt };
+        commit((next) => {
+          if (editing.index === null) next.push(rule);
+          else next[editing.index] = rule;
+        });
+      });
+      $("delete").addEventListener("click", () => {
+        if (!editing.confirmDelete) {
+          editing.confirmDelete = true;
+          $("delete").textContent = "Confirm delete";
+          return;
+        }
+        commit((next) => next.splice(editing.index, 1));
+      });
+      $("cancel").addEventListener("click", () => closeEditor());
+      $("scrim").addEventListener("click", () => closeEditor());
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && editing) {
+          event.preventDefault();
+          closeEditor();
+        }
+      });
+      $("new").addEventListener("click", (event) =>
+        openEditor(null, event.currentTarget),
+      );
+      $("reload").addEventListener("click", () => reload());
+      $("auth").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        auth.key = $("auth-key").value.trim();
+        auth.source = "typed";
+        if (!auth.key) return;
+        $("auth").hidden = true;
+        await reload();
+        if (auth.key && status) {
+          storageSet(sessionStorage, SESSION_KEY, auth.key);
+          auth.source = "session";
+          $("auth-key").value = "";
+        } else $("auth").hidden = false;
+      });
+      if (auth.key) reload();
+      else {
+        $("auth").hidden = false;
+        $("rules").replaceChildren();
+        showError("error", "No management key.");
+      }
+    </script>
+  </body>
+</html>
