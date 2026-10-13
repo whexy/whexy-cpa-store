@@ -69,7 +69,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.1.1"
+	pluginVersion = "0.1.2"
 
 	// Background work gets this long to observe cancellation before the host
 	// unloads the library underneath it.
