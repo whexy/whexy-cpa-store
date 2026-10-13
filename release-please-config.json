@@ -16,6 +16,10 @@
     "plugins/opencode-go": {
       "component": "opencode-go",
       "extra-files": ["go/main.go"]
+    },
+    "plugins/usage-dashboard": {
+      "component": "usage-dashboard",
+      "extra-files": ["go/main.go"]
     }
   }
 }

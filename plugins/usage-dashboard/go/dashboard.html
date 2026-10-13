@@ -1,0 +1,1749 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Usage</title>
+    <style>
+      :root {
+        --bg-page: #faf9f5;
+        --bg-subtle: #f0eee8;
+        --bg-hover: #e9e6df;
+        --bg-input: #faf9f5;
+        --text-primary: #2d2a26;
+        --text-secondary: #6d6760;
+        --text-tertiary: #a29c95;
+        --border: #e3e1db;
+        --border-hover: #cecac4;
+        --grid: #e8e6e0;
+        --error-text: #b04a3b;
+        --warn-bg: color-mix(in srgb, #d97706 10%, transparent);
+        --warn-text: #92400e;
+        --shadow: 0 4px 16px rgb(0 0 0 / 0.1);
+        --type-input: #6d6760;
+        --type-cache-read: #c9c5be;
+        --type-cache-write: #8f8a83;
+        --type-output: #2d2a26;
+        --s0: #a29c95;
+        --s1: #2a78d6;
+        --s2: #eb6834;
+        --s3: #1baf7a;
+        --s4: #eda100;
+        --s5: #e87ba4;
+        --s6: #008300;
+        --s7: #6250d6;
+        --s8: #e34948;
+        --font-sans:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+          "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+          sans-serif;
+        color-scheme: light;
+      }
+
+      [data-theme="white"] {
+        --bg-page: #ffffff;
+        --bg-subtle: #f4f4f4;
+        --bg-hover: #ececec;
+        --bg-input: #ffffff;
+        --border: #e5e5e5;
+        --border-hover: #cccccc;
+        --grid: #ececec;
+      }
+
+      [data-theme="dark"] {
+        --bg-page: #151412;
+        --bg-subtle: #23211e;
+        --bg-hover: #2c2925;
+        --bg-input: #151412;
+        --text-primary: #f6f4f1;
+        --text-secondary: #c9c3bb;
+        --text-tertiary: #8f8881;
+        --border: #3a3530;
+        --border-hover: #5a544d;
+        --grid: #2a2724;
+        --error-text: #f1b0a6;
+        --warn-bg: color-mix(in srgb, #f59e0b 14%, transparent);
+        --warn-text: #fcd34d;
+        --shadow: 0 4px 16px rgb(0 0 0 / 0.45);
+        --type-input: #a29c95;
+        --type-cache-read: #4a4540;
+        --type-cache-write: #756f68;
+        --type-output: #f6f4f1;
+        --s0: #8f8881;
+        --s1: #3987e5;
+        --s2: #d95926;
+        --s3: #199e70;
+        --s4: #c98500;
+        --s5: #d55181;
+        --s6: #008300;
+        --s7: #9085e9;
+        --s8: #e66767;
+        color-scheme: dark;
+      }
+
+      .k0 {
+        --c: var(--s0);
+      }
+      .k1 {
+        --c: var(--s1);
+      }
+      .k2 {
+        --c: var(--s2);
+      }
+      .k3 {
+        --c: var(--s3);
+      }
+      .k4 {
+        --c: var(--s4);
+      }
+      .k5 {
+        --c: var(--s5);
+      }
+      .k6 {
+        --c: var(--s6);
+      }
+      .k7 {
+        --c: var(--s7);
+      }
+      .k8 {
+        --c: var(--s8);
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: var(--bg-page);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      /* Management Center floats its toolbar over the top 76px of the frame. */
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 84px clamp(16px, 3vw, 40px) 56px;
+      }
+
+      .muted {
+        color: var(--text-secondary);
+      }
+
+      .bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 14px;
+        margin-bottom: 28px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      #span {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .spacer {
+        flex: 1;
+      }
+
+      .seg {
+        display: inline-flex;
+        padding: 3px;
+        border-radius: 10px;
+        background: var(--bg-subtle);
+      }
+
+      .seg button {
+        border: 0;
+        border-radius: 7px;
+        padding: 5px 12px;
+        background: transparent;
+        color: var(--text-secondary);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .seg button:hover {
+        color: var(--text-primary);
+      }
+
+      .seg button[aria-pressed="true"] {
+        background: var(--bg-page);
+        color: var(--text-primary);
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+      }
+
+      .icon-button {
+        display: inline-grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+
+      .icon-button:hover {
+        background: var(--bg-subtle);
+        color: var(--text-primary);
+      }
+
+      .icon-button svg {
+        width: 17px;
+        height: 17px;
+      }
+
+      .busy .icon-button svg {
+        animation: spin 0.9s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      button:focus-visible,
+      input:focus-visible,
+      svg:focus-visible {
+        outline: 2px solid var(--s1);
+        outline-offset: 2px;
+      }
+
+      .notice {
+        margin: -12px 0 24px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: var(--warn-bg);
+        color: var(--warn-text);
+      }
+
+      .notice.error {
+        background: color-mix(in srgb, var(--error-text) 12%, transparent);
+        color: var(--error-text);
+      }
+
+      .auth {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        max-width: 520px;
+        margin-bottom: 28px;
+      }
+
+      .auth input {
+        flex: 1;
+        min-width: 220px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-input);
+        color: var(--text-primary);
+        font: inherit;
+      }
+
+      .auth button {
+        padding: 8px 14px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--text-primary);
+        color: var(--bg-page);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      #content {
+        transition: opacity 0.15s;
+      }
+
+      .busy #content {
+        opacity: 0.55;
+      }
+
+      .overview {
+        display: grid;
+        grid-template-columns: minmax(260px, 340px) 1fr;
+        gap: 40px;
+        align-items: start;
+      }
+
+      .hero {
+        font-size: 52px;
+        font-weight: 650;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+      }
+
+      .hero-sub {
+        margin: 6px 0 22px;
+        color: var(--text-secondary);
+      }
+
+      .groups {
+        display: grid;
+        gap: 16px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .group {
+        display: grid;
+        grid-template-columns: 10px 1fr auto;
+        column-gap: 10px;
+        align-items: baseline;
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--c);
+        align-self: center;
+      }
+
+      .group-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 15px;
+      }
+
+      .group-name small,
+      .group-meta {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .group-value {
+        font-weight: 600;
+        font-size: 15px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .group-meta {
+        grid-column: 2 / 4;
+        margin-top: 2px;
+      }
+
+      .empty {
+        color: var(--text-secondary);
+      }
+
+      figure {
+        margin: 0;
+        min-width: 0;
+      }
+
+      .chart-title,
+      h2 {
+        margin: 0 0 14px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .chart-wrap {
+        position: relative;
+      }
+
+      #chart {
+        display: block;
+        width: 100%;
+        height: 330px;
+        overflow: visible;
+      }
+
+      #chart .grid line {
+        stroke: var(--grid);
+        stroke-width: 1;
+      }
+
+      #chart .baseline {
+        stroke: var(--border-hover);
+        stroke-width: 1;
+      }
+
+      #chart text {
+        fill: var(--text-tertiary);
+        font-size: 11px;
+        font-family: var(--font-sans);
+      }
+
+      #chart .series path.area {
+        fill: var(--c);
+        fill-opacity: 0.1;
+        stroke: none;
+      }
+
+      #chart .series path.line {
+        fill: none;
+        stroke: var(--c);
+        stroke-width: 2;
+        stroke-linejoin: round;
+        stroke-linecap: round;
+      }
+
+      #chart .cursor line {
+        stroke: var(--text-tertiary);
+        stroke-width: 1;
+      }
+
+      #chart .cursor circle {
+        fill: var(--c);
+        stroke: var(--bg-page);
+        stroke-width: 2;
+      }
+
+      .tooltip {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 2;
+        min-width: 180px;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg-page);
+        box-shadow: var(--shadow);
+        pointer-events: none;
+        font-size: 13px;
+      }
+
+      .tooltip-title {
+        margin-bottom: 6px;
+        color: var(--text-secondary);
+      }
+
+      .tooltip-row {
+        display: grid;
+        grid-template-columns: 12px auto 1fr;
+        gap: 8px;
+        align-items: center;
+        white-space: nowrap;
+      }
+
+      .tooltip-row + .tooltip-row {
+        margin-top: 3px;
+      }
+
+      .tooltip-row .key {
+        height: 2px;
+        border-radius: 1px;
+        background: var(--c);
+      }
+
+      .tooltip-row strong {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .tooltip-row span:last-child {
+        color: var(--text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      section {
+        margin-top: 44px;
+      }
+
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 16px;
+        margin: 0;
+      }
+
+      .tiles div {
+        min-width: 0;
+      }
+
+      .tiles dt {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .tiles dd {
+        margin: 4px 0 0;
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      .typebar {
+        display: flex;
+        gap: 2px;
+        max-width: 680px;
+        height: 10px;
+        margin-bottom: 12px;
+      }
+
+      .typebar span {
+        min-width: 3px;
+        background: var(--seg);
+      }
+
+      .typebar span:first-child {
+        border-radius: 4px 0 0 4px;
+      }
+
+      .typebar span:last-child {
+        border-radius: 0 4px 4px 0;
+      }
+
+      .typebar span:only-child {
+        border-radius: 4px;
+      }
+
+      .t-input {
+        --seg: var(--type-input);
+      }
+      .t-cache-read {
+        --seg: var(--type-cache-read);
+      }
+      .t-cache-write {
+        --seg: var(--type-cache-write);
+      }
+      .t-output {
+        --seg: var(--type-output);
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 22px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .legend li {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .legend i {
+        width: 9px;
+        height: 9px;
+        border-radius: 2px;
+        background: var(--seg);
+      }
+
+      .legend b {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+
+      .section-head h2 {
+        margin: 0;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+
+      th {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 400;
+        text-align: right;
+      }
+
+      td {
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+        text-align: right;
+      }
+
+      th:nth-child(1),
+      td:nth-child(1) {
+        width: 36px;
+        color: var(--text-secondary);
+        text-align: left;
+      }
+
+      th:nth-child(2),
+      td:nth-child(2) {
+        text-align: left;
+      }
+
+      th:nth-child(n + 3),
+      td:nth-child(n + 3) {
+        padding-left: 28px;
+      }
+
+      .model-name {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-width: 360px;
+      }
+
+      .model-name .share {
+        height: 2px;
+        min-width: 4px;
+        border-radius: 1px;
+        background: var(--c);
+      }
+
+      .model-name small {
+        margin-left: 8px;
+        color: var(--text-secondary);
+        font-size: 12px;
+      }
+
+      .unpriced {
+        color: var(--text-tertiary);
+      }
+
+      @media (max-width: 820px) {
+        .overview {
+          grid-template-columns: 1fr;
+        }
+
+        .tiles {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="bar">
+        <h1>Usage</h1>
+        <span id="span"></span>
+        <div class="seg" id="group-by" role="group" aria-label="Group by"></div>
+        <span class="spacer"></span>
+        <div class="seg" id="metric" role="group" aria-label="Measure"></div>
+        <div class="seg" id="range" role="group" aria-label="Range"></div>
+        <button
+          class="icon-button"
+          id="refresh"
+          type="button"
+          aria-label="Refresh"
+          title="Refresh"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+            <path d="M20 4v7h-7" />
+          </svg>
+        </button>
+      </div>
+
+      <p class="notice" id="notice" hidden></p>
+
+      <form class="auth" id="auth" hidden>
+        <input
+          id="key"
+          type="password"
+          autocomplete="off"
+          placeholder="Management key"
+          aria-label="Management key"
+        />
+        <button type="submit">Open</button>
+      </form>
+
+      <div id="content" hidden>
+        <div class="overview">
+          <div>
+            <div class="hero" id="hero"></div>
+            <div class="hero-sub" id="hero-sub"></div>
+            <ul class="groups" id="groups"></ul>
+          </div>
+          <figure>
+            <figcaption class="chart-title" id="chart-title"></figcaption>
+            <div class="chart-wrap" id="chart-wrap">
+              <svg id="chart" tabindex="0" role="img"></svg>
+              <div class="tooltip" id="tooltip" hidden></div>
+            </div>
+          </figure>
+        </div>
+
+        <section>
+          <h2>Totals</h2>
+          <dl class="tiles" id="tiles"></dl>
+        </section>
+
+        <section>
+          <h2>Tokens by type</h2>
+          <div class="typebar" id="typebar"></div>
+          <ul class="legend" id="type-legend"></ul>
+        </section>
+
+        <section>
+          <div class="section-head">
+            <h2>Breakdown</h2>
+            <div
+              class="seg"
+              id="breakdown-by"
+              role="group"
+              aria-label="Breakdown by"
+            ></div>
+          </div>
+          <table>
+            <thead>
+              <tr id="breakdown-head"></tr>
+            </thead>
+            <tbody id="breakdown"></tbody>
+          </table>
+        </section>
+      </div>
+    </main>
+    <script>
+      "use strict";
+
+      // The page is served at <base>/v0/resource/plugins/usage-dashboard/index.html,
+      // where <base> is empty unless a reverse proxy adds a path prefix.
+      const API =
+        location.pathname.replace(
+          /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
+          "",
+        ) + "/v0/management/usage-dashboard";
+      const SESSION_KEY = "usage-dashboard.management-key";
+      const REJECTED_KEY = "usage-dashboard.rejected-mc-auth";
+      const PREFS_KEY = "usage-dashboard.prefs";
+      const MC_AUTH_KEY = "cli-proxy-auth";
+      const MC_THEME_KEY = "cli-proxy-theme";
+      const SVG_NS = "http://www.w3.org/2000/svg";
+      const TIME_ZONE =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+      const RANGE_LABELS = {
+        "24h": "Past 24h",
+        "7d": "7 days",
+        "30d": "30 days",
+        "90d": "90 days",
+      };
+      const TYPES = [
+        { key: "input", label: "Input", cls: "t-input" },
+        { key: "cache_read", label: "Cache read", cls: "t-cache-read" },
+        { key: "cache_write", label: "Cache write", cls: "t-cache-write" },
+        { key: "output", label: "Output", cls: "t-output" },
+      ];
+
+      const $ = (id) => document.getElementById(id);
+
+      function storageGet(storage, key) {
+        try {
+          return storage.getItem(key);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function storageSet(storage, key, value) {
+        try {
+          storage.setItem(key, value);
+        } catch (_) {}
+      }
+
+      function storageRemove(storage, key) {
+        try {
+          storage.removeItem(key);
+        } catch (_) {}
+      }
+
+      // Theme: follow Management Center's own setting. Its document carries
+      // data-theme ("dark", "white", or none for its light theme); when the
+      // page cannot reach it, read the persisted setting instead.
+      function managementCenterTheme() {
+        try {
+          if (window.parent !== window) {
+            return (
+              window.parent.document.documentElement.getAttribute(
+                "data-theme",
+              ) || "light"
+            );
+          }
+        } catch (_) {}
+        let saved = "auto";
+        try {
+          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
+          if (persisted && persisted.state && persisted.state.theme)
+            saved = persisted.state.theme;
+        } catch (_) {}
+        if (saved === "auto") {
+          return matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "white";
+        }
+        return saved;
+      }
+
+      function applyTheme() {
+        document.documentElement.setAttribute(
+          "data-theme",
+          managementCenterTheme(),
+        );
+      }
+
+      applyTheme();
+      matchMedia("(prefers-color-scheme: dark)").addEventListener(
+        "change",
+        applyTheme,
+      );
+      window.addEventListener("storage", (event) => {
+        if (event.key === MC_THEME_KEY) applyTheme();
+      });
+      try {
+        if (window.parent !== window) {
+          new MutationObserver(applyTheme).observe(
+            window.parent.document.documentElement,
+            {
+              attributes: true,
+              attributeFilter: ["data-theme"],
+            },
+          );
+        }
+      } catch (_) {}
+
+      // Management key: Management Center persists it, when "remember" is on,
+      // as zustand state {"state":{"managementKey":...}} obfuscated by
+      // src/utils/encryption.ts. A key typed here lives in sessionStorage.
+      function deobfuscate(payload) {
+        const prefix = "enc::v1::";
+        if (!payload.startsWith(prefix)) return payload;
+        const binary = atob(payload.slice(prefix.length));
+        const secret = new TextEncoder().encode(
+          "cli-proxy-api-webui::secure-storage|" +
+            location.host +
+            "|" +
+            navigator.userAgent,
+        );
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
+        }
+        return new TextDecoder().decode(bytes);
+      }
+
+      function managementCenterKey() {
+        const raw = storageGet(localStorage, MC_AUTH_KEY);
+        if (!raw || storageGet(sessionStorage, REJECTED_KEY) === raw) return "";
+        try {
+          const persisted = JSON.parse(deobfuscate(raw));
+          const key =
+            persisted && persisted.state && persisted.state.managementKey;
+          return typeof key === "string" ? key.trim() : "";
+        } catch (_) {
+          return "";
+        }
+      }
+
+      const auth = { key: "", source: "" };
+
+      function resolveKey() {
+        const typed = storageGet(sessionStorage, SESSION_KEY);
+        if (typed) return { key: typed, source: "session" };
+        const shared = managementCenterKey();
+        if (shared) return { key: shared, source: "mc" };
+        return { key: "", source: "" };
+      }
+
+      // A rejected key is never retried: five failures ban the address for
+      // 30 minutes.
+      function forgetKey() {
+        if (auth.source === "session")
+          storageRemove(sessionStorage, SESSION_KEY);
+        if (auth.source === "mc") {
+          storageSet(
+            sessionStorage,
+            REJECTED_KEY,
+            storageGet(localStorage, MC_AUTH_KEY) || "",
+          );
+        }
+        auth.key = "";
+        auth.source = "";
+      }
+
+      class AuthError extends Error {}
+
+      async function api(path) {
+        if (!auth.key) throw new AuthError("No management key.");
+        let response;
+        try {
+          response = await fetch(API + path, {
+            headers: { Authorization: "Bearer " + auth.key },
+            cache: "no-store",
+            credentials: "omit",
+          });
+        } catch (err) {
+          throw new Error("CLIProxyAPI did not answer: " + err.message);
+        }
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (_) {}
+        const message =
+          data && typeof data.error === "string" ? data.error : "";
+        if (response.status === 401) {
+          forgetKey();
+          throw new AuthError(
+            "Management key rejected. Five wrong keys block this address for 30 minutes.",
+          );
+        }
+        if (!response.ok) {
+          throw new Error(
+            message || "CLIProxyAPI answered HTTP " + response.status + ".",
+          );
+        }
+        return data || {};
+      }
+
+      // DOM helpers: strings become text nodes, never markup.
+      function h(tag, props, ...children) {
+        const el = document.createElement(tag);
+        for (const [name, value] of Object.entries(props || {})) {
+          if (value === undefined || value === null || value === false)
+            continue;
+          if (name === "class") el.className = value;
+          else el.setAttribute(name, value === true ? "" : String(value));
+        }
+        for (const child of children.flat()) {
+          if (child === null || child === undefined || child === false)
+            continue;
+          el.append(
+            child instanceof Node
+              ? child
+              : document.createTextNode(String(child)),
+          );
+        }
+        return el;
+      }
+
+      function s(tag, attrs) {
+        const el = document.createElementNS(SVG_NS, tag);
+        for (const [name, value] of Object.entries(attrs || {}))
+          el.setAttribute(name, String(value));
+        return el;
+      }
+
+      // Formatting.
+      function compact(n) {
+        const abs = Math.abs(n);
+        const units = [
+          [1e12, "T"],
+          [1e9, "B"],
+          [1e6, "M"],
+          [1e3, "K"],
+        ];
+        for (const [size, suffix] of units) {
+          if (abs >= size) {
+            const value = n / size;
+            const digits = Math.abs(value) >= 100 ? 0 : 1;
+            return value.toFixed(digits).replace(/\.0$/, "") + suffix;
+          }
+        }
+        return String(Math.round(n));
+      }
+
+      const money = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const moneyShort = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        notation: "compact",
+        maximumFractionDigits: 1,
+      });
+      const integer = new Intl.NumberFormat("en-US");
+
+      function usd(n) {
+        return money.format(n || 0);
+      }
+
+      function usdAxis(n) {
+        return n >= 1000
+          ? moneyShort.format(n)
+          : "$" + (Number.isInteger(n) ? n : n.toFixed(n < 10 ? 1 : 0));
+      }
+
+      function percent(part, whole) {
+        if (!whole || !part) return "0%";
+        const value = (part / whole) * 100;
+        return value < 0.1 ? "<0.1%" : value.toFixed(1) + "%";
+      }
+
+      function pointDate(point, step) {
+        if (step === "hour") return new Date(point);
+        const [y, m, d] = point.split("-").map(Number);
+        return new Date(y, m - 1, d);
+      }
+
+      const fmtDay = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      const fmtWeekday = new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+      const fmtHour = new Intl.DateTimeFormat("en-US", { hour: "numeric" });
+      const fmtDayHour = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+      });
+
+      function pointLabel(point, step) {
+        const date = pointDate(point, step);
+        return step === "hour"
+          ? fmtDayHour.format(date)
+          : fmtWeekday.format(date);
+      }
+
+      function axisLabel(point, step) {
+        const date = pointDate(point, step);
+        return (
+          step === "hour" ? fmtHour.format(date) : fmtDay.format(date)
+        ).toUpperCase();
+      }
+
+      // Preferences survive reloads; the range falls back to what retention
+      // offers.
+      const prefs = Object.assign(
+        { group: "family", metric: "tokens", range: "30d", breakdown: "model" },
+        (() => {
+          try {
+            return JSON.parse(storageGet(localStorage, PREFS_KEY)) || {};
+          } catch (_) {
+            return {};
+          }
+        })(),
+      );
+
+      function savePrefs() {
+        storageSet(localStorage, PREFS_KEY, JSON.stringify(prefs));
+      }
+
+      function segmented(container, options, value, onPick) {
+        container.replaceChildren(
+          ...options.map(([key, label]) => {
+            const button = h(
+              "button",
+              {
+                type: "button",
+                "aria-pressed": key === value ? "true" : "false",
+              },
+              label,
+            );
+            button.addEventListener("click", () => onPick(key));
+            return button;
+          }),
+        );
+      }
+
+      let report = null;
+
+      function renderControls() {
+        segmented(
+          $("group-by"),
+          [
+            ["family", "Family"],
+            ["account", "Account"],
+          ],
+          prefs.group,
+          (key) => {
+            prefs.group = key;
+            savePrefs();
+            load();
+          },
+        );
+        segmented(
+          $("metric"),
+          [
+            ["cost", "Cost"],
+            ["tokens", "Tokens"],
+          ],
+          prefs.metric,
+          (key) => {
+            prefs.metric = key;
+            savePrefs();
+            renderControls();
+            if (report) render();
+          },
+        );
+        const offered = report ? report.range.ranges : ["24h", "7d", "30d"];
+        segmented(
+          $("range"),
+          offered.map((key) => [key, RANGE_LABELS[key]]),
+          prefs.range,
+          (key) => {
+            prefs.range = key;
+            savePrefs();
+            load();
+          },
+        );
+        segmented(
+          $("breakdown-by"),
+          [
+            ["model", "Model"],
+            ["day", report && report.range.step === "hour" ? "Hour" : "Day"],
+          ],
+          prefs.breakdown,
+          (key) => {
+            prefs.breakdown = key;
+            savePrefs();
+            renderControls();
+            if (report) renderBreakdown();
+          },
+        );
+      }
+
+      function showNotice(text, isError) {
+        const notice = $("notice");
+        notice.textContent = text || "";
+        notice.className = isError ? "notice error" : "notice";
+        notice.hidden = !text;
+      }
+
+      function showAuth(message) {
+        $("auth").hidden = false;
+        $("content").hidden = true;
+        showNotice(message, true);
+        $("key").focus();
+      }
+
+      $("auth").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const key = $("key").value.trim();
+        if (!key) return;
+        storageSet(sessionStorage, SESSION_KEY, key);
+        $("key").value = "";
+        $("auth").hidden = true;
+        showNotice("");
+        load();
+      });
+
+      $("refresh").addEventListener("click", () => load());
+
+      let loadSeq = 0;
+
+      async function load() {
+        const seq = ++loadSeq;
+        if (!auth.key) Object.assign(auth, resolveKey());
+        if (!auth.key) {
+          showAuth("Enter the management key to read usage.");
+          return;
+        }
+        renderControls();
+        document.body.classList.add("busy");
+        const query = new URLSearchParams({
+          range: prefs.range,
+          group: prefs.group,
+          tz: TIME_ZONE,
+        });
+        try {
+          const data = await api("/summary?" + query);
+          if (seq !== loadSeq) return;
+          if (!data.range.ranges.includes(prefs.range)) {
+            prefs.range = data.range.ranges[data.range.ranges.length - 1];
+            savePrefs();
+            return load();
+          }
+          report = data;
+          $("auth").hidden = true;
+          $("content").hidden = false;
+          renderControls();
+          render();
+        } catch (err) {
+          if (err instanceof AuthError) showAuth(err.message);
+          else showNotice(err.message, true);
+        } finally {
+          if (seq === loadSeq) document.body.classList.remove("busy");
+        }
+      }
+
+      function metricOf(item) {
+        return prefs.metric === "cost" ? item.cost : item.processed;
+      }
+
+      function formatMetric(value) {
+        return prefs.metric === "cost" ? usd(value) : compact(value);
+      }
+
+      function render() {
+        const r = report;
+        const step = r.range.step;
+        const points = r.points.map((p) => p.point);
+        $("span").textContent =
+          step === "hour"
+            ? fmtDayHour.format(pointDate(points[0], step)) +
+              " to " +
+              fmtDayHour.format(new Date(r.range.to))
+            : fmtDay.format(pointDate(points[0], step)) +
+              " to " +
+              fmtDay.format(pointDate(points[points.length - 1], step));
+
+        const warnings = [];
+        if (r.store.error)
+          warnings.push("Usage is not being saved: " + r.store.error);
+        else if (!r.store.persisting)
+          warnings.push(
+            "Not saved to disk yet: waiting for " + r.store.data_dir + ".",
+          );
+        if (r.pricing.enabled && !r.pricing.fetched_at && r.pricing.error)
+          warnings.push("No prices yet: " + r.pricing.error);
+        showNotice(warnings.join(" "), false);
+
+        const totals = r.totals;
+        $("hero").textContent = formatMetric(metricOf(totals));
+        const sub = [
+          plural(totals.sessions, "session"),
+          plural(totals.requests, "request"),
+        ];
+        if (totals.failed) sub.push(integer.format(totals.failed) + " failed");
+        if (prefs.metric === "cost" && totals.unpriced_tokens)
+          sub.push(compact(totals.unpriced_tokens) + " tokens unpriced");
+        $("hero-sub").textContent = sub.join(" · ");
+
+        renderGroups();
+        renderChart();
+        renderTotals();
+        renderTypes();
+        renderBreakdown();
+      }
+
+      function plural(n, noun) {
+        return integer.format(n) + " " + noun + (n === 1 ? "" : "s");
+      }
+
+      function sortedGroups() {
+        return report.groups.slice().sort((a, b) => {
+          if ((a.key === "__other__") !== (b.key === "__other__"))
+            return a.key === "__other__" ? 1 : -1;
+          return metricOf(b) - metricOf(a) || a.label.localeCompare(b.label);
+        });
+      }
+
+      function renderGroups() {
+        const list = $("groups");
+        const total = metricOf(report.totals);
+        const groups = sortedGroups();
+        if (!groups.length) {
+          list.replaceChildren(
+            h("li", { class: "empty" }, "No usage in this range."),
+          );
+          return;
+        }
+        list.replaceChildren(
+          ...groups.map((g) => {
+            const other =
+              prefs.metric === "cost"
+                ? compact(g.processed) + " tokens"
+                : usd(g.cost);
+            const meta = [
+              percent(metricOf(g), total) + " of " + prefs.metric,
+              other,
+              plural(g.sessions, "session"),
+            ];
+            return h(
+              "li",
+              { class: "group k" + g.color },
+              h("span", { class: "dot" }),
+              h(
+                "span",
+                { class: "group-name", title: g.label },
+                g.label,
+                g.detail ? h("small", {}, " " + g.detail) : null,
+              ),
+              h("span", { class: "group-value" }, formatMetric(metricOf(g))),
+              h("span", { class: "group-meta" }, meta.join(" · ")),
+            );
+          }),
+        );
+      }
+
+      // Monotone cubic interpolation (as d3.curveMonotoneX): smooth, and
+      // never dips below zero between two non-negative points.
+      function monotonePath(xs, ys) {
+        const n = xs.length;
+        if (n === 0) return "";
+        if (n === 1) return "M" + xs[0] + "," + ys[0];
+        const slopes = [];
+        for (let i = 0; i < n - 1; i++)
+          slopes.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+        const tangents = [slopes[0]];
+        for (let i = 1; i < n - 1; i++) {
+          const s0 = slopes[i - 1];
+          const s1 = slopes[i];
+          const h0 = xs[i] - xs[i - 1];
+          const h1 = xs[i + 1] - xs[i];
+          const p = (s0 * h1 + s1 * h0) / (h0 + h1);
+          tangents.push(
+            (Math.sign(s0) + Math.sign(s1)) *
+              Math.min(Math.abs(s0), Math.abs(s1), 0.5 * Math.abs(p)) || 0,
+          );
+        }
+        tangents.push(slopes[n - 2]);
+        let d = "M" + xs[0] + "," + ys[0];
+        for (let i = 0; i < n - 1; i++) {
+          const dx = (xs[i + 1] - xs[i]) / 3;
+          d +=
+            "C" +
+            (xs[i] + dx) +
+            "," +
+            (ys[i] + tangents[i] * dx) +
+            "," +
+            (xs[i + 1] - dx) +
+            "," +
+            (ys[i + 1] - tangents[i + 1] * dx) +
+            "," +
+            xs[i + 1] +
+            "," +
+            ys[i + 1];
+        }
+        return d;
+      }
+
+      function niceStep(max, count) {
+        const raw = max / count;
+        const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+        for (const factor of [1, 2, 2.5, 5, 10]) {
+          if (factor * magnitude >= raw) return factor * magnitude;
+        }
+        return 10 * magnitude;
+      }
+
+      const chartState = { index: -1, layout: null };
+
+      function seriesOf(g) {
+        return prefs.metric === "cost" ? g.series_cost : g.series_tokens;
+      }
+
+      function renderChart() {
+        const step = report.range.step;
+        $("chart-title").textContent =
+          (step === "hour" ? "Hourly " : "Daily ") +
+          (prefs.metric === "cost" ? "estimated cost" : "processed tokens");
+        const svg = $("chart");
+        const width = Math.max(svg.clientWidth, 280);
+        const height = 330;
+        const pad = { top: 8, right: 8, bottom: 26, left: 44 };
+        const groups = sortedGroups();
+        const points = report.points.map((p) => p.point);
+        let max = 0;
+        for (const g of groups)
+          for (const v of seriesOf(g)) max = Math.max(max, v);
+        const stepValue =
+          max > 0 ? niceStep(max, 3) : prefs.metric === "cost" ? 1 : 1000;
+        const top = Math.max(stepValue * Math.ceil(max / stepValue), stepValue);
+        const plotW = width - pad.left - pad.right;
+        const plotH = height - pad.top - pad.bottom;
+        const x = (i) =>
+          pad.left +
+          (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW);
+        const y = (v) => pad.top + plotH - (v / top) * plotH;
+        svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+        svg.replaceChildren();
+
+        const grid = s("g", { class: "grid" });
+        for (let v = 0; v <= top + stepValue / 2; v += stepValue) {
+          if (v > 0)
+            grid.append(
+              s("line", {
+                x1: pad.left,
+                x2: width - pad.right,
+                y1: y(v),
+                y2: y(v),
+              }),
+            );
+          const label = s("text", {
+            x: pad.left - 8,
+            y: y(v) + 4,
+            "text-anchor": "end",
+          });
+          label.textContent = prefs.metric === "cost" ? usdAxis(v) : compact(v);
+          grid.append(label);
+        }
+        svg.append(grid);
+        svg.append(
+          s("line", {
+            class: "baseline",
+            x1: pad.left,
+            x2: width - pad.right,
+            y1: y(0),
+            y2: y(0),
+          }),
+        );
+
+        const labelCount = Math.max(
+          2,
+          Math.min(
+            points.length,
+            Math.floor(plotW / 90),
+            step === "hour" ? 7 : 6,
+          ),
+        );
+        const ticks = new Set();
+        for (let k = 0; k < labelCount; k++)
+          ticks.add(Math.round((k * (points.length - 1)) / (labelCount - 1)));
+        for (const i of ticks) {
+          const anchor =
+            i === 0 ? "start" : i === points.length - 1 ? "end" : "middle";
+          const label = s("text", {
+            x: x(i),
+            y: height - 6,
+            "text-anchor": anchor,
+          });
+          label.textContent = axisLabel(points[i], step);
+          svg.append(label);
+        }
+
+        // Larger series first, so smaller ones stay visible on top.
+        for (const g of groups.slice().reverse()) {
+          const values = seriesOf(g);
+          const xs = values.map((_, i) => x(i));
+          const ys = values.map((v) => y(v));
+          const line = monotonePath(xs, ys);
+          const group = s("g", { class: "series k" + g.color });
+          group.append(
+            s("path", {
+              class: "area",
+              d:
+                line +
+                "L" +
+                xs[xs.length - 1] +
+                "," +
+                y(0) +
+                "L" +
+                xs[0] +
+                "," +
+                y(0) +
+                "Z",
+            }),
+          );
+          group.append(s("path", { class: "line", d: line }));
+          svg.append(group);
+        }
+        const cursor = s("g", { class: "cursor" });
+        cursor.setAttribute("visibility", "hidden");
+        svg.append(cursor);
+
+        chartState.layout = {
+          x,
+          y,
+          points,
+          groups,
+          step,
+          cursor,
+          pad,
+          height,
+          width,
+        };
+        svg.setAttribute(
+          "aria-label",
+          $("chart-title").textContent +
+            ", " +
+            groups.map((g) => g.label).join(", ") +
+            ". The Breakdown table lists every value.",
+        );
+        if (chartState.index >= points.length) chartState.index = -1;
+        if (chartState.index >= 0) showCursor(chartState.index);
+      }
+
+      function showCursor(index) {
+        const layout = chartState.layout;
+        if (!layout || index < 0) return;
+        chartState.index = index;
+        const { x, y, points, groups, step, cursor, pad, height } = layout;
+        cursor.replaceChildren(
+          s("line", {
+            x1: x(index),
+            x2: x(index),
+            y1: pad.top,
+            y2: height - pad.bottom,
+          }),
+        );
+        const rows = groups
+          .map((g) => ({ g, v: seriesOf(g)[index] }))
+          .sort((a, b) => b.v - a.v);
+        for (const { g, v } of rows) {
+          const dot = s("circle", { cx: x(index), cy: y(v), r: 4 });
+          dot.setAttribute("class", "k" + g.color);
+          cursor.append(dot);
+        }
+        cursor.setAttribute("visibility", "visible");
+
+        const tooltip = $("tooltip");
+        const total = rows.reduce((sum, row) => sum + row.v, 0);
+        tooltip.replaceChildren(
+          h("div", { class: "tooltip-title" }, pointLabel(points[index], step)),
+          ...rows.map(({ g, v }) =>
+            h(
+              "div",
+              { class: "tooltip-row k" + g.color },
+              h("span", { class: "key" }),
+              h("strong", {}, formatMetric(v)),
+              h("span", {}, g.label),
+            ),
+          ),
+          rows.length > 1
+            ? h(
+                "div",
+                { class: "tooltip-row" },
+                h("span", {}),
+                h("strong", {}, formatMetric(total)),
+                h("span", {}, "Total"),
+              )
+            : null,
+        );
+        tooltip.hidden = false;
+        const wrap = $("chart-wrap").getBoundingClientRect();
+        const scale = wrap.width / layout.width;
+        const px = x(index) * scale;
+        const tw = tooltip.offsetWidth;
+        const left = px + 14 + tw > wrap.width ? px - 14 - tw : px + 14;
+        tooltip.style.setProperty(
+          "transform",
+          "translate(" + Math.max(0, left) + "px, 12px)",
+        );
+      }
+
+      function hideCursor() {
+        chartState.index = -1;
+        if (chartState.layout)
+          chartState.layout.cursor.setAttribute("visibility", "hidden");
+        $("tooltip").hidden = true;
+      }
+
+      $("chart").addEventListener("pointermove", (event) => {
+        const layout = chartState.layout;
+        if (!layout || !layout.points.length) return;
+        const rect = $("chart").getBoundingClientRect();
+        const px = ((event.clientX - rect.left) / rect.width) * layout.width;
+        let best = 0;
+        for (let i = 1; i < layout.points.length; i++) {
+          if (Math.abs(layout.x(i) - px) < Math.abs(layout.x(best) - px))
+            best = i;
+        }
+        showCursor(best);
+      });
+      $("chart").addEventListener("pointerleave", hideCursor);
+      $("chart").addEventListener("blur", hideCursor);
+      $("chart").addEventListener("keydown", (event) => {
+        const layout = chartState.layout;
+        if (!layout) return;
+        const last = layout.points.length - 1;
+        let index = chartState.index < 0 ? last : chartState.index;
+        if (event.key === "ArrowLeft") index = Math.max(0, index - 1);
+        else if (event.key === "ArrowRight") index = Math.min(last, index + 1);
+        else if (event.key === "Home") index = 0;
+        else if (event.key === "End") index = last;
+        else return;
+        event.preventDefault();
+        showCursor(index);
+      });
+      new ResizeObserver(() => {
+        if (report && !$("content").hidden) renderChart();
+      }).observe($("chart-wrap"));
+
+      function renderTotals() {
+        const t = report.totals;
+        const tiles = [
+          ["Processed tokens", compact(t.processed)],
+          ["Cached input", compact(t.cache_read)],
+          ["Uncached input", compact(t.input)],
+          ["Output", compact(t.output)],
+          [
+            "Cache savings",
+            report.pricing.enabled ? usd(t.cache_savings) : "—",
+          ],
+        ];
+        $("tiles").replaceChildren(
+          ...tiles.map(([label, value]) =>
+            h("div", {}, h("dt", {}, label), h("dd", {}, value)),
+          ),
+        );
+      }
+
+      function renderTypes() {
+        const t = report.totals;
+        const total = TYPES.reduce((sum, type) => sum + t[type.key], 0);
+        const bar = $("typebar");
+        bar.replaceChildren(
+          ...TYPES.filter((type) => t[type.key] > 0).map((type) => {
+            const segment = h("span", {
+              class: type.cls,
+              title: type.label + " " + compact(t[type.key]),
+            });
+            segment.style.setProperty("flex", t[type.key] / total + " 1 0");
+            return segment;
+          }),
+        );
+        $("type-legend").replaceChildren(
+          ...TYPES.map((type) =>
+            h(
+              "li",
+              { class: type.cls },
+              h("i", {}),
+              type.label,
+              h("b", {}, compact(t[type.key])),
+            ),
+          ),
+        );
+      }
+
+      function renderBreakdown() {
+        const byDay = prefs.breakdown === "day";
+        const step = report.range.step;
+        const head = $("breakdown-head");
+        head.replaceChildren(
+          h("th", {}, "#"),
+          h("th", {}, byDay ? (step === "hour" ? "Hour" : "Day") : "Model"),
+          h("th", {}, "Cost"),
+          h("th", {}, "Share"),
+          h("th", {}, "Tokens"),
+        );
+        const total = metricOf(report.totals);
+        let rows;
+        if (byDay) {
+          rows = report.points
+            .slice()
+            .reverse()
+            .filter((p) => p.requests > 0)
+            .map((p) => ({
+              name: pointLabel(p.point, step),
+              item: p,
+              priced: !p.unpriced_tokens,
+            }));
+        } else {
+          rows = report.models
+            .slice()
+            .sort(
+              (a, b) =>
+                metricOf(b) - metricOf(a) || a.model.localeCompare(b.model),
+            )
+            .map((m) => ({
+              name: m.model,
+              item: m,
+              priced: m.priced,
+              family: m.family,
+              color: m.color,
+              width: total ? metricOf(m) / total : 0,
+            }));
+        }
+        const body = $("breakdown");
+        if (!rows.length) {
+          body.replaceChildren(
+            h(
+              "tr",
+              {},
+              h("td", {}),
+              h("td", { class: "empty" }, "No usage in this range."),
+              h("td", {}),
+              h("td", {}),
+              h("td", {}),
+            ),
+          );
+          return;
+        }
+        body.replaceChildren(
+          ...rows.map((row, i) => {
+            let name = row.name;
+            if (!byDay) {
+              const share = h("span", { class: "share" });
+              share.style.setProperty(
+                "width",
+                Math.max(row.width * 100, 1) + "%",
+              );
+              // "o3-mini" or a configured alias does not name its family.
+              const named = row.name
+                .toLowerCase()
+                .replace(/^.*\//, "")
+                .startsWith(row.family.toLowerCase());
+              name = h(
+                "span",
+                { class: "model-name k" + row.color },
+                h(
+                  "span",
+                  {},
+                  row.name,
+                  named ? null : h("small", {}, row.family),
+                ),
+                share,
+              );
+            }
+            const cost = row.priced
+              ? usd(row.item.cost)
+              : row.item.cost > 0
+                ? h(
+                    "span",
+                    { title: "Part of this usage has no models.dev price." },
+                    usd(row.item.cost) + "*",
+                  )
+                : h(
+                    "span",
+                    {
+                      class: "unpriced",
+                      title: "No models.dev price for this model.",
+                    },
+                    "—",
+                  );
+            return h(
+              "tr",
+              {},
+              h("td", {}, i + 1),
+              h("td", {}, name),
+              h("td", {}, cost),
+              h("td", {}, percent(metricOf(row.item), total)),
+              h("td", {}, compact(row.item.processed)),
+            );
+          }),
+        );
+      }
+
+      renderControls();
+      load();
+    </script>
+  </body>
+</html>
