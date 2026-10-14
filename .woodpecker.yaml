@@ -11,6 +11,16 @@ variables:
     kubernetes:
       nodeSelector:
         kubernetes.io/arch: amd64
+  # The shared CI cache's credentials. nix-ci fetches whatever an earlier
+  # pipeline built and uploads, signed, what this one builds, so a plugin or
+  # check whose files did not change is downloaded rather than built again.
+  - &ci_cache
+    AWS_ACCESS_KEY_ID:
+      from_secret: ci_cache_access_key
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: ci_cache_secret_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
   # Nix compiles every plugin with cgo, which exceeds the default step limits.
   - &nix_build
     kubernetes:
@@ -51,15 +61,12 @@ clone:
 
 steps:
   - name: validate
-    image: nixos/nix:2.35.2
+    image: ghcr.io/whexy/nix-ci:0.1.0-alpha.2
     when:
       event: [pull_request, push, manual]
     backend_options: *nix_build
+    environment: *ci_cache
     commands:
-      - echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
-      # The default container seccomp profile blocks the namespaces nix uses
-      # for its build sandbox.
-      - echo "sandbox = false" >> /etc/nix/nix.conf
       - nix shell --inputs-from . nixpkgs#nodejs_24 --command node release/validate.mjs
 
   - name: tag-releases
@@ -81,14 +88,14 @@ steps:
       - node release/plugin-tag.mjs
 
   - name: build
-    image: nixos/nix:2.35.2
+    image: ghcr.io/whexy/nix-ci:0.1.0-alpha.2
     when:
       event: tag
     backend_options: *nix_build
+    environment: *ci_cache
     commands:
-      - echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
       # verify-tag proved the tag is <plugin-id>-v<declared pluginVersion>.
-      - nix --option sandbox false build ".#plugins.$${CI_COMMIT_TAG%-v*}" --print-build-logs --out-link plugin
+      - nix build ".#plugins.$${CI_COMMIT_TAG%-v*}" --print-build-logs --out-link plugin
       - mkdir -p dist
       - cp -L plugin/*.zip dist/
 

@@ -106,6 +106,13 @@ tags or releases by hand:
 4. whexy-bot regenerates `registry.json` and commits it to `main`. This is the
    only commit that bypasses the pull request rule, and it starts no pipeline.
 
+The Nix steps share a build cache across pipelines
+([whexy/ci-cache](https://github.com/whexy/ci-cache)): a plugin or check none
+of whose inputs changed is downloaded instead of built, so a tag pipeline
+normally downloads the plugin its `main` push built. CI builds without the Nix
+sandbox, which its step pods cannot host, so only a local `nix flake check`
+catches a build that reaches the network.
+
 A failed tag pipeline leaves the release as a draft or missing: fix the cause
 and rerun the pipeline. A failed `main` pipeline tags nothing; the next
 passing push or a manual pipeline on `main` tags what it missed. Published
