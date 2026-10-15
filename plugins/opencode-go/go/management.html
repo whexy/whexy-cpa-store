@@ -829,8 +829,9 @@
               Off by default. Enabling a model adds
               <code id="zen-prefix-note">opencode/…</code> to CLIProxyAPI and
               sends its requests to OpenCode Zen, which bills Console credits.
-              OpenCode answers its free tier to OpenCode clients only, so a
-              model priced at zero is listed but cannot be called from here.
+              Models priced at zero are free: the plugin presents those requests
+              as the OpenCode client, which is the only caller the free tier
+              answers.
             </p>
             <div class="card table-card">
               <table>
@@ -2388,7 +2389,7 @@
                 ? badge(
                     "Free",
                     "ok",
-                    "Priced at zero; OpenCode answers its free tier to OpenCode clients only.",
+                    "Priced at zero; served by presenting the request as the OpenCode client.",
                   )
                 : null,
             ),

@@ -43,6 +43,9 @@ type executorCall struct {
 	cred  credential
 	route modelRoute
 	plan  routePlan
+	// cloaked says the request is presented as the OpenCode client because the
+	// model is a free one of the pay-as-you-go gateway.
+	cloaked bool
 	// payload is the client's request in plan.Source; response translators
 	// read tool names and options from it.
 	payload []byte
@@ -125,6 +128,24 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 		return nil, errorEnvelope("invalid_request", fmt.Sprintf("build %s request for %s: %v", route.Protocol, route.UpstreamID, errBody), http.StatusBadRequest)
 	}
 	session := sessionID(req.Metadata, req.Headers, source, payload)
+	// A free pay-as-you-go model is served only to the OpenCode client: the
+	// request gets that identity, the streaming body its gate expects and a
+	// session identifier it decodes. A caller that already is OpenCode keeps
+	// its own identity and session.
+	cloaked := cfg.CloakFreeModels && route.Family == familyZen && route.Free
+	impersonate := false
+	if cloaked {
+		body, errBody = ensureReadTool(route.Protocol, body)
+		if errBody != nil {
+			return nil, errorEnvelope("invalid_request", fmt.Sprintf("prepare the free %s request for %s: %v", route.Protocol, route.UpstreamID, errBody), http.StatusBadRequest)
+		}
+		if nativeSession, native := nativeOpenCodeSession(req.Headers); native {
+			session = nativeSession
+		} else {
+			impersonate = true
+			session = cloakSessions.id(session)
+		}
+	}
 	return &executorCall{
 		req:     req,
 		host:    h,
@@ -132,9 +153,10 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 		cred:    cred,
 		route:   route,
 		plan:    plan,
+		cloaked: cloaked,
 		payload: payload,
 		body:    body,
-		headers: inferenceHeaders(cfg, cred.Bearer, route.Protocol, req.Headers, stream, session),
+		headers: inferenceHeaders(cfg, cred.Bearer, route.Protocol, req.Headers, stream, session, impersonate),
 	}, nil
 }
 
@@ -163,7 +185,17 @@ func (c *executorCall) execute(ctx context.Context) []byte {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return c.upstreamFailure(ctx, resp.StatusCode, resp.Headers, resp.Body)
 	}
-	out, errConvert := convertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, resp.Body)
+	body := resp.Body
+	// A cloaked request is answered with SSE even though the client asked for
+	// JSON, so the stream is folded back into one response.
+	if c.cloaked && isStreamBody(body) {
+		assembled, errAssemble := assembleStream(c.route.Protocol, body)
+		if errAssemble != nil {
+			return errorEnvelope("translation_failed", errAssemble.Error(), http.StatusBadGateway)
+		}
+		body = assembled
+	}
+	out, errConvert := convertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, body)
 	if errConvert != nil {
 		return errorEnvelope("translation_failed", errConvert.Error(), http.StatusBadGateway)
 	}

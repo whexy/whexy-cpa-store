@@ -156,18 +156,22 @@ type settings struct {
 	// <ZenModelPrefix>/<id>. The page edits this list; a Zen model stays out
 	// of CPA until it is named here, since those calls bill Console credits.
 	ZenModels []string
-	UserAgent string
+	// CloakFreeModels presents free OpenCode Zen models as the OpenCode
+	// client, which is the only caller OpenCode's free tier answers.
+	CloakFreeModels bool
+	UserAgent       string
 }
 
 type rawSettings struct {
-	BaseURL        string   `yaml:"base_url"`
-	ConsoleURL     string   `yaml:"console_url"`
-	ModelPrefix    string   `yaml:"model_prefix"`
-	DisablePrefix  bool     `yaml:"disable_prefix"`
-	DisabledModels []string `yaml:"disabled_models"`
-	ZenModelPrefix string   `yaml:"zen_model_prefix"`
-	ZenModels      []string `yaml:"zen_models"`
-	UserAgent      string   `yaml:"user_agent"`
+	BaseURL         string   `yaml:"base_url"`
+	ConsoleURL      string   `yaml:"console_url"`
+	ModelPrefix     string   `yaml:"model_prefix"`
+	DisablePrefix   bool     `yaml:"disable_prefix"`
+	DisabledModels  []string `yaml:"disabled_models"`
+	ZenModelPrefix  string   `yaml:"zen_model_prefix"`
+	ZenModels       []string `yaml:"zen_models"`
+	CloakFreeModels *bool    `yaml:"cloak_free_models"`
+	UserAgent       string   `yaml:"user_agent"`
 }
 
 var currentConfig atomic.Pointer[settings]
@@ -180,7 +184,12 @@ func currentSettings() settings {
 }
 
 func defaultSettings() settings {
-	return settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix, ZenModelPrefix: defaultZenModelPrefix}
+	return settings{
+		BaseURL:         defaultBaseURL,
+		ModelPrefix:     defaultModelPrefix,
+		ZenModelPrefix:  defaultZenModelPrefix,
+		CloakFreeModels: true,
+	}
 }
 
 // prefix is the prefix every exposed model ID carries, empty while
@@ -399,6 +408,7 @@ func pluginRegistration() registration {
 				{Name: "console_url", Type: pluginapi.ConfigFieldTypeString, Description: "OpenCode Console base URL, used for login, token refresh and the model catalog. Default: the base_url host followed by /console, which is " + defaultConsoleURL + " for the default base_url."},
 				{Name: "model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every OpenCode Go model ID, as in opencode-go/kimi-k3. Default " + defaultModelPrefix + ". To share a bare ID such as deepseek-v4-pro with another provider, turn on Bare ID for that model on the OpenCode Go page. disable_prefix overrides this setting."},
 				{Name: "zen_model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every OpenCode Zen model ID, as in " + defaultZenModelPrefix + "/gpt-5.5. Default " + defaultZenModelPrefix + ". Zen models share upstream IDs with Go models, so their prefix is never dropped."},
+				{Name: "cloak_free_models", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Present free OpenCode Zen models as the OpenCode client, which is the only caller the free tier answers. The plugin adds a placeholder tool that gate requires and tells the model not to call it; a caller that declares its own read tool keeps it. Nothing else about the request changes and no credential is added. Default on; turning it off makes those models fail the way any other non-OpenCode client fails."},
 				{Name: "disable_prefix", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Serve every OpenCode Go model under its bare ID only, as in kimi-k3, and ignore model_prefix. A bare ID shares routing with every other provider that serves the same ID, so disable the models you do not want on the OpenCode Go page. Zen model IDs keep their prefix."},
 				{Name: "user_agent", Type: pluginapi.ConfigFieldTypeString, Description: "User-Agent sent upstream when the client sends none. Default whexy-cpa-opencode-go/" + pluginVersion + "."},
 			},
@@ -473,6 +483,10 @@ func parseSettings(configYAML []byte) (settings, error) {
 		if id = strings.TrimSpace(id); id != "" && !cfg.zenEnabled(id) {
 			cfg.ZenModels = append(cfg.ZenModels, id)
 		}
+	}
+	cfg.CloakFreeModels = true
+	if raw.CloakFreeModels != nil {
+		cfg.CloakFreeModels = *raw.CloakFreeModels
 	}
 	cfg.UserAgent = strings.TrimSpace(raw.UserAgent)
 	return cfg, nil

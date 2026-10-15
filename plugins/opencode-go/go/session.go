@@ -178,7 +178,7 @@ func headerValues(headers http.Header, name string) string {
 // inferenceHeaders builds the upstream headers from scratch. Client headers
 // are read, never copied, so the client's CPA key, cookies and hop-by-hop
 // headers cannot reach opencode.ai.
-func inferenceHeaders(cfg settings, apiKey string, protocol sdktranslator.Format, client http.Header, stream bool, session string) http.Header {
+func inferenceHeaders(cfg settings, apiKey string, protocol sdktranslator.Format, client http.Header, stream bool, session string, impersonate bool) http.Header {
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer "+apiKey)
 	headers.Set("Content-Type", "application/json")
@@ -189,7 +189,10 @@ func inferenceHeaders(cfg settings, apiKey string, protocol sdktranslator.Format
 	}
 	headers.Set("x-opencode-session", session)
 	userAgent := headerValue(client, "User-Agent")
-	if userAgent == "" {
+	if impersonate {
+		// The free tier answers only the OpenCode client, by name.
+		userAgent = cloakUserAgent
+	} else if userAgent == "" {
 		userAgent = cfg.userAgent()
 	}
 	headers.Set("User-Agent", userAgent)

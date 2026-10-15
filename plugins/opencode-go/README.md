@@ -101,12 +101,48 @@ as `opencode-go/claude-*`, matches nothing while `disable_prefix` is on.
 `opencode/<model>`. They are off by default: turn on **Enabled** for one, or
 use **Enable all**, and the plugin registers it and sends its requests to the
 OpenCode Zen gateway, which bills Console credits. The enabled IDs are stored
-in the plugin setting `zen_models`. OpenCode answers its free tier to OpenCode
-clients only, so a Zen model priced at zero is listed but cannot be called
-through CLIProxyAPI. Zen IDs keep their prefix while `disable_prefix` is on,
-because the two lists share upstream IDs: `kimi-k3` is both
-`opencode-go/kimi-k3` and `opencode/kimi-k3`. Only the API families the plugin
-speaks are listed; Gemini and SystemOne models are left out.
+in the plugin setting `zen_models`. Zen IDs keep their prefix while
+`disable_prefix` is on, because the two lists share upstream IDs: `kimi-k3` is
+both `opencode-go/kimi-k3` and `opencode/kimi-k3`. Only the API families the
+plugin speaks are listed; Gemini and SystemOne models are left out.
+
+A Zen model the catalog prices at zero is free, but OpenCode's free tier
+answers only its own client. The plugin therefore presents those requests as
+OpenCode — see [Free models](#free-models) — so they work through CLIProxyAPI
+like any other model.
+
+## Free models
+
+OpenCode's free tier refuses every caller but its own client, with
+`403 FreeTierError`. The gate is a fingerprint on the request, and it was
+reproduced against the live endpoint one factor at a time:
+
+- the `User-Agent` names OpenCode with a version of at least 1.18.0, in any of
+  the shapes the client uses;
+- a session header carries a well-formed OpenCode session id, which the gate
+  decodes;
+- the body asks for streaming, and the gateway answers with SSE even for a
+  request that asks for JSON;
+- the body's tool list contains a tool **named** `read`.
+
+That last check reads the name and nothing else, which is what keeps it
+harmless. The plugin appends a placeholder whose description says it is
+reserved by the transport and must not be called, and models leave it alone: in
+live runs, a model given the placeholder beside Codex's tools reasoned that
+"the read tool is explicitly unavailable" and ran `shell` with `cat` instead,
+and one given it beside Pi's tools called Pi's own `read`. A caller that
+already declares `read`, as Pi does, keeps its tool untouched and gets nothing
+added.
+
+A caller that is OpenCode itself is left alone entirely: its own user agent and
+session are what the gate wants, so they pass through rather than being
+replaced, which keeps the gateway's per-session metering and cache affinity.
+
+Two consequences are worth knowing. The placeholder still reaches the model, so
+one that ignores the description would emit a call no client can run; and
+OpenCode meters the free tier on its side, so a request can be refused even
+when everything above holds. Turn `cloak_free_models` off to send free models
+as the plugin itself, which is what any other client gets.
 
 The plugin reads the catalog again every three hours and on **Refresh
 models**, and CLIProxyAPI then lists the models OpenCode added and drops those
@@ -164,6 +200,9 @@ configuration form in Management Center:
 - `zen_models`: bare OpenCode Zen model IDs served as `opencode/<id>`, such as
   `[gpt-5.5]`. Empty serves none. The page's Enabled toggles edit it; the form
   does not show it.
+- `cloak_free_models`: present free OpenCode Zen models as the OpenCode client,
+  which is the only caller the free tier answers. Default on. See
+  [Free models](#free-models).
 - `user_agent`: sent upstream when the client sends none. Default
   `whexy-cpa-opencode-go/<version>`.
 

@@ -97,7 +97,7 @@ func TestInferenceHeaders(t *testing.T) {
 		"Anthropic-Version": {"2023-01-01"},
 		"anthropic-beta":    {"interleaved-thinking-2025-05-14", "fine-grained-tool-streaming-2025-05-14"},
 	}
-	headers := inferenceHeaders(defaultSettings(), testKeyA, sdktranslator.FormatClaude, client, true, "sess-9")
+	headers := inferenceHeaders(defaultSettings(), testKeyA, sdktranslator.FormatClaude, client, true, "sess-9", false)
 	want := map[string]string{
 		"Authorization":      "Bearer " + testKeyA,
 		"Content-Type":       "application/json",
@@ -116,18 +116,18 @@ func TestInferenceHeaders(t *testing.T) {
 		}
 	}
 
-	headers = inferenceHeaders(defaultSettings(), testKeyA, sdktranslator.FormatClaude, nil, false, "s")
+	headers = inferenceHeaders(defaultSettings(), testKeyA, sdktranslator.FormatClaude, nil, false, "s", false)
 	if headers.Get("Anthropic-Version") != defaultAnthropicVersion || headers.Get("Anthropic-Beta") != "" || headers.Get("Accept") != "application/json" {
 		t.Errorf("messages defaults = %v", headers)
 	}
 	if headers.Get("User-Agent") != "whexy-cpa-opencode-go/"+pluginVersion {
 		t.Errorf("default user agent = %q", headers.Get("User-Agent"))
 	}
-	headers = inferenceHeaders(settings{UserAgent: "my-proxy/1"}, testKeyA, sdktranslator.FormatOpenAI, client, false, "s")
+	headers = inferenceHeaders(settings{UserAgent: "my-proxy/1"}, testKeyA, sdktranslator.FormatOpenAI, client, false, "s", false)
 	if headers.Get("User-Agent") != "claude-cli/2.1.0 (external, cli)" || headers.Get("Anthropic-Version") != "" || headers.Get("Anthropic-Beta") != "" {
 		t.Errorf("chat headers = %v", headers)
 	}
-	if got := inferenceHeaders(settings{UserAgent: "my-proxy/1"}, testKeyA, sdktranslator.FormatOpenAI, nil, false, "s").Get("User-Agent"); got != "my-proxy/1" {
+	if got := inferenceHeaders(settings{UserAgent: "my-proxy/1"}, testKeyA, sdktranslator.FormatOpenAI, nil, false, "s", false).Get("User-Agent"); got != "my-proxy/1" {
 		t.Errorf("configured user agent = %q", got)
 	}
 }
