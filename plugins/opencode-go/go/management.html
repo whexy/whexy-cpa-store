@@ -498,8 +498,20 @@
         font-weight: 700;
       }
 
+      h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
       .section {
         margin-top: 32px;
+      }
+
+      /* One catalog's list inside the Models section: the OpenCode Go models
+         and the OpenCode Zen models. */
+      .list {
+        margin-top: 20px;
       }
 
       .section-head {
@@ -788,13 +800,6 @@
             <h2>Models</h2>
             <span class="section-meta" id="models-meta"></span>
             <div class="section-actions">
-              <button
-                class="btn btn-ghost"
-                id="models-disable-all"
-                type="button"
-              >
-                Disable all
-              </button>
               <button class="btn btn-ghost" id="models-refresh" type="button">
                 Refresh models
               </button>
@@ -802,30 +807,90 @@
           </div>
           <div class="stack" id="models-notices"></div>
           <div class="stack" id="models-rules"></div>
-          <div class="card table-card">
-            <table>
-              <thead>
-                <tr>
-                  <th>Model</th>
-                  <th>Protocol</th>
-                  <th class="num">Context</th>
-                  <th
-                    class="toggle"
-                    id="bare-head"
-                    title="Also list the model under its bare ID, such as deepseek-v4-pro. Every provider serving that ID shares its requests, by priority and weight."
-                  >
-                    Bare ID
-                  </th>
-                  <th
-                    class="toggle"
-                    title="Remove the model from CLIProxyAPI. Stored in the plugin setting disabled_models."
-                  >
-                    Disabled
-                  </th>
-                </tr>
-              </thead>
-              <tbody id="models-body"></tbody>
-            </table>
+
+          <div class="list" id="zen-models" hidden>
+            <div class="section-head">
+              <h3>OpenCode Zen models</h3>
+              <span class="section-meta" id="zen-meta"></span>
+              <div class="section-actions">
+                <button class="btn btn-ghost" id="zen-enable-all" type="button">
+                  Enable all
+                </button>
+                <button
+                  class="btn btn-ghost"
+                  id="zen-disable-all"
+                  type="button"
+                >
+                  Disable all
+                </button>
+              </div>
+            </div>
+            <p class="hint">
+              Off by default. Enabling a model adds
+              <code id="zen-prefix-note">opencode/…</code> to CLIProxyAPI and
+              sends its requests to OpenCode Zen, which bills Console credits.
+              OpenCode answers its free tier to OpenCode clients only, so a
+              model priced at zero is listed but cannot be called from here.
+            </p>
+            <div class="card table-card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Model</th>
+                    <th>Protocol</th>
+                    <th class="num">Context</th>
+                    <th
+                      class="toggle"
+                      title="Serve this model through CLIProxyAPI as an OpenCode Zen model. Stored in the plugin setting zen_models."
+                    >
+                      Enabled
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="zen-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="list" id="go-models" hidden>
+            <div class="section-head">
+              <h3>OpenCode Go models</h3>
+              <span class="section-meta" id="go-meta"></span>
+              <div class="section-actions">
+                <button
+                  class="btn btn-ghost"
+                  id="models-disable-all"
+                  type="button"
+                >
+                  Disable all
+                </button>
+              </div>
+            </div>
+            <div class="card table-card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Model</th>
+                    <th>Protocol</th>
+                    <th class="num">Context</th>
+                    <th
+                      class="toggle"
+                      id="bare-head"
+                      title="Also list the model under its bare ID, such as deepseek-v4-pro. Every provider serving that ID shares its requests, by priority and weight."
+                    >
+                      Bare ID
+                    </th>
+                    <th
+                      class="toggle"
+                      title="Remove the model from CLIProxyAPI. Stored in the plugin setting disabled_models."
+                    >
+                      Disabled
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="models-body"></tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -877,6 +942,13 @@
       // plugin's own config node. This block touches no DOM, so
       // testdata/page_test.mjs runs it under node.
       const PROVIDER = "opencode-go";
+      // OPENCODE_ZEN_PREFIX is the default prefix of OpenCode Zen (pay-as-you-go)
+      // model IDs; the plugin setting zen_model_prefix changes it.
+      const OPENCODE_ZEN_PREFIX = "opencode";
+
+      // isZen says a catalog model is served by OpenCode Zen rather than by
+      // the Go subscription.
+      const isZen = (model) => model.family === "zen";
 
       const sameID = (a, b) =>
         String(a ?? "")
@@ -1002,11 +1074,11 @@
 
       const hasModel = (ids, id) => ids.some((other) => sameID(other, id));
 
-      // withDisabled adds or removes Go model IDs in disabled_models.
-      function withDisabled(disabled, ids, on) {
-        if (!on) return disabled.filter((id) => !hasModel(ids, id));
-        const out = [...disabled];
-        for (const id of ids) if (!hasModel(out, id)) out.push(id);
+      // withModelIDs adds or removes model IDs in one of the plugin's lists.
+      function withModelIDs(ids, adding, on) {
+        if (!on) return ids.filter((id) => !hasModel(adding, id));
+        const out = [...ids];
+        for (const id of adding) if (!hasModel(out, id)) out.push(id);
         return out;
       }
 
@@ -1038,20 +1110,24 @@
         return [...on, ...off];
       }
 
-      // disabledWrite is the request that stores list as disabled_models in
-      // the plugin's config node, or null when nothing changes. PATCH
-      // merges that one key, so the node's other settings stay as stored.
-      function disabledWrite(node, list) {
+      // listWrite is the request that stores list as one list-valued key of
+      // the plugin's config node, or null when nothing changes. PATCH merges
+      // that one key, so the node's other settings stay as stored.
+      function listWrite(node, key, list) {
         const current =
-          node && typeof node === "object" ? node.disabled_models : undefined;
+          node && typeof node === "object" ? node[key] : undefined;
         if (list.length === 0) {
           return current === undefined
             ? null
-            : { method: "DELETE", path: "/disabled_models" };
+            : { method: "DELETE", path: "/" + key };
         }
         if (JSON.stringify(current) === JSON.stringify(list)) return null;
-        return { method: "PATCH", path: "", body: { disabled_models: list } };
+        return { method: "PATCH", path: "", body: { [key]: list } };
       }
+
+      const disabledWrite = (node, list) =>
+        listWrite(node, "disabled_models", list);
+      const zenWrite = (node, list) => listWrite(node, "zen_models", list);
 
       // modelPrefixes are the prefixes an excluded-models entry written by
       // 0.2.0 can carry: the configured model_prefix and the default.
@@ -2042,12 +2118,15 @@
 
       // Models: the catalog of the first working credential, with this
       // provider's entries of CPA's model alias and disablement maps and the
-      // plugin's disabled_models.
+      // plugin's disabled_models and zen_models.
       const models = {
         view: null,
         aliases: [],
         excluded: [],
         disabled: [],
+        // zen are the OpenCode Zen model IDs the page has turned on.
+        zen: [],
+        zenPrefix: "",
         prefixes: [PROVIDER],
         configLoaded: false,
         configError: "",
@@ -2084,6 +2163,10 @@
             models.aliases = channelEntries(maps.aliasMap);
             models.excluded = channelEntries(maps.excludedMap).map(String);
             models.disabled = stringList(maps.own && maps.own.disabled_models);
+            models.zen = stringList(maps.own && maps.own.zen_models);
+            models.zenPrefix =
+              String((maps.own && maps.own.zen_model_prefix) || "").trim() ||
+              OPENCODE_ZEN_PREFIX;
             models.prefixes = modelPrefixes(maps.own && maps.own.model_prefix);
           }
         } catch (err) {
@@ -2184,7 +2267,7 @@
 
       const BARE_TITLE = $("bare-head").title;
       const PREFIX_OFF =
-        "disable_prefix is on in the plugin settings, so every model is served under its bare ID only.";
+        "disable_prefix is on in the plugin settings, so every OpenCode Go model is served under its bare ID only.";
 
       function checkbox(checked, label, onchange, disabled, title) {
         const box = h("input", {
@@ -2275,6 +2358,65 @@
         );
       }
 
+      // zenRow is one OpenCode Zen model. It is served only while Enabled is
+      // on, which is the page's own opt-in switch rather than CPA's
+      // disablement: Zen calls bill Console credits.
+      function zenRow(model) {
+        const locked = models.busy.has(model.id) || !models.configLoaded;
+        const enabled = hasModel(models.zen, model.upstream_id);
+        const served = [
+          ...((models.servedBy &&
+            models.servedBy.get(model.upstream_id.toLowerCase())) ||
+            []),
+        ];
+        const limits = model.context
+          ? model.context.toLocaleString() +
+            " tokens" +
+            (model.output ? ", output " + model.output.toLocaleString() : "")
+          : null;
+        return h(
+          "tr",
+          { class: enabled ? null : "is-off" },
+          h(
+            "td",
+            {},
+            h(
+              "div",
+              { class: "model-head" },
+              h("span", { class: "model-name" }, model.name),
+              model.free
+                ? badge(
+                    "Free",
+                    "ok",
+                    "Priced at zero; OpenCode answers its free tier to OpenCode clients only.",
+                  )
+                : null,
+            ),
+            h("div", { class: "model-id" }, model.id),
+            served.length > 0
+              ? h(
+                  "div",
+                  { class: "served" },
+                  model.upstream_id + " is also served by " + served.join(", "),
+                )
+              : null,
+          ),
+          h("td", {}, model.protocol),
+          h("td", { class: "num", title: limits }, tokens(model.context)),
+          h(
+            "td",
+            { class: "toggle" },
+            checkbox(
+              enabled,
+              "Enable " + model.id,
+              (on) => toggleZen(model, on),
+              locked,
+              null,
+            ),
+          ),
+        );
+      }
+
       function note(tone, ...text) {
         return h("p", { class: tone }, ...text);
       }
@@ -2299,7 +2441,7 @@
           out.push(
             note(
               "error",
-              "Could not read the model aliases and disabled models, so the toggles are off: " +
+              "Could not read the model aliases and model lists, so the toggles are off: " +
                 models.configError,
             ),
           );
@@ -2355,11 +2497,17 @@
         return out;
       }
 
+      // zenEnabled reports whether the page has turned on the serving of a
+      // Zen model.
+      const zenEnabled = (model) => hasModel(models.zen, model.upstream_id);
+
       function renderModels() {
         const view = models.view;
         const section = $("models");
         section.hidden = !view || (view.models.length === 0 && !view.error);
         if (section.hidden) return;
+        const goModels = view.models.filter((model) => !isZen(model));
+        const zenModels = view.models.filter(isZen);
         $("models-meta").textContent = [
           view.models.length + " models",
           view.credential,
@@ -2372,18 +2520,39 @@
         button.textContent = models.refreshing
           ? "Refreshing…"
           : "Refresh models";
+        $("models-notices").replaceChildren(...modelNotices());
+        $("models-rules").replaceChildren(...ruleNotes());
+
+        // The Zen list is its own opt-in switch: a model is served only once
+        // Enabled is on for it.
+        $("zen-models").hidden = zenModels.length === 0;
+        $("zen-prefix-note").textContent = models.zenPrefix + "/…";
+        const zenOn = zenModels.filter(zenEnabled).length;
+        $("zen-meta").textContent = zenModels.length
+          ? zenOn + " of " + zenModels.length + " enabled"
+          : "";
+        const bulkLocked = models.refreshing || !models.configLoaded;
+        $("zen-enable-all").disabled =
+          bulkLocked || models.busy.size > 0 || zenOn === zenModels.length;
+        $("zen-disable-all").disabled =
+          bulkLocked || models.busy.size > 0 || zenOn === 0;
+        $("zen-body").replaceChildren(
+          ...enabledFirst(zenModels, (model) => !zenEnabled(model)).map(zenRow),
+        );
+
         const isOff = (model) =>
           isModelDisabled(models.excluded, models.disabled, model);
+        $("go-models").hidden = goModels.length === 0;
+        $("go-meta").textContent =
+          goModels.length + (goModels.length === 1 ? " model" : " models");
         $("models-disable-all").disabled =
           models.refreshing ||
           !models.configLoaded ||
           models.busy.size > 0 ||
-          view.models.every(isOff);
+          goModels.every(isOff);
         $("bare-head").title = view.disable_prefix ? PREFIX_OFF : BARE_TITLE;
-        $("models-notices").replaceChildren(...modelNotices());
-        $("models-rules").replaceChildren(...ruleNotes());
         $("models-body").replaceChildren(
-          ...enabledFirst(view.models, isOff).map(modelRow),
+          ...enabledFirst(goModels, isOff).map(modelRow),
         );
       }
 
@@ -2440,26 +2609,73 @@
         return next;
       }
 
+      // editZen stores the enabled OpenCode Zen model IDs in zen_models.
+      async function editZen(edit) {
+        const node = await cpa("GET", PLUGIN_CONFIG, undefined, {});
+        const next = edit(stringList(node && node.zen_models));
+        const write = zenWrite(node, next);
+        if (write)
+          await cpa(write.method, PLUGIN_CONFIG + write.path, write.body);
+        return next;
+      }
+
       function toggleDisabled(model, on) {
         return toggleModel(model.id, async () => {
           models.disabled = await editDisabled((list) =>
-            withDisabled(list, [model.upstream_id], on),
+            withModelIDs(list, [model.upstream_id], on),
           );
         });
       }
 
-      // Disable all removes every model the page still serves in one write;
-      // the per-model toggle would rewrite disabled_models once per model.
+      function toggleZen(model, on) {
+        return toggleModel(model.id, async () => {
+          models.zen = await editZen((list) =>
+            withModelIDs(list, [model.upstream_id], on),
+          );
+        });
+      }
+
+      // setZen turns every listed Zen model on or off in one write; the
+      // per-model toggle would rewrite zen_models once per model.
+      function setZen(catalog, on) {
+        const targets = catalog.filter((model) => zenEnabled(model) !== on);
+        if (targets.length === 0) return;
+        return toggleModel(
+          targets.map((model) => model.id),
+          async () => {
+            models.zen = await editZen((list) =>
+              withModelIDs(
+                list,
+                targets.map((model) => model.upstream_id),
+                on,
+              ),
+            );
+          },
+        );
+      }
+
+      $("zen-enable-all").addEventListener("click", () =>
+        setZen(models.view.models.filter(isZen), true),
+      );
+      $("zen-disable-all").addEventListener("click", () =>
+        setZen(models.view.models.filter(isZen), false),
+      );
+
+      // Disable all removes every Go model the page still serves in one
+      // write; the per-model toggle would rewrite disabled_models once per
+      // model.
       $("models-disable-all").addEventListener("click", () => {
         const targets = models.view.models.filter(
-          (model) => !isModelDisabled(models.excluded, models.disabled, model),
+          (model) =>
+            !isZen(model) &&
+            !isModelDisabled(models.excluded, models.disabled, model),
         );
         if (targets.length === 0) return;
         return toggleModel(
           targets.map((model) => model.id),
           async () => {
             models.disabled = await editDisabled((list) =>
-              withDisabled(
+              withModelIDs(
                 list,
                 targets.map((model) => model.upstream_id),
                 true,

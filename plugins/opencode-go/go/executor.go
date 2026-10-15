@@ -98,9 +98,11 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	}
 	route, found := resolveRoute(ctx, h, cfg, req.Model, cred)
 	if !found {
-		return nil, errorEnvelope("model_not_found", fmt.Sprintf("model %s is not in the OpenCode Go catalog", req.Model), http.StatusNotFound)
+		return nil, errorEnvelope("model_not_found", fmt.Sprintf("model %s is not in the OpenCode catalog", req.Model), http.StatusNotFound)
 	}
-	if !route.Free {
+	// Only Go models draw on the subscription quota, so only they are held
+	// back while that quota is exhausted; Zen models bill Console credits.
+	if route.Family == familyGo && !route.Free {
 		if block, blocked := exhaustion.active(cred.ID, req.AuthID); blocked {
 			return nil, errorEnvelopeWithRetryAfter("usage_limit", block.message(), http.StatusTooManyRequests, block.retryAfter(exhaustion.now()))
 		}

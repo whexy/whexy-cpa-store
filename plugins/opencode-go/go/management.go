@@ -266,7 +266,7 @@ func newKeyView(file storedKeyFile, entry keyEntry) keyView {
 	}
 	if cat, ok := catalogs.ownCatalog(entry.ID); ok {
 		view.Workspace = cat.Workspace
-		view.Models = len(cat.Models)
+		view.Models = len(cat.servedModels(currentSettings()))
 	}
 	if auth, ok := file.runtimeAuth(entry.ID); ok {
 		view.Runtime = newRuntimeView(auth)
@@ -315,7 +315,7 @@ func newLoginView(stored storedLogin) loginView {
 		view.ExpiresAt = login.ExpiresAt.Format(time.RFC3339)
 	}
 	if cat, ok := catalogs.ownCatalog(login.credential().ID); ok {
-		view.Models = len(cat.Models)
+		view.Models = len(cat.servedModels(currentSettings()))
 	}
 	if stored.Auth.AuthIndex != "" {
 		view.Runtime = newRuntimeView(stored.Auth)
@@ -477,7 +477,7 @@ func handleTestKey(h host, req pluginapi.ManagementRequest) (int, any, error) {
 		"ok":        true,
 		"usage":     newUsageView(check.Usage),
 		"workspace": check.Catalog.Workspace,
-		"models":    len(check.Catalog.Models),
+		"models":    len(check.Catalog.servedModels(currentSettings())),
 	}, nil
 }
 

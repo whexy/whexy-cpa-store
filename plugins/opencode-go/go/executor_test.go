@@ -388,6 +388,61 @@ func TestExecutorUsesLoginToken(t *testing.T) {
 	}
 }
 
+// A Zen model reaches the pay-as-you-go gateway under its own prefix, keeps
+// working while the Go subscription quota is exhausted, and stays
+// unreachable until the page has turned it on.
+func TestExecutorServesZenModels(t *testing.T) {
+	cfg := defaultSettings()
+	cfg.ZenModels = []string{"kimi-k3", "gpt-6-luna", "claude-haiku-5-5"}
+	useSettings(t, cfg)
+	useTestCatalog(t)
+	gateway := installFakeGateway(t, fixtureGateway(t))
+
+	tests := []struct {
+		model    string
+		upstream string
+		endpoint string
+	}{
+		{"opencode/kimi-k3", "kimi-k3", "https://opencode.ai/inference/openai/v1/chat/completions"},
+		{"opencode/gpt-6-luna", "gpt-6-luna", "https://opencode.ai/inference/openai/v1/responses"},
+		{"opencode/claude-haiku-5-5", "claude-haiku-5-5", "https://opencode.ai/inference/anthropic/v1/messages"},
+	}
+	for _, tt := range tests {
+		payload := clientPayload("openai", tt.model, false)
+		raw, _ := executorExecute(testCall{Source: "openai", Model: tt.model, Payload: payload}.raw(t))
+		if env := decodeEnvelope(t, raw); !env.OK {
+			t.Fatalf("%s = %+v", tt.model, env.Error)
+		}
+		sent := gateway.inferenceRequests()
+		last := sent[len(sent)-1]
+		if last.URL != tt.endpoint || gjson.GetBytes(last.Body, "model").String() != tt.upstream {
+			t.Fatalf("%s reached %s as %s", tt.model, last.URL, gjson.GetBytes(last.Body, "model").String())
+		}
+	}
+	if len(gateway.inferenceRequests()) != 3 {
+		t.Fatalf("requests = %d", len(gateway.inferenceRequests()))
+	}
+
+	// The Go subscription quota covers Go models only, so Zen calls still go
+	// through while a credential is blocked.
+	tracker, _, _ := useExhaustion(t, time.Now())
+	tracker.block(keyIDFor(testKeyA), authIDFor(keyFileName, keyIDFor(testKeyA)), time.Now().Add(time.Hour), []string{"weekly"})
+	raw, _ := executorExecute(testCall{Source: "openai", Model: "opencode/kimi-k3", Payload: clientPayload("openai", "opencode/kimi-k3", false)}.raw(t))
+	if env := decodeEnvelope(t, raw); !env.OK {
+		t.Fatalf("Zen call blocked by the Go quota: %+v", env.Error)
+	}
+	raw, _ = executorExecute(testCall{Source: "openai", Model: "opencode-go/deepseek-v4-flash", Payload: clientPayload("openai", "opencode-go/deepseek-v4-flash", false)}.raw(t))
+	if env := decodeEnvelope(t, raw); env.OK || env.Error.HTTPStatus != http.StatusTooManyRequests {
+		t.Fatalf("Go call not blocked: %+v", env.Error)
+	}
+
+	// A Zen model the page has not turned on does not resolve.
+	raw, _ = executorExecute(testCall{Source: "openai", Model: "opencode/cat-jam-free", Payload: clientPayload("openai", "opencode/cat-jam-free", false)}.raw(t))
+	if env := decodeEnvelope(t, raw); env.OK || env.Error.HTTPStatus != http.StatusNotFound {
+		t.Fatalf("disabled Zen model = %+v", env.Error)
+	}
+}
+
 func TestExecutorExpiredLoginFailsFast(t *testing.T) {
 	useSettings(t, defaultSettings())
 	useTestCatalog(t)

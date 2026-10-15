@@ -165,18 +165,31 @@ func TestManagementListModels(t *testing.T) {
 
 	resp := fx.call(http.MethodGet, modelsPath, nil, nil)
 	view := decodeBodyAs[modelsView](t, resp)
-	if resp.Status != http.StatusOK || view.Credential != "Work · oc_sk_…1111" || view.Error != "" || view.FetchedAt == "" || len(view.Models) != 7 {
+	if resp.Status != http.StatusOK || view.Credential != "Work · oc_sk_…1111" || view.Error != "" || view.FetchedAt == "" || len(view.Models) != 11 {
 		t.Fatalf("status %d: %s", resp.Status, resp.Body)
 	}
 	byID := map[string]modelView{}
 	for _, model := range view.Models {
 		byID[model.ID] = model
 	}
-	if got := byID["opencode-go/claude-haiku-5-5"]; got.UpstreamID != "claude-haiku-5-5" || got.Name != "Claude Haiku 5.5" || got.Protocol != "Messages" || got.Context == 0 {
+	if got := byID["opencode-go/claude-haiku-5-5"]; got.UpstreamID != "claude-haiku-5-5" || got.Name != "Claude Haiku 5.5" || got.Protocol != "Messages" || got.Context == 0 || got.Family != "go" {
 		t.Fatalf("claude = %+v", got)
 	}
 	if byID["opencode-go/gpt-6-luna"].Protocol != "Responses" || byID["opencode-go/kimi-k3"].Protocol != "Chat Completions" || !byID["opencode-go/longcat-2.5-preview-free"].Free {
 		t.Fatalf("models = %+v", view.Models)
+	}
+	// The workspace's enabled Zen models are listed under their own prefix;
+	// Gemini is left out because the plugin cannot serve its endpoint.
+	if got := byID["opencode/gpt-6-luna"]; got.Family != "zen" || got.UpstreamID != "gpt-6-luna" || got.Protocol != "Responses" {
+		t.Fatalf("zen gpt = %+v", got)
+	}
+	if byID["opencode/kimi-k3"].Protocol != "Chat Completions" || !byID["opencode/cat-jam-free"].Free || byID["opencode/glm-5.3"].ID != "" {
+		t.Fatalf("zen models = %+v", view.Models)
+	}
+	for _, model := range view.Models {
+		if model.UpstreamID == "gemini-3.5-flash" || model.ID == "opencode/gemini-3.5-flash" {
+			t.Fatalf("an unsupported Zen protocol was listed: %+v", model)
+		}
 	}
 	for _, req := range fx.httpCalls() {
 		if strings.Contains(req.Headers.Get("Authorization"), testKeyB) {
@@ -201,7 +214,7 @@ func TestManagementListModels(t *testing.T) {
 	fx.serveCatalogs(nil)
 	catalogs.byKey = map[string]catalogEntry{}
 	view = decodeBodyAs[modelsView](t, fx.call(http.MethodGet, modelsPath, nil, nil))
-	if !strings.Contains(view.Error, "401") || len(view.Models) != 7 {
+	if !strings.Contains(view.Error, "401") || len(view.Models) != 11 {
 		t.Fatalf("failing view = %+v", view)
 	}
 
@@ -219,10 +232,16 @@ func TestManagementListModelsWithPrefixDisabled(t *testing.T) {
 	useSettings(t, cfg)
 	fx.registerAll()
 	view := decodeBodyAs[modelsView](t, fx.call(http.MethodGet, modelsPath, nil, nil))
-	if !view.DisablePrefix || len(view.Models) != 7 || len(view.Unregistered)+len(view.Unlisted) != 0 {
+	if !view.DisablePrefix || len(view.Models) != 11 || len(view.Unregistered)+len(view.Unlisted) != 0 {
 		t.Fatalf("view = %+v", view)
 	}
 	for _, model := range view.Models {
+		if model.Family == "zen" {
+			if model.ID != "opencode/"+model.UpstreamID {
+				t.Fatalf("zen model %+v lost its prefix", model)
+			}
+			continue
+		}
 		if model.ID != model.UpstreamID {
 			t.Fatalf("model %+v is not bare", model)
 		}

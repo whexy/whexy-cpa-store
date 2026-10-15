@@ -99,7 +99,7 @@ func refreshCatalogs(ctx context.Context, doer httpDoer, opts refreshOptions) (r
 		}
 		reg, known := catalogs.registeredFor(stored.cred.ID)
 		if known {
-			if reg.fingerprint == cat.fingerprint() && !opts.force {
+			if reg.fingerprint == cat.fingerprint(cfg) && !opts.force {
 				continue
 			}
 			now := cat.exposedIDs(cfg)
@@ -216,13 +216,18 @@ type modelView struct {
 	UpstreamID string `json:"upstream_id"`
 	Name       string `json:"name"`
 	Protocol   string `json:"protocol"`
-	Context    int64  `json:"context,omitempty"`
-	Output     int64  `json:"output,omitempty"`
-	Free       bool   `json:"free,omitempty"`
+	// Family is go for a subscription model and zen for a pay-as-you-go one,
+	// which the page shows as two lists.
+	Family  string `json:"family"`
+	Context int64  `json:"context,omitempty"`
+	Output  int64  `json:"output,omitempty"`
+	Free    bool   `json:"free,omitempty"`
 }
 
 // modelsView is the catalog of the first credential that can read it.
-// Models lists disabled models too; Unregistered and Unlisted leave them out.
+// Models lists the workspace's OpenCode Go and OpenCode Zen models, disabled
+// and not-yet-enabled ones included; Unregistered and Unlisted leave out the
+// models the settings do not serve.
 type modelsView struct {
 	Credential string `json:"credential,omitempty"`
 	FetchedAt  string `json:"fetched_at,omitempty"`
@@ -275,12 +280,13 @@ func handleListModels(h host, _ pluginapi.ManagementRequest) (int, any, error) {
 	if at, ok := catalogs.fetchedAt(chosen.cred.ID); ok {
 		view.FetchedAt = at.UTC().Format(time.RFC3339)
 	}
-	for _, model := range cat.Models {
+	for _, model := range append(append([]catalogModel{}, cat.Models...), cat.Zen...) {
 		view.Models = append(view.Models, modelView{
-			ID:         exposedModelID(cfg, model.UpstreamID),
+			ID:         exposedModelID(cfg, model.Family, model.UpstreamID),
 			UpstreamID: model.UpstreamID,
 			Name:       model.Name,
 			Protocol:   protocolLabels[model.Protocol],
+			Family:     string(model.Family),
 			Context:    model.ContextLength,
 			Output:     model.OutputLimit,
 			Free:       model.Free,

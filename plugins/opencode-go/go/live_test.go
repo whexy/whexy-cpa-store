@@ -65,7 +65,17 @@ func TestLiveCatalog(t *testing.T) {
 			t.Errorf("%s protocol changed: snapshot %s, live %s", model.UpstreamID, known.Protocol, model.Protocol)
 		}
 	}
-	t.Logf("live catalog: %d models", len(cat.Models))
+	// The same config carries the workspace's OpenCode Zen models; none of
+	// them may be aimed at the Go gateway, which would draw on the
+	// subscription instead of Console credits.
+	for _, model := range cat.Zen {
+		route := model.route(cfg)
+		if !strings.HasPrefix(route.Endpoint, defaultZenBaseURL+"/") || strings.HasPrefix(route.Endpoint, defaultBaseURL+"/") {
+			t.Fatalf("zen %s routes to %s", model.UpstreamID, route.Endpoint)
+		}
+		t.Logf("zen %s: %s (%s)", model.UpstreamID, route.Endpoint, model.Protocol)
+	}
+	t.Logf("live catalog: %d Go models, %d Zen models", len(cat.Models), len(cat.Zen))
 }
 
 func TestLiveUsage(t *testing.T) {

@@ -26,15 +26,30 @@ var snapshotJSON []byte
 
 const catalogTTL = 10 * time.Minute
 
-// catalog is the opencode-go model list of one workspace.
+// modelFamily is which OpenCode catalog a model belongs to: the Go
+// subscription gateway or the pay-as-you-go Console (OpenCode Zen) gateway.
+type modelFamily string
+
+const (
+	familyGo  modelFamily = "go"
+	familyZen modelFamily = "zen"
+)
+
+// catalog is the model list of one workspace: the Go subscription models and
+// the pay-as-you-go (OpenCode Zen) models of the same Console config.
 type catalog struct {
 	// Workspace is the workspace ID the key belongs to, empty for the snapshot.
 	Workspace string
 	Models    []catalogModel
+	// Zen holds the workspace's OpenCode Zen models, which the workspace's
+	// Console has enabled. The plugin serves one only once the page turns it
+	// on, because those calls bill Console credits.
+	Zen []catalogModel
 }
 
-// catalogModel is one enabled Go model as the catalog describes it.
+// catalogModel is one enabled model as the catalog describes it.
 type catalogModel struct {
+	Family     modelFamily
 	UpstreamID string
 	Name       string
 	Protocol   sdktranslator.Format
@@ -53,9 +68,12 @@ type catalogModel struct {
 type modelRoute struct {
 	// ID is the model ID clients use, with the configured prefix.
 	ID string
-	// UpstreamID is the bare Go model ID sent in the request body.
+	// UpstreamID is the bare OpenCode model ID sent in the request body.
 	UpstreamID string
 	Name       string
+	// Family says which gateway serves the model, which decides whether the
+	// Go subscription quota applies to it.
+	Family modelFamily
 	// Protocol is the model's native wire format: openai (Chat Completions),
 	// openai-response (Responses) or claude (Messages).
 	Protocol sdktranslator.Format
@@ -110,7 +128,10 @@ type configModel struct {
 	} `json:"limit"`
 }
 
-// parseCatalog reads providers["opencode-go"] of the workspace config.
+// parseCatalog reads providers["opencode-go"] and providers["opencode"] of
+// the workspace config. The Go provider decides the workspace: only it
+// carries the org header. A workspace without the Zen provider has no
+// pay-as-you-go models.
 func parseCatalog(raw []byte) (catalog, error) {
 	var doc configDocument
 	if errUnmarshal := json.Unmarshal(raw, &doc); errUnmarshal != nil {
@@ -120,7 +141,25 @@ func parseCatalog(raw []byte) (catalog, error) {
 	if !ok {
 		return catalog{}, fmt.Errorf("workspace config has no %s provider", providerKey)
 	}
-	out := catalog{Workspace: strings.TrimSpace(provider.Headers["x-opencode-org-id"])}
+	out := catalog{
+		Workspace: strings.TrimSpace(provider.Headers["x-opencode-org-id"]),
+		Models:    parseProviderModels(familyGo, provider),
+	}
+	if len(out.Models) == 0 {
+		return catalog{}, fmt.Errorf("workspace config lists no enabled %s model", providerKey)
+	}
+	if zen, ok := doc.Providers[zenProviderKey]; ok {
+		out.Zen = parseProviderModels(familyZen, zen)
+	}
+	sort.Slice(out.Models, func(i, j int) bool { return out.Models[i].UpstreamID < out.Models[j].UpstreamID })
+	sort.Slice(out.Zen, func(i, j int) bool { return out.Zen[i].UpstreamID < out.Zen[j].UpstreamID })
+	return out, nil
+}
+
+// parseProviderModels reads one provider's enabled models, dropping the ones
+// whose protocol the plugin cannot serve.
+func parseProviderModels(family modelFamily, provider configProvider) []catalogModel {
+	var out []catalogModel
 	for id, model := range provider.Models {
 		id = strings.TrimSpace(id)
 		if id == "" || model.Disabled {
@@ -129,6 +168,10 @@ func parseCatalog(raw []byte) (catalog, error) {
 		pkg := model.Package
 		if pkg == "" {
 			pkg = provider.Package
+		}
+		protocol, ok := protocolForPackage(family, pkg)
+		if !ok {
+			continue
 		}
 		baseURL := model.Settings.BaseURL
 		if baseURL == "" {
@@ -144,10 +187,11 @@ func parseCatalog(raw []byte) (catalog, error) {
 		if name == "" {
 			name = id
 		}
-		out.Models = append(out.Models, catalogModel{
+		out = append(out, catalogModel{
+			Family:           family,
 			UpstreamID:       id,
 			Name:             name,
-			Protocol:         protocolForPackage(pkg),
+			Protocol:         protocol,
 			BaseURL:          strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 			Free:             free,
 			ContextLength:    model.Limit.Context,
@@ -157,26 +201,30 @@ func parseCatalog(raw []byte) (catalog, error) {
 			OutputModalities: model.Capabilities.Output,
 		})
 	}
-	if len(out.Models) == 0 {
-		return catalog{}, fmt.Errorf("workspace config lists no enabled %s model", providerKey)
-	}
-	sort.Slice(out.Models, func(i, j int) bool { return out.Models[i].UpstreamID < out.Models[j].UpstreamID })
-	return out, nil
+	return out
 }
 
 // protocolForPackage maps the AI SDK package the catalog names to the
 // endpoint the gateway accepts for that model. Responses- and
 // Messages-family models reject every other endpoint.
-func protocolForPackage(pkg string) sdktranslator.Format {
-	pkg = strings.TrimPrefix(strings.TrimSpace(pkg), "aisdk:")
-	switch pkg {
+//
+// The Go gateway serves only packages the plugin knows, so an unknown one
+// still maps to Chat Completions there, as the provider default. The Zen
+// gateway also serves Gemini and SystemOne models, which this plugin cannot
+// speak; it drops those rather than send them to the wrong endpoint.
+func protocolForPackage(family modelFamily, pkg string) (sdktranslator.Format, bool) {
+	switch strings.TrimPrefix(strings.TrimSpace(pkg), "aisdk:") {
 	case "@ai-sdk/anthropic":
-		return sdktranslator.FormatClaude
+		return sdktranslator.FormatClaude, true
 	case "@ai-sdk/openai":
-		return sdktranslator.FormatOpenAIResponse
-	default:
-		return sdktranslator.FormatOpenAI
+		return sdktranslator.FormatOpenAIResponse, true
+	case "@ai-sdk/openai-compatible":
+		return sdktranslator.FormatOpenAI, true
 	}
+	if family == familyGo {
+		return sdktranslator.FormatOpenAI, true
+	}
+	return "", false
 }
 
 var (
@@ -193,34 +241,54 @@ var (
 )
 
 // endpointFor rebases the catalog's protocol base onto the configured base
-// URL. A catalog base outside the Go gateway is ignored: other opencode.ai
-// inference paths bill Console credits instead of the subscription.
-func endpointFor(cfg settings, protocol sdktranslator.Format, catalogBase string) string {
+// URL. A catalog base outside the family's gateway is ignored: the other
+// opencode.ai inference paths belong to a different gateway, whose traffic a
+// model of this family must not draw.
+func endpointFor(cfg settings, family modelFamily, protocol sdktranslator.Format, catalogBase string) string {
+	root, base := cfg.gatewayBase(family)
 	path := protocolBasePath[protocol]
-	if rel, ok := strings.CutPrefix(catalogBase, defaultBaseURL+"/"); ok && rel != "" {
+	if rel, ok := strings.CutPrefix(catalogBase, root+"/"); ok && rel != "" && rebasablePath(family, rel) {
 		path = "/" + rel
 	}
-	return strings.TrimRight(cfg.BaseURL, "/") + path + protocolEndpoint[protocol]
+	return strings.TrimRight(base, "/") + path + protocolEndpoint[protocol]
+}
+
+// rebasablePath says a catalog base under the family's gateway names a path
+// this model's protocol can be sent to. The Go gateway serves every protocol
+// under its /go subtree, so any relative path there is the model's own; the
+// pay-as-you-go gateway names the protocol family first, so a base that names
+// none is dropped in favour of the model's protocol rather than aiming a chat
+// request at a path the gateway does not serve it from.
+func rebasablePath(family modelFamily, rel string) bool {
+	if family != familyZen {
+		return true
+	}
+	return strings.HasPrefix(rel, "openai/") || strings.HasPrefix(rel, "anthropic/")
 }
 
 // exposedModelID is the ID clients request. The prefix is part of the ID
 // itself rather than AuthData.Prefix, because the host also registers the
 // bare ID for a prefixed auth unless force-model-prefix is on, and a bare ID
 // that a native provider serves would share its traffic.
-func exposedModelID(cfg settings, upstreamID string) string {
-	if cfg.prefix() == "" {
+func exposedModelID(cfg settings, family modelFamily, upstreamID string) string {
+	prefix := cfg.prefix()
+	if family == familyZen {
+		prefix = cfg.zenPrefix()
+	}
+	if prefix == "" {
 		return upstreamID
 	}
-	return cfg.prefix() + "/" + upstreamID
+	return prefix + "/" + upstreamID
 }
 
 func (m catalogModel) route(cfg settings) modelRoute {
 	return modelRoute{
-		ID:               exposedModelID(cfg, m.UpstreamID),
+		ID:               exposedModelID(cfg, m.Family, m.UpstreamID),
 		UpstreamID:       m.UpstreamID,
 		Name:             m.Name,
+		Family:           m.Family,
 		Protocol:         m.Protocol,
-		Endpoint:         endpointFor(cfg, m.Protocol, m.BaseURL),
+		Endpoint:         endpointFor(cfg, m.Family, m.Protocol, m.BaseURL),
 		Free:             m.Free,
 		ContextLength:    m.ContextLength,
 		InputLimit:       m.InputLimit,
@@ -230,18 +298,33 @@ func (m catalogModel) route(cfg settings) modelRoute {
 	}
 }
 
-func (c catalog) modelInfos(cfg settings) []pluginapi.ModelInfo {
-	out := make([]pluginapi.ModelInfo, 0, len(c.Models))
+// servedModels are the catalog models the settings register with CPA: every
+// Go model except the disabled ones, and the Zen models the page has turned
+// on, Go models first.
+func (c catalog) servedModels(cfg settings) []catalogModel {
+	out := make([]catalogModel, 0, len(c.Models)+len(c.Zen))
 	for _, model := range c.Models {
-		if cfg.modelDisabled(model.UpstreamID) {
-			continue
+		if !cfg.modelDisabled(model.UpstreamID) {
+			out = append(out, model)
 		}
+	}
+	for _, model := range c.Zen {
+		if cfg.zenEnabled(model.UpstreamID) {
+			out = append(out, model)
+		}
+	}
+	return out
+}
+
+func (c catalog) modelInfos(cfg settings) []pluginapi.ModelInfo {
+	out := make([]pluginapi.ModelInfo, 0, len(c.Models)+len(c.Zen))
+	for _, model := range c.servedModels(cfg) {
 		inputLimit := model.InputLimit
 		if inputLimit == 0 {
 			inputLimit = model.ContextLength
 		}
 		out = append(out, pluginapi.ModelInfo{
-			ID:                        exposedModelID(cfg, model.UpstreamID),
+			ID:                        exposedModelID(cfg, model.Family, model.UpstreamID),
 			Object:                    "model",
 			OwnedBy:                   providerKey,
 			Type:                      providerKey,
@@ -258,16 +341,25 @@ func (c catalog) modelInfos(cfg settings) []pluginapi.ModelInfo {
 	return out
 }
 
-// find resolves a requested model ID: the prefixed or the bare Go ID,
-// optionally with a CPA thinking suffix such as "(high)". The prefixed form
-// resolves with disable_prefix on as well: CPA then registers bare IDs only,
-// so it never routes a client's prefixed request here, but a Bare ID alias
-// kept from the prefixed mode still makes CPA hand this executor the
-// alias's prefixed name for a request of the bare ID.
+// find resolves a requested model ID: the prefixed or the bare Go ID, or a
+// Zen model the page has turned on, optionally with a CPA thinking suffix
+// such as "(high)". The prefixed Go form resolves with disable_prefix on as
+// well: CPA then registers bare IDs only, so it never routes a client's
+// prefixed request here, but a Bare ID alias kept from the prefixed mode
+// still makes CPA hand this executor the alias's prefixed name for a request
+// of the bare ID.
 func (c catalog) find(cfg settings, model string) (catalogModel, bool) {
 	model = strings.TrimSpace(model)
 	if open := strings.LastIndex(model, "("); open > 0 && strings.HasSuffix(model, ")") {
 		model = model[:open]
+	}
+	if rest, ok := strings.CutPrefix(model, cfg.zenPrefix()+"/"); ok {
+		for _, candidate := range c.Zen {
+			if candidate.UpstreamID == rest && cfg.zenEnabled(rest) {
+				return candidate, true
+			}
+		}
+		return catalogModel{}, false
 	}
 	if cfg.ModelPrefix != "" {
 		model = strings.TrimPrefix(model, cfg.ModelPrefix+"/")
@@ -389,7 +481,7 @@ func (s *catalogStore) fetchedAt(credID string) (time.Time, bool) {
 func (s *catalogStore) markRegistered(credID string, cfg settings, cat catalog) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.registered[credID] = modelRegistration{fingerprint: cat.fingerprint(), ids: cat.exposedIDs(cfg), at: s.now()}
+	s.registered[credID] = modelRegistration{fingerprint: cat.fingerprint(cfg), ids: cat.exposedIDs(cfg), at: s.now()}
 }
 
 func (s *catalogStore) registeredFor(credID string) (modelRegistration, bool) {
@@ -400,22 +492,24 @@ func (s *catalogStore) registeredFor(credID string) (modelRegistration, bool) {
 }
 
 // fingerprint covers what decides whether CPA must register a catalog
-// again: the model set and each model's protocol and token limits.
-func (c catalog) fingerprint() string {
+// again: the models the settings serve, each with its family, protocol and
+// token limits. It is settings-dependent so that turning a model on or off
+// makes the next refresh rewrite the auth files, which is what makes CPA ask
+// for the model list again.
+func (c catalog) fingerprint(cfg settings) string {
 	sum := sha256.New()
-	for _, model := range c.Models {
-		fmt.Fprintf(sum, "%s|%s|%d|%d|%d\n", model.UpstreamID, model.Protocol, model.ContextLength, model.InputLimit, model.OutputLimit)
+	for _, model := range c.servedModels(cfg) {
+		fmt.Fprintf(sum, "%s|%s|%s|%d|%d|%d\n", model.Family, model.UpstreamID, model.Protocol, model.ContextLength, model.InputLimit, model.OutputLimit)
 	}
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
 // exposedIDs are the IDs model.for_auth registers for the catalog.
 func (c catalog) exposedIDs(cfg settings) []string {
-	ids := make([]string, 0, len(c.Models))
-	for _, model := range c.Models {
-		if !cfg.modelDisabled(model.UpstreamID) {
-			ids = append(ids, exposedModelID(cfg, model.UpstreamID))
-		}
+	served := c.servedModels(cfg)
+	ids := make([]string, 0, len(served))
+	for _, model := range served {
+		ids = append(ids, exposedModelID(cfg, model.Family, model.UpstreamID))
 	}
 	return ids
 }

@@ -41,7 +41,7 @@ func TestRegistrationDeclaresProviderCapabilities(t *testing.T) {
 	for _, field := range reg.Metadata.ConfigFields {
 		names = append(names, field.Name+":"+string(field.Type))
 	}
-	if strings.Join(names, ",") != "base_url:string,console_url:string,model_prefix:string,disable_prefix:boolean,user_agent:string" {
+	if strings.Join(names, ",") != "base_url:string,console_url:string,model_prefix:string,zen_model_prefix:string,disable_prefix:boolean,user_agent:string" {
 		t.Fatalf("config fields = %v", names)
 	}
 }
@@ -62,18 +62,22 @@ func TestParseSettings(t *testing.T) {
 		want    settings
 		wantErr string
 	}{
-		{name: "defaults", yaml: "enabled: true\npriority: 0\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go"}},
-		{name: "values", yaml: "base_url: https://example.test/go/\nmodel_prefix: /go/\nuser_agent: my-agent/1\n", want: settings{BaseURL: "https://example.test/go", ModelPrefix: "go", UserAgent: "my-agent/1"}},
-		{name: "null fields keep defaults", yaml: "base_url: null\nmodel_prefix: null\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go"}},
-		{name: "none is a prefix like any other", yaml: "model_prefix: none\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "none"}},
-		{name: "console url", yaml: "console_url: https://console.test/c/\n", want: settings{BaseURL: defaultBaseURL, ConsoleURL: "https://console.test/c", ModelPrefix: "opencode-go"}},
-		{name: "disable prefix keeps the configured prefix aside", yaml: "model_prefix: go\ndisable_prefix: true\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "go", DisablePrefix: true}},
-		{name: "disabled models", yaml: "disabled_models: [' kimi-k3 ', '', KIMI-K3, glm-5.3]\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go", DisabledModels: []string{"kimi-k3", "glm-5.3"}}},
+		{name: "defaults", yaml: "enabled: true\npriority: 0\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go", ZenModelPrefix: "opencode"}},
+		{name: "values", yaml: "base_url: https://example.test/go/\nmodel_prefix: /go/\nuser_agent: my-agent/1\n", want: settings{BaseURL: "https://example.test/go", ModelPrefix: "go", ZenModelPrefix: "opencode", UserAgent: "my-agent/1"}},
+		{name: "null fields keep defaults", yaml: "base_url: null\nmodel_prefix: null\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go", ZenModelPrefix: "opencode"}},
+		{name: "none is a prefix like any other", yaml: "model_prefix: none\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "none", ZenModelPrefix: "opencode"}},
+		{name: "console url", yaml: "console_url: https://console.test/c/\n", want: settings{BaseURL: defaultBaseURL, ConsoleURL: "https://console.test/c", ModelPrefix: "opencode-go", ZenModelPrefix: "opencode"}},
+		{name: "disable prefix keeps the configured prefix aside", yaml: "model_prefix: go\ndisable_prefix: true\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "go", DisablePrefix: true, ZenModelPrefix: "opencode"}},
+		{name: "disabled models", yaml: "disabled_models: [' kimi-k3 ', '', KIMI-K3, glm-5.3]\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go", ZenModelPrefix: "opencode", DisabledModels: []string{"kimi-k3", "glm-5.3"}}},
 		{name: "disabled models must be a list", yaml: "disabled_models: kimi-k3\n", wantErr: "decode plugin config"},
+		{name: "zen model prefix", yaml: "zen_model_prefix: /zen/\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go", ZenModelPrefix: "zen"}},
+		{name: "zen models", yaml: "zen_models: [' kimi-k3 ', '', GPT-6-Luna, gpt-6-luna]\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go", ZenModelPrefix: "opencode", ZenModels: []string{"kimi-k3", "GPT-6-Luna"}}},
+		{name: "zen models must be a list", yaml: "zen_models: kimi-k3\n", wantErr: "decode plugin config"},
 		{name: "relative base url", yaml: "base_url: opencode.ai/inference/go\n", wantErr: "base_url"},
 		{name: "relative console url", yaml: "console_url: opencode.ai/console\n", wantErr: "console_url"},
 		{name: "prefix with space", yaml: "model_prefix: open code\n", wantErr: "model_prefix"},
 		{name: "prefix with wildcard", yaml: "model_prefix: go*\n", wantErr: "model_prefix"},
+		{name: "zen prefix with space", yaml: "zen_model_prefix: open code\n", wantErr: "zen_model_prefix"},
 		{name: "bad yaml", yaml: "base_url: [\n", wantErr: "decode plugin config"},
 	}
 	for _, tt := range tests {
@@ -107,14 +111,20 @@ func TestReconfigureStoresSettings(t *testing.T) {
 	if defaultSettings().userAgent() != "whexy-cpa-opencode-go/"+pluginVersion {
 		t.Fatalf("default user agent = %q", defaultSettings().userAgent())
 	}
-	if got := exposedModelID(cfg, "kimi-k3"); got != "go/kimi-k3" {
+	if got := exposedModelID(cfg, familyGo, "kimi-k3"); got != "go/kimi-k3" {
 		t.Fatalf("prefixed ID = %q", got)
+	}
+	if got := exposedModelID(cfg, familyZen, "kimi-k3"); got != "opencode/kimi-k3" {
+		t.Fatalf("prefixed Zen ID = %q", got)
 	}
 	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("model_prefix: go\ndisable_prefix: true\n")})); errHandle != nil {
 		t.Fatal(errHandle)
 	}
-	if cfg := currentSettings(); cfg.prefix() != "" || exposedModelID(cfg, "kimi-k3") != "kimi-k3" {
+	if cfg := currentSettings(); cfg.prefix() != "" || exposedModelID(cfg, familyGo, "kimi-k3") != "kimi-k3" {
 		t.Fatalf("disable_prefix did not override model_prefix: %+v", cfg)
+	}
+	if cfg := currentSettings(); exposedModelID(cfg, familyZen, "kimi-k3") != "opencode/kimi-k3" {
+		t.Fatalf("disable_prefix dropped the Zen prefix: %+v", cfg)
 	}
 	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("base_url: ftp://x\n")})); errHandle == nil {
 		t.Fatal("invalid base_url accepted")

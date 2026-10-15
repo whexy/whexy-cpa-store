@@ -3,8 +3,13 @@
 A CLIProxyAPI provider for an [OpenCode Go](https://opencode.ai/v2/docs/console/go/)
 subscription. Clients use the workspace's Go models through CLIProxyAPI's
 Chat Completions, Responses and Messages endpoints, whichever protocol each
-model speaks upstream. Requests go to the Go gateway only, so they draw on
+model speaks upstream. Go requests go to the Go gateway only, so they draw on
 the subscription and never on Console credits.
+
+The same workspace's [OpenCode Zen](https://opencode.ai/v2/docs/console/models)
+models — the pay-as-you-go ones — can be served alongside them as
+`opencode/<model>`. They stay out of CLIProxyAPI until **Enabled** is turned on
+for one on the page, because those calls bill Console credits.
 
 ## Set up
 
@@ -15,7 +20,8 @@ the subscription and never on Console credits.
    in the auth directory, and CLIProxyAPI refreshes its token on its own.
    Logging in to the same workspace again replaces that login.
 3. Request models as `opencode-go/<model>`, for example `opencode-go/kimi-k3`.
-   `GET /v1/models` lists them.
+   `GET /v1/models` lists them. Turn on **Enabled** for an OpenCode Zen model on
+   the same page to also request it as `opencode/<model>`.
 
 Service-account keys (`oc_sk_…`, allowed to call models) work instead of or
 alongside logins: add them on Management Center → OpenCode Go, which checks
@@ -59,8 +65,9 @@ key or a token. Failures answer `{"error": "<message>"}`.
 - `PATCH /logins` with `{"id": "…", "disabled": true}`: disables or enables a
   login.
 - `GET /logins/usage?id=…`: the login's usage, as for a key.
-- `GET /models`: the catalog of the first login or key that can read it,
-  and the models CLIProxyAPI has not registered yet or still lists.
+- `GET /models`: the catalog of the first login or key that can read it —
+  both the OpenCode Go and the OpenCode Zen lists — and the models
+  CLIProxyAPI has not registered yet or still lists.
 - `POST /models/refresh`: reads every catalog again, makes CLIProxyAPI
   register the lists, and answers the models added and removed.
 - `GET /routing`: the priority and weight of every OpenCode Go auth file.
@@ -68,24 +75,38 @@ key or a token. Failures answer `{"error": "<message>"}`.
   OpenCode Go auth file; `null` restores the default.
 
 Bare ID is a CLIProxyAPI setting, which the page edits through
-`/v8/management/config/oauth/model-alias/opencode-go`. Disabled is the
-plugin setting `disabled_models`, which the page edits through
-`/v8/management/config/plugins/configs/opencode-go`.
+`/v8/management/config/oauth/model-alias/opencode-go`. Disabled and Enabled
+are the plugin settings `disabled_models` and `zen_models`, which the page
+edits through `/v8/management/config/plugins/configs/opencode-go`.
 
 </details>
 
 ## Models
 
-The OpenCode Go page lists the models of the workspace's OpenCode catalog.
-By default every ID carries the `opencode-go/` prefix, so Go never takes
-requests meant for another provider that serves the same model, such as
-`kimi-k3` through Kimi. **Disabled** removes a model from CLIProxyAPI, with
-the prefix on or off, and is stored in the plugin setting `disabled_models`.
-**Disable all** turns it on for every listed model at once, and the page lists
-the disabled models after the ones still served.
+The plugin reads the workspace's OpenCode catalog, which holds two lists, and
+the OpenCode Go page shows both.
+
+**OpenCode Go models** are the subscription models. By default every ID
+carries the `opencode-go/` prefix, so Go never takes requests meant for
+another provider that serves the same model, such as `kimi-k3` through
+Kimi. **Disabled** removes a model from CLIProxyAPI, with the prefix on or
+off, and is stored in the plugin setting `disabled_models`. **Disable all**
+turns it on for every listed model at once, and the page lists the disabled
+models after the ones still served.
 The page also lists the wildcard rules of Management Center's OAuth Model
 Disablement page that match Go models; a rule written with the prefix, such
 as `opencode-go/claude-*`, matches nothing while `disable_prefix` is on.
+
+**OpenCode Zen models** are the workspace's pay-as-you-go models, served as
+`opencode/<model>`. They are off by default: turn on **Enabled** for one, or
+use **Enable all**, and the plugin registers it and sends its requests to the
+OpenCode Zen gateway, which bills Console credits. The enabled IDs are stored
+in the plugin setting `zen_models`. OpenCode answers its free tier to OpenCode
+clients only, so a Zen model priced at zero is listed but cannot be called
+through CLIProxyAPI. Zen IDs keep their prefix while `disable_prefix` is on,
+because the two lists share upstream IDs: `kimi-k3` is both
+`opencode-go/kimi-k3` and `opencode/kimi-k3`. Only the API families the plugin
+speaks are listed; Gemini and SystemOne models are left out.
 
 The plugin reads the catalog again every three hours and on **Refresh
 models**, and CLIProxyAPI then lists the models OpenCode added and drops those
@@ -130,13 +151,19 @@ All optional, under `plugins.configs.opencode-go` or in the plugin's
 configuration form in Management Center:
 
 - `base_url`: Go gateway base URL. Default `https://opencode.ai/inference/go`.
+  The OpenCode Zen gateway is the same base without its `/go` path.
 - `console_url`: OpenCode Console base URL, for login, token refresh and the
   model catalog. Default: the `base_url` host followed by `/console`.
-- `model_prefix`: prefix of every model ID. Default `opencode-go`.
-- `disable_prefix`: serve every model under its bare ID only, ignoring
-  `model_prefix`. Default off.
+- `model_prefix`: prefix of every OpenCode Go model ID. Default `opencode-go`.
+- `zen_model_prefix`: prefix of every OpenCode Zen model ID, as in
+  `opencode/gpt-5.5`. Default `opencode`.
+- `disable_prefix`: serve every OpenCode Go model under its bare ID only,
+  ignoring `model_prefix`. Default off. Zen IDs keep their prefix.
 - `disabled_models`: bare Go model IDs kept out of CLIProxyAPI, such as
   `[kimi-k3]`. The page's Disabled toggles edit it; the form does not show it.
+- `zen_models`: bare OpenCode Zen model IDs served as `opencode/<id>`, such as
+  `[gpt-5.5]`. Empty serves none. The page's Enabled toggles edit it; the form
+  does not show it.
 - `user_agent`: sent upstream when the client sends none. Default
   `whexy-cpa-opencode-go/<version>`.
 

@@ -77,11 +77,19 @@ import (
 const (
 	pluginVersion = "0.3.0"
 
-	providerKey        = "opencode-go"
-	displayName        = "OpenCode Go"
-	defaultBaseURL     = "https://opencode.ai/inference/go"
-	defaultConsoleURL  = "https://opencode.ai/console"
-	defaultModelPrefix = "opencode-go"
+	providerKey = "opencode-go"
+	displayName = "OpenCode Go"
+	// zenProviderKey is the Console provider that holds the pay-as-you-go
+	// (OpenCode Zen) models of the same workspace, next to providerKey's
+	// subscription models in one config document.
+	zenProviderKey = "opencode"
+	defaultBaseURL = "https://opencode.ai/inference/go"
+	// defaultZenBaseURL is the root of the pay-as-you-go inference paths; the
+	// Go gateway is its /go subtree.
+	defaultZenBaseURL     = "https://opencode.ai/inference"
+	defaultConsoleURL     = "https://opencode.ai/console"
+	defaultModelPrefix    = "opencode-go"
+	defaultZenModelPrefix = "opencode"
 
 	// Background work gets this long to observe cancellation before the host
 	// unloads the library underneath it.
@@ -142,7 +150,13 @@ type settings struct {
 	// owns this list because CPA's oauth-excluded-models matches registered
 	// IDs, whose form depends on DisablePrefix.
 	DisabledModels []string
-	UserAgent      string
+	// ZenModelPrefix is the prefix of OpenCode Zen (pay-as-you-go) model IDs.
+	ZenModelPrefix string
+	// ZenModels are the bare OpenCode Zen model IDs the plugin serves as
+	// <ZenModelPrefix>/<id>. The page edits this list; a Zen model stays out
+	// of CPA until it is named here, since those calls bill Console credits.
+	ZenModels []string
+	UserAgent string
 }
 
 type rawSettings struct {
@@ -151,6 +165,8 @@ type rawSettings struct {
 	ModelPrefix    string   `yaml:"model_prefix"`
 	DisablePrefix  bool     `yaml:"disable_prefix"`
 	DisabledModels []string `yaml:"disabled_models"`
+	ZenModelPrefix string   `yaml:"zen_model_prefix"`
+	ZenModels      []string `yaml:"zen_models"`
 	UserAgent      string   `yaml:"user_agent"`
 }
 
@@ -164,7 +180,7 @@ func currentSettings() settings {
 }
 
 func defaultSettings() settings {
-	return settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix}
+	return settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix, ZenModelPrefix: defaultZenModelPrefix}
 }
 
 // prefix is the prefix every exposed model ID carries, empty while
@@ -176,9 +192,47 @@ func (s settings) prefix() string {
 	return s.ModelPrefix
 }
 
+// zenPrefix is the prefix of OpenCode Zen model IDs. It is never empty: the
+// Zen and Go catalogs share upstream IDs, so a bare Zen ID would be
+// indistinguishable from the Go one.
+func (s settings) zenPrefix() string {
+	if s.ZenModelPrefix == "" {
+		return defaultZenModelPrefix
+	}
+	return s.ZenModelPrefix
+}
+
+// zenBaseURL is the OpenCode Zen gateway root. It is the base URL without the
+// Go path, so a base_url pointing at a mirror moves both.
+func (s settings) zenBaseURL() string {
+	if root, ok := strings.CutSuffix(strings.TrimRight(s.BaseURL, "/"), "/go"); ok && root != "" {
+		return root
+	}
+	return defaultZenBaseURL
+}
+
+// gatewayBase is the canonical root the catalog's base URLs are rebased from,
+// and the configured base they are rebased onto.
+func (s settings) gatewayBase(family modelFamily) (root, base string) {
+	if family == familyZen {
+		return defaultZenBaseURL, s.zenBaseURL()
+	}
+	return defaultBaseURL, s.BaseURL
+}
+
 func (s settings) modelDisabled(upstreamID string) bool {
-	for _, id := range s.DisabledModels {
-		if strings.EqualFold(id, upstreamID) {
+	return containsFold(s.DisabledModels, upstreamID)
+}
+
+// zenEnabled reports whether the page has turned on the serving of one
+// OpenCode Zen model.
+func (s settings) zenEnabled(upstreamID string) bool {
+	return containsFold(s.ZenModels, upstreamID)
+}
+
+func containsFold(ids []string, id string) bool {
+	for _, other := range ids {
+		if strings.EqualFold(other, id) {
 			return true
 		}
 	}
@@ -343,8 +397,9 @@ func pluginRegistration() registration {
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "base_url", Type: pluginapi.ConfigFieldTypeString, Description: "OpenCode Go gateway base URL. Default " + defaultBaseURL + "."},
 				{Name: "console_url", Type: pluginapi.ConfigFieldTypeString, Description: "OpenCode Console base URL, used for login, token refresh and the model catalog. Default: the base_url host followed by /console, which is " + defaultConsoleURL + " for the default base_url."},
-				{Name: "model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every model ID, as in opencode-go/kimi-k3. Default " + defaultModelPrefix + ". To share a bare ID such as deepseek-v4-pro with another provider, turn on Bare ID for that model on the OpenCode Go page. disable_prefix overrides this setting."},
-				{Name: "disable_prefix", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Serve every model under its bare ID only, as in kimi-k3, and ignore model_prefix. A bare ID shares routing with every other provider that serves the same ID, so disable the models you do not want on the OpenCode Go page."},
+				{Name: "model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every OpenCode Go model ID, as in opencode-go/kimi-k3. Default " + defaultModelPrefix + ". To share a bare ID such as deepseek-v4-pro with another provider, turn on Bare ID for that model on the OpenCode Go page. disable_prefix overrides this setting."},
+				{Name: "zen_model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every OpenCode Zen model ID, as in " + defaultZenModelPrefix + "/gpt-5.5. Default " + defaultZenModelPrefix + ". Zen models share upstream IDs with Go models, so their prefix is never dropped."},
+				{Name: "disable_prefix", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Serve every OpenCode Go model under its bare ID only, as in kimi-k3, and ignore model_prefix. A bare ID shares routing with every other provider that serves the same ID, so disable the models you do not want on the OpenCode Go page. Zen model IDs keep their prefix."},
 				{Name: "user_agent", Type: pluginapi.ConfigFieldTypeString, Description: "User-Agent sent upstream when the client sends none. Default whexy-cpa-opencode-go/" + pluginVersion + "."},
 			},
 		},
@@ -398,11 +453,15 @@ func parseSettings(configYAML []byte) (settings, error) {
 		return settings{}, errConsole
 	}
 	cfg.ConsoleURL = console
-	if prefix := strings.Trim(strings.TrimSpace(raw.ModelPrefix), "/"); prefix != "" {
-		if strings.ContainsAny(prefix, " \t\r\n()*") {
-			return settings{}, fmt.Errorf("model_prefix must not contain spaces, parentheses or *, got %q", prefix)
-		}
+	if prefix, errPrefix := cleanPrefix("model_prefix", raw.ModelPrefix); errPrefix != nil {
+		return settings{}, errPrefix
+	} else if prefix != "" {
 		cfg.ModelPrefix = prefix
+	}
+	if prefix, errPrefix := cleanPrefix("zen_model_prefix", raw.ZenModelPrefix); errPrefix != nil {
+		return settings{}, errPrefix
+	} else if prefix != "" {
+		cfg.ZenModelPrefix = prefix
 	}
 	cfg.DisablePrefix = raw.DisablePrefix
 	for _, id := range raw.DisabledModels {
@@ -410,8 +469,26 @@ func parseSettings(configYAML []byte) (settings, error) {
 			cfg.DisabledModels = append(cfg.DisabledModels, id)
 		}
 	}
+	for _, id := range raw.ZenModels {
+		if id = strings.TrimSpace(id); id != "" && !cfg.zenEnabled(id) {
+			cfg.ZenModels = append(cfg.ZenModels, id)
+		}
+	}
 	cfg.UserAgent = strings.TrimSpace(raw.UserAgent)
 	return cfg, nil
+}
+
+// cleanPrefix reads an optional model-ID prefix without its surrounding
+// slashes, rejecting the characters an ID can never carry.
+func cleanPrefix(name, value string) (string, error) {
+	prefix := strings.Trim(strings.TrimSpace(value), "/")
+	if prefix == "" {
+		return "", nil
+	}
+	if strings.ContainsAny(prefix, " \t\r\n()*") {
+		return "", fmt.Errorf("%s must not contain spaces, parentheses or *, got %q", name, prefix)
+	}
+	return prefix, nil
 }
 
 // absoluteURLSetting reads an optional http(s) URL setting without its

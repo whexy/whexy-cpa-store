@@ -72,20 +72,20 @@ test("an exact entry is never a rule", () => {
   assert.equal(isExcluded(["opencode-go/deepseek-*"], deepseek.id), false);
 });
 
-test("Disabled adds and removes Go model IDs once", () => {
-  const withDisabled = fn("withDisabled");
+test("withModelIDs adds and removes IDs once", () => {
+  const withModelIDs = fn("withModelIDs");
   const list = ["kimi-k3", "glm-5.3"];
-  assert.deepEqual(plain(withDisabled(list, ["deepseek-v4-pro"], true)), [
+  assert.deepEqual(plain(withModelIDs(list, ["deepseek-v4-pro"], true)), [
     "kimi-k3",
     "glm-5.3",
     "deepseek-v4-pro",
   ]);
-  assert.deepEqual(plain(withDisabled(list, ["KIMI-K3", "x"], true)), [
+  assert.deepEqual(plain(withModelIDs(list, ["KIMI-K3", "x"], true)), [
     "kimi-k3",
     "glm-5.3",
     "x",
   ]);
-  assert.deepEqual(plain(withDisabled(list, ["KIMI-K3"], false)), ["glm-5.3"]);
+  assert.deepEqual(plain(withModelIDs(list, ["KIMI-K3"], false)), ["glm-5.3"]);
   assert.deepEqual(plain(fn("stringList")([" a ", "", 3, null, "b"])), [
     "a",
     "b",
@@ -136,6 +136,27 @@ test("disabled_models writes touch only that key", () => {
     method: "PATCH",
     path: "",
     body: { disabled_models: ["a"] },
+  });
+});
+
+test("zen_models writes touch only that key", () => {
+  const zenWrite = fn("zenWrite");
+  const node = { enabled: true, model_prefix: "go", zen_models: ["a"] };
+  assert.deepEqual(plain(zenWrite(node, ["a", "b"])), {
+    method: "PATCH",
+    path: "",
+    body: { zen_models: ["a", "b"] },
+  });
+  assert.equal(zenWrite(node, ["a"]), null);
+  assert.deepEqual(plain(zenWrite(node, [])), {
+    method: "DELETE",
+    path: "/zen_models",
+  });
+  assert.equal(zenWrite({ enabled: true }, []), null);
+  assert.deepEqual(plain(zenWrite({}, ["a"])), {
+    method: "PATCH",
+    path: "",
+    body: { zen_models: ["a"] },
   });
 });
 

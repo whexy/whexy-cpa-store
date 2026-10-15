@@ -29,7 +29,7 @@ func TestParseCatalogFixture(t *testing.T) {
 		byID[model.UpstreamID] = model
 	}
 	if strings.Join(ids, ",") != "claude-haiku-5-5,deepseek-v4-flash,elsewhere,gpt-6-luna,kimi-k3,longcat-2.5-preview-free,qwen3.8-max" {
-		t.Fatalf("ids = %v (disabled models must be skipped, opencode provider ignored)", ids)
+		t.Fatalf("ids = %v (disabled models must be skipped)", ids)
 	}
 	tests := []struct {
 		id       string
@@ -52,6 +52,164 @@ func TestParseCatalogFixture(t *testing.T) {
 	luna := byID["gpt-6-luna"]
 	if luna.ContextLength != 1050000 || luna.InputLimit != 922000 || luna.OutputLimit != 128000 || strings.Join(luna.InputModalities, ",") != "text,image,pdf" {
 		t.Fatalf("gpt-6-luna = %+v", luna)
+	}
+}
+
+// The opencode provider of the same config holds the workspace's
+// pay-as-you-go (OpenCode Zen) models. Disabled models and the API families
+// the plugin cannot serve are dropped.
+func TestParseCatalogZenFixture(t *testing.T) {
+	cat, errParse := parseCatalog(readFixture(t, "config.json"))
+	if errParse != nil {
+		t.Fatal(errParse)
+	}
+	byID := map[string]catalogModel{}
+	var ids []string
+	for _, model := range cat.Zen {
+		ids = append(ids, model.UpstreamID)
+		byID[model.UpstreamID] = model
+	}
+	if strings.Join(ids, ",") != "cat-jam-free,claude-haiku-5-5,gpt-6-luna,kimi-k3" {
+		t.Fatalf("zen ids = %v (disabled, Gemini and SystemOne models must be skipped)", ids)
+	}
+	tests := []struct {
+		id       string
+		protocol sdktranslator.Format
+		free     bool
+	}{
+		{"cat-jam-free", sdktranslator.FormatOpenAI, true},
+		{"claude-haiku-5-5", sdktranslator.FormatClaude, false},
+		{"gpt-6-luna", sdktranslator.FormatOpenAIResponse, false},
+		{"kimi-k3", sdktranslator.FormatOpenAI, false},
+	}
+	for _, tt := range tests {
+		got := byID[tt.id]
+		if got.Family != familyZen || got.Protocol != tt.protocol || got.Free != tt.free {
+			t.Fatalf("%s = %+v", tt.id, got)
+		}
+	}
+}
+
+// A Zen model keeps its own prefix and reaches the pay-as-you-go paths, and
+// only the models the page turned on resolve at all.
+func TestZenRoutes(t *testing.T) {
+	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	cfg := settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix, ZenModels: []string{"kimi-k3", "gpt-6-luna", "claude-haiku-5-5"}}
+	tests := []struct {
+		model    string
+		upstream string
+		endpoint string
+	}{
+		{"opencode/kimi-k3", "kimi-k3", "https://opencode.ai/inference/openai/v1/chat/completions"},
+		{"opencode/gpt-6-luna", "gpt-6-luna", "https://opencode.ai/inference/openai/v1/responses"},
+		{"opencode/claude-haiku-5-5", "claude-haiku-5-5", "https://opencode.ai/inference/anthropic/v1/messages"},
+	}
+	for _, tt := range tests {
+		model, ok := cat.find(cfg, tt.model)
+		if !ok || model.Family != familyZen {
+			t.Fatalf("%s -> %+v %v", tt.model, model, ok)
+		}
+		route := model.route(cfg)
+		if route.Endpoint != tt.endpoint || route.ID != tt.model || route.UpstreamID != tt.upstream {
+			t.Fatalf("route = %+v", route)
+		}
+	}
+	// The same upstream ID still routes to the Go gateway under its own prefix.
+	if route, ok := cat.find(cfg, "opencode-go/kimi-k3"); !ok || route.Family != familyGo {
+		t.Fatalf("go model = %+v %v", route, ok)
+	}
+	// A Zen model the page has not turned on does not resolve.
+	if _, ok := cat.find(cfg, "opencode/cat-jam-free"); ok {
+		t.Fatal("a Zen model that is not enabled resolved")
+	}
+	// A mirror moves both gateways, since the Zen base is the Go base without
+	// its Go path.
+	mirror := settings{BaseURL: "https://mirror.test/x/go", ModelPrefix: defaultModelPrefix, ZenModels: []string{"kimi-k3"}}
+	model, ok := cat.find(mirror, "opencode/kimi-k3")
+	if !ok || model.route(mirror).Endpoint != "https://mirror.test/x/openai/v1/chat/completions" {
+		t.Fatalf("mirrored route = %+v %v", model, ok)
+	}
+}
+
+// A Zen catalog base that names no protocol family would aim the request at
+// a path the gateway does not serve it from, so the model's protocol decides.
+func TestZenEndpointRebasing(t *testing.T) {
+	cfg := defaultSettings()
+	cases := []struct {
+		base     string
+		protocol sdktranslator.Format
+		want     string
+	}{
+		{"https://opencode.ai/inference/openai/v1", sdktranslator.FormatOpenAI, "https://opencode.ai/inference/openai/v1/chat/completions"},
+		{"https://opencode.ai/inference/openai/v1", sdktranslator.FormatOpenAIResponse, "https://opencode.ai/inference/openai/v1/responses"},
+		{"https://opencode.ai/inference/anthropic/v1", sdktranslator.FormatClaude, "https://opencode.ai/inference/anthropic/v1/messages"},
+		{"https://opencode.ai/inference/v1", sdktranslator.FormatOpenAI, "https://opencode.ai/inference/openai/v1/chat/completions"},
+		{"https://opencode.ai/inference/go/openai/v1", sdktranslator.FormatOpenAI, "https://opencode.ai/inference/openai/v1/chat/completions"},
+		{"https://elsewhere.test/v1", sdktranslator.FormatOpenAI, "https://opencode.ai/inference/openai/v1/chat/completions"},
+		{"", sdktranslator.FormatClaude, "https://opencode.ai/inference/anthropic/v1/messages"},
+	}
+	for _, tt := range cases {
+		if got := endpointFor(cfg, familyZen, tt.protocol, tt.base); got != tt.want {
+			t.Fatalf("zen %q %s -> %s, want %s", tt.base, tt.protocol, got, tt.want)
+		}
+	}
+	// The Go gateway serves every protocol under its own subtree, so any
+	// other opencode.ai base is ignored and any Go base is kept.
+	if got := endpointFor(cfg, familyGo, sdktranslator.FormatClaude, "https://opencode.ai/inference/openai/v1"); got != "https://opencode.ai/inference/go/anthropic/v1/messages" {
+		t.Fatalf("go foreign base -> %s", got)
+	}
+	if got := endpointFor(cfg, familyGo, sdktranslator.FormatClaude, "https://opencode.ai/inference/go/anthropic/v1"); got != "https://opencode.ai/inference/go/anthropic/v1/messages" {
+		t.Fatalf("go own base -> %s", got)
+	}
+}
+
+// Only the Zen models the page turned on are registered with CPA, and every
+// model's route stays inside its own gateway.
+func TestZenServingIsOptIn(t *testing.T) {
+	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	ids := func(cfg settings) string {
+		var out []string
+		for _, info := range cat.modelInfos(cfg) {
+			out = append(out, info.ID)
+		}
+		return strings.Join(out, ",")
+	}
+	const goIDs = "opencode-go/claude-haiku-5-5,opencode-go/deepseek-v4-flash,opencode-go/elsewhere,opencode-go/gpt-6-luna,opencode-go/kimi-k3,opencode-go/longcat-2.5-preview-free,opencode-go/qwen3.8-max"
+	if got := ids(defaultSettings()); got != goIDs {
+		t.Fatalf("without Zen models = %s", got)
+	}
+	cfg := defaultSettings()
+	cfg.ZenModels = []string{"KIMI-K3", "gpt-6-luna"}
+	want := goIDs + ",opencode/gpt-6-luna,opencode/kimi-k3"
+	if got := ids(cfg); got != want {
+		t.Fatalf("with Zen models = %s\nwant %s", got, want)
+	}
+	if got := strings.Join(cat.exposedIDs(cfg), ","); got != want {
+		t.Fatalf("exposed IDs = %s\nwant %s", got, want)
+	}
+	for _, info := range cat.modelInfos(cfg) {
+		model, ok := cat.find(cfg, info.ID)
+		if !ok {
+			t.Fatalf("%s does not resolve", info.ID)
+		}
+		root := defaultBaseURL + "/"
+		if model.Family == familyZen {
+			root = defaultZenBaseURL + "/"
+		}
+		if route := model.route(cfg); !strings.HasPrefix(route.Endpoint, root) {
+			t.Fatalf("%s routes outside its gateway: %s", info.ID, route.Endpoint)
+		}
+	}
+	// A bare upstream ID is the Go model, never the Zen one.
+	if model, ok := cat.find(cfg, "kimi-k3"); !ok || model.Family != familyGo {
+		t.Fatalf("bare kimi-k3 = %+v %v", model, ok)
+	}
+	// Turning a Zen model off changes the fingerprint, so the next refresh
+	// rewrites the auth files and CPA registers the list again.
+	before := cat.fingerprint(cfg)
+	cfg.ZenModels = []string{"KIMI-K3"}
+	if after := cat.fingerprint(cfg); after == before {
+		t.Fatal("fingerprint ignores the Zen model set")
 	}
 }
 
