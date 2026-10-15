@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.3.0...opencode-go-v0.4.0) (2026-10-15)
+
+
+### Features
+
+* **opencode-go:** serve free OpenCode Zen models by presenting the OpenCode client
+* **opencode-go:** serve the workspace's OpenCode Zen models as opencode/...
+
 ## [0.3.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.2.2...opencode-go-v0.3.0) (2026-10-15)
 
 
