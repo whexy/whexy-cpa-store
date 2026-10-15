@@ -510,8 +510,14 @@
         margin-bottom: 12px;
       }
 
-      .section-head .btn {
+      .section-head > .btn,
+      .section-head > .section-actions {
         margin-left: auto;
+      }
+
+      .section-actions {
+        display: flex;
+        gap: 8px;
       }
 
       .section-meta {
@@ -624,6 +630,34 @@
 
       input[type="checkbox"]:disabled {
         cursor: not-allowed;
+      }
+
+      /* A checked Disabled toggle removes a model, so this column ticks with
+         a cross: a checkmark reads as "kept". */
+      .cross input[type="checkbox"] {
+        appearance: none;
+        border: 1px solid var(--primary);
+        border-radius: 4px;
+        background: var(--bg-input);
+      }
+
+      .cross input[type="checkbox"]:checked {
+        background-color: var(--primary);
+        background-image:
+          linear-gradient(
+            45deg,
+            transparent 45%,
+            var(--primary-contrast) 45%,
+            var(--primary-contrast) 55%,
+            transparent 55%
+          ),
+          linear-gradient(
+            -45deg,
+            transparent 45%,
+            var(--primary-contrast) 45%,
+            var(--primary-contrast) 55%,
+            transparent 55%
+          );
       }
 
       .routing {
@@ -753,9 +787,18 @@
           <div class="section-head">
             <h2>Models</h2>
             <span class="section-meta" id="models-meta"></span>
-            <button class="btn btn-ghost" id="models-refresh" type="button">
-              Refresh models
-            </button>
+            <div class="section-actions">
+              <button
+                class="btn btn-ghost"
+                id="models-disable-all"
+                type="button"
+              >
+                Disable all
+              </button>
+              <button class="btn btn-ghost" id="models-refresh" type="button">
+                Refresh models
+              </button>
+            </div>
           </div>
           <div class="stack" id="models-notices"></div>
           <div class="stack" id="models-rules"></div>
@@ -965,6 +1008,34 @@
         const out = [...disabled];
         for (const id of ids) if (!hasModel(out, id)) out.push(id);
         return out;
+      }
+
+      // disabledRule is the OAuth Model Disablement entry that removes a
+      // model: a wildcard rule matching its ID, or an exact entry the
+      // migration has not moved yet.
+      function disabledRule(excluded, model) {
+        return (
+          ruleFor(excluded, model.id) ||
+          (isExcluded(excluded, model.id) ? model.id : "")
+        );
+      }
+
+      // isModelDisabled says the page shows a model as removed: by its bare
+      // ID in disabled_models, or by an OAuth Model Disablement entry.
+      function isModelDisabled(excluded, disabled, model) {
+        return (
+          Boolean(disabledRule(excluded, model)) ||
+          hasModel(disabled, model.upstream_id)
+        );
+      }
+
+      // enabledFirst keeps the catalog's order, moving the models still
+      // served ahead of the disabled ones.
+      function enabledFirst(list, isOff) {
+        const on = [];
+        const off = [];
+        for (const model of list) (isOff(model) ? off : on).push(model);
+        return [...on, ...off];
       }
 
       // disabledWrite is the request that stores list as disabled_models in
@@ -2132,9 +2203,7 @@
         const prefixOff = Boolean(models.view.disable_prefix);
         // CPA's own entries still apply to the registered IDs: rules, and an
         // exact entry only until the migration has moved it.
-        const rule =
-          ruleFor(models.excluded, model.id) ||
-          (isExcluded(models.excluded, model.id) ? model.id : "");
+        const rule = disabledRule(models.excluded, model);
         const disabled =
           Boolean(rule) || hasModel(models.disabled, model.upstream_id);
         const bare = prefixOff || hasBareID(models.aliases, model);
@@ -2190,7 +2259,7 @@
           ),
           h(
             "td",
-            { class: "toggle" },
+            { class: "toggle cross" },
             checkbox(
               disabled,
               "Disable " + model.id,
@@ -2303,10 +2372,19 @@
         button.textContent = models.refreshing
           ? "Refreshing…"
           : "Refresh models";
+        const isOff = (model) =>
+          isModelDisabled(models.excluded, models.disabled, model);
+        $("models-disable-all").disabled =
+          models.refreshing ||
+          !models.configLoaded ||
+          models.busy.size > 0 ||
+          view.models.every(isOff);
         $("bare-head").title = view.disable_prefix ? PREFIX_OFF : BARE_TITLE;
         $("models-notices").replaceChildren(...modelNotices());
         $("models-rules").replaceChildren(...ruleNotes());
-        $("models-body").replaceChildren(...view.models.map(modelRow));
+        $("models-body").replaceChildren(
+          ...enabledFirst(view.models, isOff).map(modelRow),
+        );
       }
 
       // Writes to CPA's config run one at a time, each re-reading the map
@@ -2327,8 +2405,11 @@
         return next;
       }
 
-      function toggleModel(model, work) {
-        models.busy.add(model.id);
+      // toggleModel locks the rows it is about to change, so their toggles
+      // stay out of reach until the write lands.
+      function toggleModel(keys, work) {
+        const locked = Array.isArray(keys) ? keys : [keys];
+        for (const key of locked) models.busy.add(key);
         models.notice = null;
         renderModels();
         return queued(work)
@@ -2337,13 +2418,13 @@
               models.notice = { tone: "error", text: err.message };
           })
           .finally(() => {
-            models.busy.delete(model.id);
+            for (const key of locked) models.busy.delete(key);
             renderModels();
           });
       }
 
       function toggleBare(model, on) {
-        return toggleModel(model, async () => {
+        return toggleModel(model.id, async () => {
           models.aliases = await editChannel(ALIAS_MAP, (list) =>
             withBareID(list, model, on),
           );
@@ -2360,12 +2441,33 @@
       }
 
       function toggleDisabled(model, on) {
-        return toggleModel(model, async () => {
+        return toggleModel(model.id, async () => {
           models.disabled = await editDisabled((list) =>
             withDisabled(list, [model.upstream_id], on),
           );
         });
       }
+
+      // Disable all removes every model the page still serves in one write;
+      // the per-model toggle would rewrite disabled_models once per model.
+      $("models-disable-all").addEventListener("click", () => {
+        const targets = models.view.models.filter(
+          (model) => !isModelDisabled(models.excluded, models.disabled, model),
+        );
+        if (targets.length === 0) return;
+        return toggleModel(
+          targets.map((model) => model.id),
+          async () => {
+            models.disabled = await editDisabled((list) =>
+              withDisabled(
+                list,
+                targets.map((model) => model.upstream_id),
+                true,
+              ),
+            );
+          },
+        );
+      });
 
       function refreshSummary(report) {
         const parts = [

@@ -81,6 +81,8 @@ By default every ID carries the `opencode-go/` prefix, so Go never takes
 requests meant for another provider that serves the same model, such as
 `kimi-k3` through Kimi. **Disabled** removes a model from CLIProxyAPI, with
 the prefix on or off, and is stored in the plugin setting `disabled_models`.
+**Disable all** turns it on for every listed model at once, and the page lists
+the disabled models after the ones still served.
 The page also lists the wildcard rules of Management Center's OAuth Model
 Disablement page that match Go models; a rule written with the prefix, such
 as `opencode-go/claude-*`, matches nothing while `disable_prefix` is on.

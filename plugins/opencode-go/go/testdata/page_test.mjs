@@ -93,6 +93,30 @@ test("Disabled adds and removes Go model IDs once", () => {
   assert.deepEqual(plain(fn("stringList")("kimi-k3")), []);
 });
 
+test("disabled models are those with an entry or a matching rule", () => {
+  const isModelDisabled = fn("isModelDisabled");
+  const enabledFirst = fn("enabledFirst");
+  const excluded = ["opencode-go/claude-*", "opencode-go/step-5-preview-free"];
+  const disabled = ["kimi-k3"];
+  const catalog = [
+    { id: "opencode-go/kimi-k3", upstream_id: "kimi-k3" },
+    { id: "opencode-go/claude-haiku-5-5", upstream_id: "claude-haiku-5-5" },
+    { id: "opencode-go/glm-5.3", upstream_id: "glm-5.3" },
+    {
+      id: "opencode-go/step-5-preview-free",
+      upstream_id: "step-5-preview-free",
+    },
+    { id: "opencode-go/hy3", upstream_id: "hy3" },
+  ];
+  const isOff = (model) => isModelDisabled(excluded, disabled, model);
+  assert.deepEqual(catalog.map(isOff), [true, true, false, true, false]);
+  // The models still served keep the catalog's order and come first.
+  assert.deepEqual(
+    plain(enabledFirst(catalog, isOff).map((model) => model.upstream_id)),
+    ["glm-5.3", "hy3", "kimi-k3", "claude-haiku-5-5", "step-5-preview-free"],
+  );
+});
+
 test("disabled_models writes touch only that key", () => {
   const disabledWrite = fn("disabledWrite");
   const node = { enabled: true, model_prefix: "go", disabled_models: ["a"] };
