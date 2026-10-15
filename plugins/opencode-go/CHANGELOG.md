@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.2.2...opencode-go-v0.3.0) (2026-10-15)
+
+
+### Features
+
+* **opencode-go:** disable all models at once and list the disabled ones last
+
 ## [0.2.2](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.2.1...opencode-go-v0.2.2) (2026-10-13)
 
 
