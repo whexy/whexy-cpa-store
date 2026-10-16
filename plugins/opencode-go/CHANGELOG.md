@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.4.0...opencode-go-v0.5.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **opencode-go:** serve OpenCode Go, Zen and keyless Free models as separate providers
+
+### Features
+
+* **opencode-go:** serve OpenCode Go, Zen and keyless Free models as separate providers
+
+### Bug Fixes
+
+* **opencode-go:** move OAuth Model Disablement entries into disabled_models again
+
 ## [0.4.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.3.0...opencode-go-v0.4.0) (2026-10-15)
 
 
