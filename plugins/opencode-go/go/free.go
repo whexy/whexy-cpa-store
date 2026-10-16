@@ -88,14 +88,11 @@ func (f freeFile) marshal() ([]byte, error) {
 
 // freeAuth is the OpenCode Free auth. It holds no credential; its priority
 // and weight are the file's top-level fields, which CPA applies itself.
-func freeAuth(base string, raw []byte, cfg settings) pluginapi.AuthData {
+func freeAuth(base string, raw []byte) pluginapi.AuthData {
 	file, _ := parseFreeFile(raw)
 	attributes := map[string]string{familyAttribute: string(familyFree)}
 	if mark := extraString(file.extra, catalogRefreshedField); mark != "" {
 		attributes[catalogRefreshedField] = mark
-	}
-	if aliases := bareModelAliases(cfg, familyFree, cfg.FreeBareModels); aliases != "" {
-		attributes[modelAliasesAttribute] = aliases
 	}
 	return pluginapi.AuthData{
 		Provider:    providerKey,

@@ -76,9 +76,6 @@ func TestParseFreeCatalog(t *testing.T) {
 }
 
 func TestFreeAuthParse(t *testing.T) {
-	cfg := defaultSettings()
-	cfg.FreeBareModels = []string{"free-chat"}
-	useSettings(t, cfg)
 	raw := `{"type":"opencode-go","free":true,"priority":-2,"catalog_refreshed_at":"2026-10-16T00:00:00Z"}`
 	resp := parseAuths(pluginapi.AuthParseRequest{Path: "/auths/" + freeFileName, RawJSON: []byte(raw)})
 	auth := resp.Auth
@@ -86,7 +83,7 @@ func TestFreeAuthParse(t *testing.T) {
 		t.Fatalf("resp = %+v", resp)
 	}
 	if auth.Attributes["family"] != "free" || auth.Attributes[catalogRefreshedField] != "2026-10-16T00:00:00Z" ||
-		auth.Attributes["model_aliases"] != `[{"name":"opencode-free/free-chat","alias":"free-chat","fork":true}]` || len(auth.Metadata) != 0 {
+		auth.Attributes["model_aliases"] != "" || len(auth.Metadata) != 0 {
 		t.Fatalf("attributes = %v", auth.Attributes)
 	}
 	// CPA applies the file's own priority, so the plugin adds none.

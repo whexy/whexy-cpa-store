@@ -225,11 +225,12 @@ func TestManagementListModels(t *testing.T) {
 	}
 }
 
-// With the prefix disabled the page gets bare IDs and the mode; disabled
-// models stay listed but are not expected among the registered ones.
+// With the prefix disabled the page gets bare IDs of both lists and the
+// mode; disabled models stay listed but are not expected among the
+// registered ones.
 func TestManagementListModelsWithPrefixDisabled(t *testing.T) {
-	fx := newManagementFixture(t, map[string]string{"opencode-go.json": `{"type":"opencode-go","api_key":"` + testKeyA + `"}`})
-	cfg := settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix, DisablePrefix: true, DisabledModels: []string{"kimi-k3"}}
+	fx := newManagementFixture(t, map[string]string{"opencode-go.json": `{"type":"opencode-go","api_key":"` + testKeyA + `","zen":true}`})
+	cfg := settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix, ZenModelPrefix: defaultZenModelPrefix, DisablePrefix: true, DisabledModels: []string{"kimi-k3"}, ZenModels: []string{"kimi-k3"}}
 	useSettings(t, cfg)
 	fx.registerAll()
 	view := decodeBodyAs[modelsView](t, fx.call(http.MethodGet, modelsPath, nil, nil))
@@ -237,19 +238,16 @@ func TestManagementListModelsWithPrefixDisabled(t *testing.T) {
 		t.Fatalf("view = %+v", view)
 	}
 	for _, model := range view.Models {
-		if model.Family == "zen" {
-			if model.ID != "opencode/"+model.UpstreamID {
-				t.Fatalf("zen model %+v lost its prefix", model)
-			}
-			continue
-		}
 		if model.ID != model.UpstreamID {
-			t.Fatalf("model %+v is not bare", model)
+			t.Fatalf("%s model %+v is not bare", model.Family, model)
 		}
 	}
 	reg, _ := catalogs.registeredFor(keyIDFor(testKeyA), familyGo)
 	if slices.Contains(reg.ids, "kimi-k3") || !slices.Contains(reg.ids, "deepseek-v4-flash") {
 		t.Fatalf("registered = %v", reg.ids)
+	}
+	if zen, _ := catalogs.registeredFor(keyIDFor(testKeyA), familyZen); !slices.Equal(zen.ids, []string{"kimi-k3"}) {
+		t.Fatalf("zen registered = %v", zen.ids)
 	}
 }
 
@@ -370,9 +368,10 @@ func TestBackgroundRecheckRewritesOnlyChangedFiles(t *testing.T) {
 	}
 }
 
-// Turning Bare ID on for a Zen model makes every auth file parse again, so
-// the Zen auths carry the alias and CPA registers it.
-func TestReparseAuthFilesAppliesZenAliases(t *testing.T) {
+// reparseAuthFiles has CPA parse every auth file again without reading a
+// catalog, which replaces the auths an earlier version parsed: none of the
+// new ones carries model aliases.
+func TestReparseAuthFilesReplacesStaleAuths(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{
 		testLoginName:      string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"zen": true})),
 		"opencode-go.json": `{"type":"opencode-go","keys":[{"label":"Work","api_key":"` + testKeyA + `","zen":true},{"api_key":"` + testKeyB + `","disabled":true}]}`,
@@ -386,8 +385,6 @@ func TestReparseAuthFilesAppliesZenAliases(t *testing.T) {
 	asked := fx.registerOnSave()
 	fetched := len(fx.httpCalls())
 
-	cfg.ZenBareModels = []string{"kimi-k3"}
-	useSettings(t, cfg)
 	reparseAuthFiles(context.Background(), newHost(""))
 	keyA := authIDFor(keyFileName, keyIDFor(testKeyA))
 	want := []string{testLoginName, testLoginName + zenAuthSuffix, keyA, keyA + zenAuthSuffix}
@@ -398,8 +395,7 @@ func TestReparseAuthFilesAppliesZenAliases(t *testing.T) {
 	}
 	for name, content := range fx.files {
 		for _, auth := range parsedAuths(name, content) {
-			aliases := auth.Attributes["model_aliases"]
-			if (authFamily(auth.Attributes) == familyZen) != strings.Contains(aliases, `"alias":"kimi-k3"`) {
+			if aliases := auth.Attributes["model_aliases"]; aliases != "" {
 				t.Fatalf("%s aliases = %q", auth.ID, aliases)
 			}
 		}

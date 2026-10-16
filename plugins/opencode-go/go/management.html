@@ -852,11 +852,12 @@
             </div>
             <p class="hint">
               Off by default. Enabling a model adds
-              <code id="zen-prefix-note">opencode/…</code> to CLIProxyAPI for
-              every login and key with OpenCode Zen on, and sends its requests
-              to OpenCode Zen, which bills Console credits. Models priced at
-              zero are free: the plugin presents those requests as the OpenCode
-              client, which is the only caller the free tier answers.
+              <span id="zen-id-note"><code>opencode/…</code></span> to
+              CLIProxyAPI for every login and key with OpenCode Zen on, and
+              sends its requests to OpenCode Zen, which bills Console credits.
+              Models priced at zero are free: the plugin presents those requests
+              as the OpenCode client, which is the only caller the free tier
+              answers.
             </p>
             <div class="card table-card">
               <table>
@@ -865,12 +866,6 @@
                     <th>Model</th>
                     <th>Protocol</th>
                     <th class="num">Context</th>
-                    <th
-                      class="toggle"
-                      title="Also list the model under its bare ID, such as kimi-k3, while it is enabled. Every provider serving that ID shares its requests by priority and weight, OpenCode Go included. Stored in the plugin setting zen_bare_models."
-                    >
-                      Bare ID
-                    </th>
                     <th
                       class="toggle"
                       title="Serve this model through CLIProxyAPI as an OpenCode Zen model. Stored in the plugin setting zen_models."
@@ -907,13 +902,6 @@
                     <th class="num">Context</th>
                     <th
                       class="toggle"
-                      id="bare-head"
-                      title="Also list the model under its bare ID, such as deepseek-v4-pro. Every provider serving that ID shares its requests, by priority and weight."
-                    >
-                      Bare ID
-                    </th>
-                    <th
-                      class="toggle"
                       title="Remove the model from CLIProxyAPI. Stored in the plugin setting disabled_models."
                     >
                       Disabled
@@ -948,7 +936,8 @@
             OpenCode's free models, with no login or key: requests carry no
             credential of yours and are presented as the OpenCode client, the
             only caller the free tier answers. Turning this on adds
-            <code>opencode-free/…</code> to CLIProxyAPI.
+            <span id="free-id-note"><code>opencode-free/…</code></span> to
+            CLIProxyAPI.
           </p>
           <div class="stack" id="free-notices"></div>
           <div class="card table-card" id="free-table" hidden>
@@ -958,12 +947,6 @@
                   <th>Model</th>
                   <th>Protocol</th>
                   <th class="num">Context</th>
-                  <th
-                    class="toggle"
-                    title="Also list the model under its bare ID, such as deepseek-v4.1-flash-free. Every provider serving that ID shares its requests by priority and weight. Stored in the plugin setting free_bare_models."
-                  >
-                    Bare ID
-                  </th>
                   <th
                     class="toggle"
                     title="Remove the model from CLIProxyAPI. Stored in the plugin setting free_disabled_models."
@@ -1123,32 +1106,16 @@
         return { method: "PUT", path: "", body: whole };
       }
 
-      const isBareAlias = (entry, model) =>
-        Boolean(entry) &&
-        sameID(entry.name, model.id) &&
-        sameID(entry.alias, model.upstream_id);
-
-      function hasBareID(aliases, model) {
-        return aliases.some((entry) => isBareAlias(entry, model));
-      }
-
-      // withBareID adds or removes the fork alias that lists a model under
-      // its bare ID as well, keeping every other alias as it is.
-      function withBareID(aliases, model, on) {
-        const rest = aliases.filter((entry) => !isBareAlias(entry, model));
-        if (!on) return rest;
-        const taken = rest.find(
-          (entry) => entry && sameID(entry.alias, model.upstream_id),
+      // isBareAlias says a model alias entry is the shape 0.5.0's Bare ID
+      // wrote: a prefixed OpenCode Go ID aliased to its own bare ID, which
+      // lists the model under both.
+      function isBareAlias(entry, prefixes) {
+        if (!entry || typeof entry !== "object") return false;
+        const alias = String(entry.alias ?? "").trim();
+        return (
+          alias !== "" &&
+          prefixes.some((prefix) => sameID(entry.name, prefix + "/" + alias))
         );
-        if (taken) {
-          throw new Error(
-            model.upstream_id + " is already the alias of " + taken.name + ".",
-          );
-        }
-        return [
-          ...rest,
-          { name: model.id, alias: model.upstream_id, fork: true },
-        ];
       }
 
       const isRule = (pattern) => String(pattern).includes("*");
@@ -1264,28 +1231,22 @@
       };
 
       // bareFamilies maps each bare ID the plugin serves to the families
-      // serving it: an OpenCode Go model through Bare ID or disable_prefix
-      // unless it is disabled, an OpenCode Zen model through Bare ID while it
-      // is enabled, and an OpenCode Free model through Bare ID unless it is
-      // disabled. state.serving names the families some login, key or
-      // OpenCode Free has on.
+      // serving it. The plugin serves bare IDs only while disable_prefix is
+      // on, and then every model it serves: an OpenCode Go model unless it is
+      // disabled, an OpenCode Zen model while it is enabled, and an OpenCode
+      // Free model unless it is disabled. state.serving names the families
+      // some login, key or OpenCode Free has on.
       function bareFamilies(catalog, state) {
         const into = new Map();
+        if (!state.prefixOff) return into;
         for (const model of catalog) {
           if (!state.serving.includes(model.family)) continue;
           let served;
           if (model.family === "zen")
-            served =
-              hasModel(state.zen, model.upstream_id) &&
-              hasModel(state.zenBare, model.upstream_id);
+            served = hasModel(state.zen, model.upstream_id);
           else if (model.family === "free")
-            served =
-              hasModel(state.freeBare, model.upstream_id) &&
-              !hasModel(state.freeDisabled, model.upstream_id);
-          else
-            served =
-              (state.prefixOff || hasBareID(state.aliases, model)) &&
-              !isModelDisabled(state.excluded, state.disabled, model);
+            served = !hasModel(state.freeDisabled, model.upstream_id);
+          else served = !isModelDisabled(state.excluded, state.disabled, model);
           if (served)
             addServedBy(into, model.upstream_id, FAMILY_NAMES[model.family]);
         }
@@ -2382,6 +2343,10 @@
         }
       });
 
+      // BARE_LISTS are the plugin settings 0.5.0's Zen and Free Bare ID
+      // wrote.
+      const BARE_LISTS = ["zen_bare_models", "free_bare_models"];
+
       // Models: the catalog of the first working credential, with this
       // provider's entries of CPA's model alias and disablement maps and the
       // plugin's disabled_models and zen_models.
@@ -2390,13 +2355,12 @@
         aliases: [],
         excluded: [],
         disabled: [],
-        // zen are the OpenCode Zen model IDs the page has turned on, and
-        // zenBare those also served under their bare ID.
+        // zen are the OpenCode Zen model IDs the page has turned on.
         zen: [],
-        zenBare: [],
-        // freeBare and freeDisabled are the OpenCode Free lists.
-        freeBare: [],
         freeDisabled: [],
+        // bareLists are the 0.5.0 Bare ID settings still in the plugin
+        // config, which nothing reads.
+        bareLists: [],
         // bare maps a bare ID to the families of this plugin serving it.
         bare: new Map(),
         zenPrefix: "",
@@ -2437,10 +2401,11 @@
             models.excluded = channelEntries(maps.excludedMap).map(String);
             models.disabled = stringList(maps.own && maps.own.disabled_models);
             models.zen = stringList(maps.own && maps.own.zen_models);
-            models.zenBare = stringList(maps.own && maps.own.zen_bare_models);
-            models.freeBare = stringList(maps.own && maps.own.free_bare_models);
             models.freeDisabled = stringList(
               maps.own && maps.own.free_disabled_models,
+            );
+            models.bareLists = BARE_LISTS.filter(
+              (key) => maps.own && maps.own[key] !== undefined,
             );
             models.zenPrefix =
               String((maps.own && maps.own.zen_model_prefix) || "").trim() ||
@@ -2458,7 +2423,10 @@
         }
         renderModels();
         renderFree();
-        if (models.configLoaded) await migrateExclusions();
+        if (models.configLoaded) {
+          await migrateExclusions();
+          await migrateBareIDs();
+        }
         if (models.view.models.length > 0 && !models.servedBy) loadServedBy();
       }
 
@@ -2505,6 +2473,48 @@
         renderModels();
       }
 
+      // migrateBareIDs removes what 0.5.0's per-model Bare ID left behind:
+      // its entries in CPA's oauth-model-alias, which would keep listing an
+      // OpenCode Go model under both its IDs, and the plugin's Zen and Free
+      // Bare ID lists. disable_prefix now decides the form of every ID.
+      async function migrateBareIDs() {
+        const isBare = (entry) => isBareAlias(entry, models.prefixes);
+        if (!models.aliases.some(isBare) && models.bareLists.length === 0)
+          return;
+        await queued(async () => {
+          let removed = [];
+          if (models.aliases.some(isBare)) {
+            models.aliases = await editChannel(ALIAS_MAP, (list) => {
+              removed = list
+                .filter(isBare)
+                .map((entry) => String(entry.alias).trim());
+              return list.filter((entry) => !isBare(entry));
+            });
+          }
+          for (const key of models.bareLists) await editList(key, () => []);
+          models.bareLists = [];
+          if (removed.length > 0)
+            models.notice = {
+              tone: "ok",
+              text:
+                "Removed the Bare ID of " +
+                removed.join(", ") +
+                " from OAuth Model Alias." +
+                (prefixOff()
+                  ? ""
+                  : " Turn on disable_prefix in the plugin settings to serve every model under its bare ID only."),
+            };
+        }).catch((err) => {
+          if (!(err instanceof AuthError))
+            models.notice = {
+              tone: "error",
+              text:
+                "Could not remove the Bare ID model aliases: " + err.message,
+            };
+        });
+        renderModels();
+      }
+
       // loadServedBy finds other providers that register a model's bare ID:
       // provider entries of the api-keys config, and one credential of each
       // other credential provider. Failures only leave the hint out.
@@ -2544,9 +2554,16 @@
         renderModels();
       }
 
-      const BARE_TITLE = $("bare-head").title;
       const PREFIX_OFF =
-        "disable_prefix is on in the plugin settings, so every OpenCode Go model is served under its bare ID only.";
+        "disable_prefix is on in the plugin settings, so every OpenCode Go, Zen and Free model is served under its bare ID only.";
+
+      const prefixOff = () =>
+        Boolean(models.view && models.view.disable_prefix);
+
+      // idNote is how a hint names the IDs a family adds to CLIProxyAPI.
+      function idNote(prefix, bare) {
+        return prefixOff() ? bare : h("code", {}, prefix + "/…");
+      }
 
       function checkbox(checked, label, onchange, disabled, title) {
         const box = h("input", {
@@ -2562,13 +2579,11 @@
 
       function modelRow(model) {
         const locked = models.busy.has(model.id) || !models.configLoaded;
-        const prefixOff = Boolean(models.view.disable_prefix);
         // CPA's own entries still apply to the registered IDs: rules, and an
         // exact entry only until the migration has moved it.
         const rule = disabledRule(models.excluded, model);
         const disabled =
           Boolean(rule) || hasModel(models.disabled, model.upstream_id);
-        const bare = prefixOff || hasBareID(models.aliases, model);
         const served = servedElsewhere(model);
         const limits = model.context
           ? model.context.toLocaleString() +
@@ -2606,17 +2621,6 @@
           h("td", { class: "num", title: limits }, tokens(model.context)),
           h(
             "td",
-            { class: "toggle", title: prefixOff ? PREFIX_OFF : null },
-            checkbox(
-              bare,
-              "Bare ID " + model.upstream_id,
-              (on) => toggleBare(model, on),
-              locked || prefixOff,
-              prefixOff ? PREFIX_OFF : null,
-            ),
-          ),
-          h(
-            "td",
             { class: "toggle cross" },
             checkbox(
               disabled,
@@ -2639,7 +2643,6 @@
       function zenRow(model) {
         const locked = models.busy.has(model.id) || !models.configLoaded;
         const enabled = hasModel(models.zen, model.upstream_id);
-        const bare = hasModel(models.zenBare, model.upstream_id);
         const served = servedElsewhere(model);
         const limits = model.context
           ? model.context.toLocaleString() +
@@ -2675,17 +2678,6 @@
           ),
           h("td", {}, model.protocol),
           h("td", { class: "num", title: limits }, tokens(model.context)),
-          h(
-            "td",
-            { class: "toggle" },
-            checkbox(
-              bare,
-              "Bare ID " + model.upstream_id,
-              (on) => toggleZenBare(model, on),
-              locked,
-              null,
-            ),
-          ),
           h(
             "td",
             { class: "toggle" },
@@ -2732,14 +2724,11 @@
             ...((free.view && free.view.models) || []),
           ],
           {
-            aliases: models.aliases,
             excluded: models.excluded,
             disabled: models.disabled,
             zen: models.zen,
-            zenBare: models.zenBare,
-            freeBare: models.freeBare,
             freeDisabled: models.freeDisabled,
-            prefixOff: Boolean(models.view && models.view.disable_prefix),
+            prefixOff: prefixOff(),
             serving: servingFamilies(),
           },
         );
@@ -2856,7 +2845,9 @@
         // The Zen list is its own opt-in switch: a model is served only once
         // Enabled is on for it.
         $("zen-models").hidden = zenModels.length === 0;
-        $("zen-prefix-note").textContent = models.zenPrefix + "/…";
+        $("zen-id-note").replaceChildren(
+          idNote(models.zenPrefix, "its bare ID"),
+        );
         const zenOn = zenModels.filter(zenEnabled).length;
         $("zen-meta").textContent = zenModels.length
           ? zenOn +
@@ -2890,7 +2881,6 @@
           !models.configLoaded ||
           models.busy.size > 0 ||
           goModels.every(isOff);
-        $("bare-head").title = view.disable_prefix ? PREFIX_OFF : BARE_TITLE;
         $("models-body").replaceChildren(
           ...enabledFirst(goModels, isOff).map(modelRow),
         );
@@ -2932,16 +2922,8 @@
           });
       }
 
-      function toggleBare(model, on) {
-        return toggleModel(model.id, async () => {
-          models.aliases = await editChannel(ALIAS_MAP, (list) =>
-            withBareID(list, model, on),
-          );
-        });
-      }
-
-      // editList rewrites one list setting of the plugin's config node:
-      // disabled_models, zen_models or zen_bare_models.
+      // editList rewrites one list setting of the plugin's config node, such
+      // as disabled_models or zen_models.
       async function editList(key, edit) {
         const node = await cpa("GET", PLUGIN_CONFIG, undefined, {});
         const next = edit(stringList(node && node[key]));
@@ -2962,16 +2944,6 @@
       function toggleZen(model, on) {
         return toggleModel(model.id, async () => {
           models.zen = await editList("zen_models", (list) =>
-            withModelIDs(list, [model.upstream_id], on),
-          );
-        });
-      }
-
-      // toggleZenBare reaches CPA once the plugin has CPA parse the auth
-      // files again, which it does when zen_bare_models changes.
-      function toggleZenBare(model, on) {
-        return toggleModel(model.id, async () => {
-          models.zenBare = await editList("zen_bare_models", (list) =>
             withModelIDs(list, [model.upstream_id], on),
           );
         });
@@ -3070,7 +3042,7 @@
       });
 
       // OpenCode Free: the keyless provider of OpenCode's free models, one
-      // auth file of its own, with its own Bare ID and Disabled lists.
+      // auth file of its own, with its own Disabled list.
       const free = {
         view: null,
         busy: new Set(),
@@ -3092,7 +3064,6 @@
       function freeRow(model) {
         const locked = free.busy.has(model.id) || !models.configLoaded;
         const disabled = hasModel(models.freeDisabled, model.upstream_id);
-        const bare = hasModel(models.freeBare, model.upstream_id);
         const served = servedElsewhere(model);
         const limits = model.context
           ? model.context.toLocaleString() +
@@ -3123,22 +3094,11 @@
           h("td", { class: "num", title: limits }, tokens(model.context)),
           h(
             "td",
-            { class: "toggle" },
-            checkbox(
-              bare,
-              "Bare ID " + model.upstream_id,
-              (on) => toggleFreeList(model, "free_bare_models", on),
-              locked,
-              null,
-            ),
-          ),
-          h(
-            "td",
             { class: "toggle cross" },
             checkbox(
               disabled,
               "Disable " + model.id,
-              (on) => toggleFreeList(model, "free_disabled_models", on),
+              (on) => toggleFreeDisabled(model, on),
               locked,
               null,
             ),
@@ -3156,6 +3116,9 @@
         toggle.disabled = free.working || !view;
         $("free-refresh").hidden = !on;
         $("free-refresh").disabled = free.working || models.refreshing;
+        $("free-id-note").replaceChildren(
+          idNote("opencode-free", "their bare IDs"),
+        );
         const notices = [];
         if (free.notice) {
           const tone = { ok: "ok-text", warn: "warn-text", error: "error" };
@@ -3198,18 +3161,14 @@
         );
       }
 
-      // toggleFreeList adds or removes a Free model in free_bare_models or
-      // free_disabled_models.
-      function toggleFreeList(model, key, on) {
+      function toggleFreeDisabled(model, on) {
         free.busy.add(model.id);
         free.notice = null;
         renderFree();
         return queued(async () => {
-          const next = await editList(key, (list) =>
+          models.freeDisabled = await editList("free_disabled_models", (list) =>
             withModelIDs(list, [model.upstream_id], on),
           );
-          if (key === "free_bare_models") models.freeBare = next;
-          else models.freeDisabled = next;
         })
           .catch((err) => {
             if (!(err instanceof AuthError))

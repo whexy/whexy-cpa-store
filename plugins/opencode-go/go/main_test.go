@@ -75,6 +75,7 @@ func TestParseSettings(t *testing.T) {
 		{name: "zen model prefix", yaml: "zen_model_prefix: /zen/\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go", ZenModelPrefix: "zen", CloakFreeModels: true}},
 		{name: "zen models", yaml: "zen_models: [' kimi-k3 ', '', GPT-6-Luna, gpt-6-luna]\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go", ZenModelPrefix: "opencode", CloakFreeModels: true, ZenModels: []string{"kimi-k3", "GPT-6-Luna"}}},
 		{name: "zen models must be a list", yaml: "zen_models: kimi-k3\n", wantErr: "decode plugin config"},
+		{name: "0.5.0 Bare ID lists load and do nothing", yaml: "zen_bare_models: [kimi-k3]\nfree_bare_models: [big-pickle]\n", want: settings{BaseURL: defaultBaseURL, ModelPrefix: "opencode-go", ZenModelPrefix: "opencode", CloakFreeModels: true}},
 		{name: "relative base url", yaml: "base_url: opencode.ai/inference/go\n", wantErr: "base_url"},
 		{name: "relative console url", yaml: "console_url: opencode.ai/console\n", wantErr: "console_url"},
 		{name: "prefix with space", yaml: "model_prefix: open code\n", wantErr: "model_prefix"},
@@ -101,33 +102,6 @@ func TestParseSettings(t *testing.T) {
 	}
 }
 
-// The Zen auths' Bare ID aliases come from auth.parse, so changing them
-// makes the plugin have CPA parse the files again; other settings do not.
-func TestReconfigureReparsesWhenZenAliasesChange(t *testing.T) {
-	useSettings(t, defaultSettings())
-	reparses := 0
-	previous := reparseLater
-	reparseLater = func() { reparses++ }
-	t.Cleanup(func() { reparseLater = previous })
-	for _, step := range []struct {
-		yaml string
-		want int
-	}{
-		{"user_agent: ua/2\nzen_models: [kimi-k3]\n", 0},
-		{"zen_bare_models: [kimi-k3]\n", 1},
-		{"zen_bare_models: [' KIMI-K3 ', kimi-k3]\nuser_agent: ua/3\n", 1},
-		{"zen_bare_models: [kimi-k3]\nzen_model_prefix: zen\n", 2},
-		{"", 3},
-	} {
-		if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte(step.yaml)})); errHandle != nil {
-			t.Fatal(errHandle)
-		}
-		if reparses != step.want {
-			t.Fatalf("after %q: %d reparses, want %d", step.yaml, reparses, step.want)
-		}
-	}
-}
-
 func TestReconfigureStoresSettings(t *testing.T) {
 	useSettings(t, defaultSettings())
 	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("model_prefix: go\nuser_agent: ua/2\n")})); errHandle != nil {
@@ -146,14 +120,17 @@ func TestReconfigureStoresSettings(t *testing.T) {
 	if got := exposedModelID(cfg, familyZen, "kimi-k3"); got != "opencode/kimi-k3" {
 		t.Fatalf("prefixed Zen ID = %q", got)
 	}
-	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("model_prefix: go\ndisable_prefix: true\n")})); errHandle != nil {
+	if got := exposedModelID(cfg, familyFree, "big-pickle"); got != "opencode-free/big-pickle" {
+		t.Fatalf("prefixed Free ID = %q", got)
+	}
+	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("model_prefix: go\nzen_model_prefix: zen\ndisable_prefix: true\n")})); errHandle != nil {
 		t.Fatal(errHandle)
 	}
-	if cfg := currentSettings(); cfg.prefix() != "" || exposedModelID(cfg, familyGo, "kimi-k3") != "kimi-k3" {
-		t.Fatalf("disable_prefix did not override model_prefix: %+v", cfg)
-	}
-	if cfg := currentSettings(); exposedModelID(cfg, familyZen, "kimi-k3") != "opencode/kimi-k3" {
-		t.Fatalf("disable_prefix dropped the Zen prefix: %+v", cfg)
+	cfg = currentSettings()
+	for _, family := range families {
+		if prefix, id := cfg.modelPrefix(family), exposedModelID(cfg, family, "kimi-k3"); prefix != "" || id != "kimi-k3" {
+			t.Fatalf("disable_prefix left the %s prefix %q: %s", family, prefix, id)
+		}
 	}
 	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("base_url: ftp://x\n")})); errHandle == nil {
 		t.Fatal("invalid base_url accepted")

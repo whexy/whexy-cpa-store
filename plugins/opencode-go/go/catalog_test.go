@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -235,6 +236,42 @@ func TestZenServingIsOptIn(t *testing.T) {
 	}
 }
 
+// disable_prefix lists the models of every family under their bare ID
+// only, and each family's auth still resolves its own models alone. A model
+// of two families, such as kimi-k3 of Go and Zen, is registered by both
+// families' auths, and CPA routes between them by priority and weight.
+func TestDisablePrefixServesEveryFamilyBare(t *testing.T) {
+	cat := fixtureCatalog(t)
+	free, errFree := parseFreeCatalog(readFixture(t, "models_dev.json"), nil)
+	if errFree != nil {
+		t.Fatal(errFree)
+	}
+	cat.Free = free.Free
+	cfg := defaultSettings()
+	cfg.ZenModels = []string{"kimi-k3", "gpt-6-luna"}
+	cfg.DisablePrefix = true
+	for _, family := range families {
+		ids := cat.exposedIDs(cfg, family)
+		if len(ids) == 0 {
+			t.Fatalf("%s serves nothing", family)
+		}
+		for _, id := range ids {
+			if strings.Contains(id, "/") {
+				t.Fatalf("%s lists %s", family, id)
+			}
+			if model, ok := cat.find(cfg, id, family); !ok || model.Family != family || model.UpstreamID != id {
+				t.Fatalf("%s does not resolve for %s: %+v", id, family, model)
+			}
+		}
+	}
+	if !slices.Contains(cat.exposedIDs(cfg, familyGo), "kimi-k3") || !slices.Contains(cat.exposedIDs(cfg, familyZen), "kimi-k3") {
+		t.Fatal("kimi-k3 is not listed by both Go and Zen")
+	}
+	if model, _ := cat.find(cfg, "kimi-k3", familyZen); model.route(cfg).Endpoint != "https://opencode.ai/inference/openai/v1/chat/completions" {
+		t.Fatalf("bare kimi-k3 on the Zen auth routes to %s", model.route(cfg).Endpoint)
+	}
+}
+
 func TestEmbeddedSnapshotMatchesVerifiedProtocols(t *testing.T) {
 	if strings.Contains(string(snapshotJSON), "wrk_") || strings.Contains(string(snapshotJSON), "oc_sk_") {
 		t.Fatal("snapshot carries workspace IDs or keys")
@@ -320,9 +357,8 @@ func TestCatalogFindAcceptsExposedBareAndSuffixedIDs(t *testing.T) {
 	}
 }
 
-// With disable_prefix on, CPA registers bare IDs only and refuses a
-// client's prefixed request itself; the prefixed form still resolves
-// because a kept Bare ID alias hands it to the executor.
+// disable_prefix changes the IDs CPA registers, not the ones the executor
+// resolves: the configured prefix is still recognised, and no other one is.
 func TestCatalogFindWithPrefixDisabled(t *testing.T) {
 	cat, _ := parseCatalog(readFixture(t, "config.json"))
 	cfg := settings{BaseURL: defaultBaseURL, ModelPrefix: "go", DisablePrefix: true}
@@ -596,8 +632,9 @@ func fixtureCatalog(t *testing.T) catalog {
 	return parsed
 }
 
-// An auth CPA loaded with an earlier plugin version has no family; the
-// plugin has CPA parse the files again, once per process.
+// An auth CPA loaded with an earlier plugin version, one without a family
+// or one with 0.5.0's Bare ID aliases, makes the plugin have CPA parse the
+// files again, once per process.
 func TestModelsForAuthReparsesAuthsOfAnEarlierVersion(t *testing.T) {
 	useTestCatalog(t)
 	useSettings(t, defaultSettings())
@@ -623,10 +660,17 @@ func TestModelsForAuthReparsesAuthsOfAnEarlierVersion(t *testing.T) {
 	if reparses != 0 {
 		t.Fatalf("current auths caused %d reparses", reparses)
 	}
-	ask(map[string]string{"path": "/auths/k.json"})
-	ask(map[string]string{"path": "/auths/other.json"})
-	if reparses != 1 {
-		t.Fatalf("%d reparses, want 1", reparses)
+	for _, stale := range []map[string]string{
+		{"path": "/auths/k.json"},
+		{"path": "/auths/k.json", "family": "zen", "model_aliases": `[{"name":"opencode/kimi-k3","alias":"kimi-k3","fork":true}]`},
+	} {
+		staleReparsed.Store(false)
+		reparses = 0
+		ask(stale)
+		ask(map[string]string{"path": "/auths/other.json"})
+		if reparses != 1 {
+			t.Fatalf("%v: %d reparses, want 1", stale, reparses)
+		}
 	}
 }
 

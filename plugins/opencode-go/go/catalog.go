@@ -277,13 +277,7 @@ func rebasablePath(family modelFamily, rel string) bool {
 // bare ID for a prefixed auth unless force-model-prefix is on, and a bare ID
 // that a native provider serves would share its traffic.
 func exposedModelID(cfg settings, family modelFamily, upstreamID string) string {
-	prefix := cfg.prefix()
-	switch family {
-	case familyZen:
-		prefix = cfg.zenPrefix()
-	case familyFree:
-		prefix = freeModelPrefix
-	}
+	prefix := cfg.modelPrefix(family)
 	if prefix == "" {
 		return upstreamID
 	}
@@ -374,12 +368,8 @@ func (c catalog) modelInfos(cfg settings, family modelFamily) []pluginapi.ModelI
 
 // find resolves a model ID requested of one family's auth, optionally with
 // a CPA thinking suffix such as "(high)": the prefixed or the bare ID of a
-// Go model, or of a Zen model the page has turned on. A Zen auth's Bare ID
-// alias reaches it as the prefixed ID. The prefixed Go form resolves with
-// disable_prefix on as well: CPA then registers bare IDs only, so it never
-// routes a client's prefixed request here, but a Bare ID alias kept from the
-// prefixed mode still makes CPA hand this executor the alias's prefixed name
-// for a request of the bare ID.
+// Go model, of a Zen model the page has turned on, or of a Free model it has
+// not disabled.
 func (c catalog) find(cfg settings, model string, family modelFamily) (catalogModel, bool) {
 	model = strings.TrimSpace(model)
 	if open := strings.LastIndex(model, "("); open > 0 && strings.HasSuffix(model, ")") {
@@ -651,17 +641,29 @@ func legacyExclusions(cfg settings, excluded map[string][]string) []string {
 }
 
 // staleReparsed records that model.for_auth met a file auth an earlier
-// plugin version parsed. CPA keeps such auths until their file changes, and
-// without a family attribute they would serve Go models only, so the plugin
-// has CPA parse every file again, once.
+// plugin version parsed: one without a family attribute, which would serve
+// Go models only, or one with a model_aliases attribute, which would list a
+// model under its prefixed and its bare ID at once. CPA keeps such auths
+// until their file changes, so the plugin has CPA parse every file again,
+// once.
 var staleReparsed atomic.Bool
+
+// reparseLater runs reparseAuthFiles off the host's model call; tests
+// replace it.
+var reparseLater = func() {
+	startBackground(func(ctx context.Context) { reparseAuthFiles(ctx, newHost("")) })
+}
+
+func staleAuth(attributes map[string]string) bool {
+	return attributes[pathAttribute] != "" && (attributes[familyAttribute] == "" || attributes[modelAliasesAttribute] != "")
+}
 
 func handleModelsForAuth(raw []byte) ([]byte, error) {
 	var req rpcAuthModelRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode model request: %w", errUnmarshal)
 	}
-	if req.Attributes[pathAttribute] != "" && req.Attributes[familyAttribute] == "" && staleReparsed.CompareAndSwap(false, true) {
+	if staleAuth(req.Attributes) && staleReparsed.CompareAndSwap(false, true) {
 		reparseLater()
 	}
 	cfg := currentSettings()

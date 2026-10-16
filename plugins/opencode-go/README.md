@@ -92,10 +92,11 @@ key or a token. Failures answer `{"error": "<message>"}`.
 - `PUT /free` with `{"enabled": true}`: turns OpenCode Free on, creating its
   file, or off.
 
-Bare ID of a Go model is a CLIProxyAPI setting, which the page edits through
-`/v8/management/config/oauth/model-alias/opencode-go`. The page's other model
-toggles are plugin settings, which it edits through
-`/v8/management/config/plugins/configs/opencode-go`.
+The page's model toggles are plugin settings, which it edits through
+`/v8/management/config/plugins/configs/opencode-go`. It also removes each
+entry of `/v8/management/config/oauth/model-alias/opencode-go` that aliases a
+prefixed Go model to its bare ID, which version 0.5.0's Bare ID toggle wrote,
+because such an entry lists the model under both IDs.
 
 </details>
 
@@ -120,13 +121,9 @@ as `opencode-go/claude-*`, matches nothing while `disable_prefix` is on.
 default: turn on **Enabled** for one, or use **Enable all**, and the plugin
 registers it and sends its requests to the OpenCode Zen gateway, which bills
 Console credits. The enabled IDs are stored
-in the plugin setting `zen_models`. Zen IDs keep their prefix while
-`disable_prefix` is on, because the two lists share upstream IDs: `kimi-k3` is
-both `opencode-go/kimi-k3` and `opencode/kimi-k3`. **Bare ID** serves an
-enabled Zen model under its bare ID as well; see
-[Sharing a model](#sharing-a-model-with-another-provider). Only the API
-families the plugin speaks are listed; Gemini and SystemOne models are left
-out.
+in the plugin setting `zen_models`. The two lists share upstream IDs: `kimi-k3`
+is both `opencode-go/kimi-k3` and `opencode/kimi-k3`. Only the API families the
+plugin speaks are listed; Gemini and SystemOne models are left out.
 
 A Zen model the catalog prices at zero is free, but OpenCode's free tier
 answers only its own client. The plugin therefore presents those requests as
@@ -145,9 +142,8 @@ answers (see [Free models](#free-models)).
 The models are the OpenCode models [models.dev](https://models.dev) prices at
 zero and does not mark deprecated, among those the gateway lists as live. The
 plugin reads both lists with the other catalogs, every three hours and on
-**Refresh models**. **Disabled** removes a model and **Bare ID** serves it under
-its bare ID as well; they are stored in the plugin settings
-`free_disabled_models` and `free_bare_models`.
+**Refresh models**. **Disabled** removes a model and is stored in the plugin
+setting `free_disabled_models`.
 
 Turning OpenCode Free on creates `opencode-free.json` in the auth directory, an
 auth of its own with its own priority and weight under **Routing**. Turning it
@@ -195,14 +191,18 @@ its usage limit.
 
 ## Sharing a model with another provider
 
-To serve `deepseek-v4-pro` from both OpenCode Go and another provider of that
-ID, such as an `openai-compatibility` entry for the DeepSeek API, turn on
-**Bare ID** for the model on the OpenCode Go page. Clients then request
-`deepseek-v4-pro`, and `opencode-go/deepseek-v4-pro` keeps working. **Bare
-ID** in the OpenCode Zen list does the same for an enabled Zen model, so
-`kimi-k3` can reach both OpenCode Go and OpenCode Zen. The page names the
-other providers that serve a model's bare ID, the plugin's other list
-included.
+Every model ID carries its family's prefix by default: `opencode-go/`,
+`opencode/` or `opencode-free/`. Turn on `disable_prefix` in the plugin
+settings to serve every OpenCode Go, Zen and Free model under its bare ID
+instead, such as `deepseek-v4-pro`. A model is listed under one ID or the
+other, never both: with `disable_prefix` on, `opencode-go/deepseek-v4-pro` is
+gone.
+
+A bare ID is shared with every provider that serves the same ID, such as an
+`openai-compatibility` entry for the DeepSeek API, and between the plugin's
+own families: `kimi-k3` reaches both OpenCode Go and OpenCode Zen. The page
+names the other providers and families that serve a model's bare ID; disable
+the models you do not want there.
 
 CLIProxyAPI sends each request to the highest priority that has a ready
 credential and fails over to the next one on errors. Within a priority,
@@ -221,25 +221,6 @@ and Zen, because CLIProxyAPI applies it to every auth of the file; saving
 **Routing** replaces it with `go_priority`, `go_weight`, `zen_priority` and
 `zen_weight`.
 
-Bare ID of a Go model is this config entry, which also works written by hand:
-
-```yaml
-oauth:
-  model-alias:
-    opencode-go:
-      - name: opencode-go/deepseek-v4-pro
-        alias: deepseek-v4-pro
-        fork: true
-```
-
-Bare ID of a Zen or Free model is a plugin setting instead, `zen_bare_models`
-or `free_bare_models`: that config entry maps an ID to one model for the whole
-provider, which the three families share.
-
-To serve every Go model under its bare ID instead, turn on `disable_prefix`
-in the plugin settings. Each model then shares routing with every provider
-of the same ID, so disable the ones you do not want on the page.
-
 ## Settings
 
 All optional, under `plugins.configs.opencode-go` or in the plugin's
@@ -252,19 +233,16 @@ configuration form in Management Center:
 - `model_prefix`: prefix of every OpenCode Go model ID. Default `opencode-go`.
 - `zen_model_prefix`: prefix of every OpenCode Zen model ID, as in
   `opencode/gpt-5.5`. Default `opencode`.
-- `disable_prefix`: serve every OpenCode Go model under its bare ID only,
-  ignoring `model_prefix`. Default off. Zen IDs keep their prefix.
+- `disable_prefix`: serve every OpenCode Go, Zen and Free model under its bare
+  ID only, ignoring `model_prefix` and `zen_model_prefix`. Default off. See
+  [Sharing a model](#sharing-a-model-with-another-provider).
 - `disabled_models`: bare Go model IDs kept out of CLIProxyAPI, such as
   `[kimi-k3]`. The page's Disabled toggles edit it; the form does not show it.
 - `zen_models`: bare OpenCode Zen model IDs served as `opencode/<id>`, such as
   `[gpt-5.5]`. Empty serves none. The page's Enabled toggles edit it; the form
   does not show it.
-- `zen_bare_models`: enabled OpenCode Zen model IDs also served under their
-  bare ID, such as `[kimi-k3]`. The page's Bare ID toggles in the Zen list
-  edit it; the form does not show it.
-- `free_disabled_models` and `free_bare_models`: OpenCode Free model IDs kept
-  out of CLIProxyAPI, and those also served under their bare ID. The OpenCode
-  Free list's toggles edit them; the form does not show them.
+- `free_disabled_models`: OpenCode Free model IDs kept out of CLIProxyAPI. The
+  OpenCode Free list's Disabled toggles edit it; the form does not show it.
 - `cloak_free_models`: present free models, of OpenCode Zen and OpenCode Free,
   as the OpenCode client, which is the only caller the free tier answers.
   Default on; OpenCode Free does not work with it off. See

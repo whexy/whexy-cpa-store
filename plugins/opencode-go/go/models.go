@@ -184,12 +184,12 @@ func stampFile(name string, kind fileKind, at time.Time) error {
 	return setFileFields(name, kind, fileFields{catalogRefreshedField: mark})
 }
 
-// reparseAuthFiles makes CPA parse every OpenCode Go auth file again, for
-// settings auth.parse reads.
+// reparseAuthFiles makes CPA parse every OpenCode Go auth file again,
+// replacing the auths an earlier plugin version parsed.
 func reparseAuthFiles(ctx context.Context, h host) {
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
-		h.Log("warn", "OpenCode Go settings changed but the auth files could not be read; CPA applies them when the files next change", map[string]any{"error": errLoad.Error()})
+		h.Log("warn", "OpenCode Go could not read its auth files, so CPA keeps the auths an earlier plugin version parsed until the files next change", map[string]any{"error": errLoad.Error()})
 		return
 	}
 	now := time.Now()
@@ -198,7 +198,7 @@ func reparseAuthFiles(ctx context.Context, h host) {
 			return
 		}
 		if errSave := stampFile(name, kind, now); errSave != nil {
-			h.Log("warn", "OpenCode Go settings changed but an auth file could not be rewritten", map[string]any{"file": name, "error": errSave.Error()})
+			h.Log("warn", "OpenCode Go could not rewrite an auth file, so CPA keeps the auths an earlier plugin version parsed from it until it next changes", map[string]any{"file": name, "error": errSave.Error()})
 		}
 	}
 	for _, stored := range files.Logins {
@@ -306,7 +306,8 @@ type modelView struct {
 type modelsView struct {
 	Credential string `json:"credential,omitempty"`
 	FetchedAt  string `json:"fetched_at,omitempty"`
-	// DisablePrefix says the model IDs are bare because disable_prefix is on.
+	// DisablePrefix says the model IDs of every family are bare because
+	// disable_prefix is on.
 	DisablePrefix bool `json:"disable_prefix"`
 	// Error says why no live catalog could be read; Models then holds the
 	// last list this process read.

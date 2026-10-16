@@ -149,11 +149,9 @@ func TestKeyFamiliesRoundTrip(t *testing.T) {
 }
 
 // Each family's auths take the file's routing fields of that family, and
-// only the Zen auths carry the Zen Bare ID aliases.
-func TestParseAuthsFamilyRoutingAndAliases(t *testing.T) {
-	cfg := defaultSettings()
-	cfg.ZenBareModels = []string{"kimi-k3", "gpt-6-luna"}
-	useSettings(t, cfg)
+// none carries model aliases: model.for_auth alone decides the IDs a model
+// is listed under, so it is never listed under two.
+func TestParseAuthsFamilyRouting(t *testing.T) {
 	extra := map[string]any{"go_priority": 2, "go_weight": "5", "zen_priority": -2, "zen_weight": 2000000}
 	extra["zen"] = true
 	key := mustJSON(t, map[string]any{"type": "opencode-go", "api_key": testKeyA, "zen": true, "go_priority": 2, "go_weight": "5", "zen_priority": -2, "zen_weight": 2000000})
@@ -169,12 +167,8 @@ func TestParseAuthsFamilyRoutingAndAliases(t *testing.T) {
 		}
 		// CPA refuses every auth of a file with an invalid weight, so an out
 		// of range one is left to CPA's default.
-		if _, ok := zenAuth.Attributes["weight"]; ok || zenAuth.Attributes["priority"] != "-2" {
+		if _, ok := zenAuth.Attributes["weight"]; ok || zenAuth.Attributes["priority"] != "-2" || zenAuth.Attributes["model_aliases"] != "" {
 			t.Fatalf("%s zen attributes = %v", name, zenAuth.Attributes)
-		}
-		want := `[{"name":"opencode/kimi-k3","alias":"kimi-k3","fork":true},{"name":"opencode/gpt-6-luna","alias":"gpt-6-luna","fork":true}]`
-		if zenAuth.Attributes["model_aliases"] != want {
-			t.Fatalf("%s zen aliases = %s", name, zenAuth.Attributes["model_aliases"])
 		}
 		if authFamily(goAuth.Attributes) != familyGo || authFamily(zenAuth.Attributes) != familyZen || authFamily(nil) != familyGo {
 			t.Fatal("family attribute")

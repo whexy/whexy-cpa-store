@@ -309,9 +309,8 @@ func parseAuths(req pluginapi.AuthParseRequest) pluginapi.AuthParseResponse {
 		return pluginapi.AuthParseResponse{}
 	}
 	base := authFileBase(req.Path, req.FileName)
-	cfg := currentSettings()
 	if isFreeFile(req.RawJSON) {
-		return pluginapi.AuthParseResponse{Handled: true, Auth: freeAuth(base, req.RawJSON, cfg)}
+		return pluginapi.AuthParseResponse{Handled: true, Auth: freeAuth(base, req.RawJSON)}
 	}
 	if isLoginFile(req.RawJSON) {
 		login, errParse := parseLoginFile(req.RawJSON)
@@ -320,7 +319,7 @@ func parseAuths(req pluginapi.AuthParseRequest) pluginapi.AuthParseResponse {
 		}
 		auth := login.authData(base)
 		auth.StorageJSON = bytes.Clone(req.RawJSON)
-		return fileAuths(base, req.RawJSON, credentialAuths(auth, login.extra, cfg, login.families()), login.displayName())
+		return fileAuths(base, req.RawJSON, credentialAuths(auth, login.extra, login.families()), login.displayName())
 	}
 	file, errParse := parseKeyFile(req.RawJSON)
 	if errParse != nil || len(file.Keys) == 0 {
@@ -333,7 +332,7 @@ func parseAuths(req pluginapi.AuthParseRequest) pluginapi.AuthParseResponse {
 	mark := extraString(file.extra, catalogRefreshedField)
 	auths := make([]pluginapi.AuthData, 0, 2*len(file.Keys))
 	for _, entry := range file.Keys {
-		auths = append(auths, credentialAuths(keyAuth(base, entry, mark), file.extra, cfg, entry.families())...)
+		auths = append(auths, credentialAuths(keyAuth(base, entry, mark), file.extra, entry.families())...)
 	}
 	return fileAuths(base, req.RawJSON, auths, displayName)
 }
@@ -366,11 +365,11 @@ func placeholderAuth(base, label string, raw []byte) pluginapi.AuthData {
 }
 
 // credentialAuths are a credential's auths for the families it serves.
-func credentialAuths(auth pluginapi.AuthData, extra map[string]json.RawMessage, cfg settings, set familySet) []pluginapi.AuthData {
+func credentialAuths(auth pluginapi.AuthData, extra map[string]json.RawMessage, set familySet) []pluginapi.AuthData {
 	var out []pluginapi.AuthData
 	for _, family := range []modelFamily{familyGo, familyZen} {
 		if set.has(family) {
-			out = append(out, familyAuth(auth, extra, cfg, family))
+			out = append(out, familyAuth(auth, extra, family))
 		}
 	}
 	return out
@@ -406,8 +405,9 @@ const (
 	// split.
 	zenAuthSuffix  = "#zen"
 	zenDisplayName = "OpenCode Zen"
-	// modelAliasesAttribute holds per-auth model aliases, which CPA applies
-	// before its oauth-model-alias config.
+	// modelAliasesAttribute holds per-auth model aliases. The plugin no
+	// longer sets it; 0.5.0 listed Zen and Free models under their bare ID
+	// through it, so an auth that has it is stale.
 	modelAliasesAttribute = "model_aliases"
 	// pathAttribute is the auth file CPA loaded an auth from.
 	pathAttribute = "path"
@@ -427,7 +427,7 @@ func authFamily(attributes map[string]string) modelFamily {
 
 // familyAuth is the credential's auth for one family, with that family's
 // routing fields of the file as its priority and weight.
-func familyAuth(auth pluginapi.AuthData, extra map[string]json.RawMessage, cfg settings, family modelFamily) pluginapi.AuthData {
+func familyAuth(auth pluginapi.AuthData, extra map[string]json.RawMessage, family modelFamily) pluginapi.AuthData {
 	out := auth
 	out.Attributes = make(map[string]string, len(auth.Attributes)+4)
 	for name, value := range auth.Attributes {
@@ -449,30 +449,8 @@ func familyAuth(auth pluginapi.AuthData, extra map[string]json.RawMessage, cfg s
 		if auth.Label != "" {
 			out.Label = auth.Label + " · " + zenDisplayName
 		}
-		if aliases := bareModelAliases(cfg, familyZen, cfg.ZenBareModels); aliases != "" {
-			out.Attributes[modelAliasesAttribute] = aliases
-		}
 	}
 	return out
-}
-
-// bareModelAliases lists each model of a family with Bare ID on under its
-// bare ID as well, as CPA's model_aliases attribute.
-func bareModelAliases(cfg settings, family modelFamily, ids []string) string {
-	type alias struct {
-		Name  string `json:"name"`
-		Alias string `json:"alias"`
-		Fork  bool   `json:"fork"`
-	}
-	if len(ids) == 0 {
-		return ""
-	}
-	out := make([]alias, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, alias{Name: exposedModelID(cfg, family, id), Alias: id, Fork: true})
-	}
-	raw, _ := json.Marshal(out)
-	return string(raw)
 }
 
 // extraString reads a string field kept in a file's extra fields.

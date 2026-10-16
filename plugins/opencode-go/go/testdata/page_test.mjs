@@ -21,49 +21,30 @@ const deepseek = {
   upstream_id: "deepseek-v4-pro",
 };
 
-test("Bare ID adds a fork alias and keeps every other entry", () => {
-  const withBareID = fn("withBareID");
-  const hasBareID = fn("hasBareID");
-  const others = [
-    { name: "opencode-go/kimi-k3", alias: "k3", "force-mapping": true },
-    { name: "opencode-go/glm-5.3", alias: "glm" },
-  ];
-  const on = plain(withBareID(others, deepseek, true));
-  assert.deepEqual(on, [
-    ...others,
+test("Bare ID aliases are a Go prefix plus the alias, in any spelling", () => {
+  const isBareAlias = fn("isBareAlias");
+  const prefixes = ["go", "opencode-go"];
+  const bare = [
     {
       name: "opencode-go/deepseek-v4-pro",
       alias: "deepseek-v4-pro",
       fork: true,
     },
-  ]);
-  assert.equal(hasBareID(on, deepseek), true);
-  assert.equal(
-    hasBareID(on, { id: "opencode-go/kimi-k3", upstream_id: "kimi-k3" }),
-    false,
-  );
-  assert.deepEqual(plain(withBareID(on, deepseek, false)), others);
-  // Turning it on twice leaves one entry.
-  assert.equal(withBareID(on, deepseek, true).length, 3);
-});
-
-test("Bare ID off removes the entry whatever its spelling or fork flag", () => {
-  const withBareID = fn("withBareID");
-  const aliases = [
-    { name: "OpenCode-Go/DeepSeek-V4-Pro", alias: "DEEPSEEK-V4-PRO" },
+    { name: "OpenCode-Go/DeepSeek-V4-Pro", alias: " DEEPSEEK-V4-PRO " },
+    { name: "go/kimi-k3", alias: "kimi-k3", fork: true },
   ];
-  assert.equal(fn("hasBareID")(aliases, deepseek), true);
-  assert.deepEqual(plain(withBareID(aliases, deepseek, false)), []);
-});
-
-test("Bare ID refuses an alias another model already uses", () => {
-  const taken = [
-    { name: "opencode-go/deepseek-v4-flash", alias: "deepseek-v4-pro" },
+  for (const entry of bare) assert.equal(isBareAlias(entry, prefixes), true);
+  const others = [
+    { name: "opencode-go/kimi-k3", alias: "k3", fork: true },
+    { name: "opencode/kimi-k3", alias: "kimi-k3", fork: true },
+    { name: "other/kimi-k3", alias: "kimi-k3" },
+    { name: "opencode-go/", alias: "" },
+    { name: "opencode-go/undefined" },
+    null,
+    "opencode-go/kimi-k3",
   ];
-  assert.throws(
-    () => fn("withBareID")(taken, deepseek, true),
-    /already the alias of opencode-go\/deepseek-v4-flash/,
-  );
+  for (const entry of others)
+    assert.equal(isBareAlias(entry, prefixes), false, JSON.stringify(entry));
 });
 
 test("an exact entry is never a rule", () => {
@@ -119,7 +100,12 @@ test("disabled models are those with an entry or a matching rule", () => {
 
 test("list settings writes touch only their key", () => {
   const listWrite = fn("listWrite");
-  for (const key of ["disabled_models", "zen_models", "zen_bare_models"]) {
+  for (const key of [
+    "disabled_models",
+    "zen_models",
+    "free_disabled_models",
+    "zen_bare_models",
+  ]) {
     const node = { enabled: true, model_prefix: "go", [key]: ["a"] };
     assert.deepEqual(plain(listWrite(node, key, ["a", "b"])), {
       method: "PATCH",
@@ -143,21 +129,11 @@ test("list settings writes touch only their key", () => {
 
 test("bare IDs name the families of the plugin serving them", () => {
   const bareFamilies = fn("bareFamilies");
-  const go = (id) => ({
-    id: "opencode-go/" + id,
-    upstream_id: id,
-    family: "go",
-  });
-  const zen = (id) => ({
-    id: "opencode/" + id,
-    upstream_id: id,
-    family: "zen",
-  });
-  const free = (id) => ({
-    id: "opencode-free/" + id,
-    upstream_id: id,
-    family: "free",
-  });
+  // With the prefix off, every family lists its models under the bare ID.
+  const model = (family) => (id) => ({ id, upstream_id: id, family });
+  const go = model("go");
+  const zen = model("zen");
+  const free = model("free");
   const catalog = [
     go("kimi-k3"),
     go("glm-5.3"),
@@ -169,36 +145,26 @@ test("bare IDs name the families of the plugin serving them", () => {
     free("big-pickle"),
   ];
   const state = {
-    aliases: [
-      { name: "opencode-go/kimi-k3", alias: "kimi-k3", fork: true },
-      { name: "opencode-go/qwen3.8-max", alias: "qwen3.8-max", fork: true },
-    ],
-    excluded: [],
+    excluded: ["glm-*"],
     disabled: ["qwen3.8-max"],
     zen: ["kimi-k3", "gpt-6-luna"],
-    zenBare: ["KIMI-K3", "glm-5.3", "gpt-6-luna"],
-    freeBare: ["cat-jam-free", "big-pickle"],
     freeDisabled: ["big-pickle"],
-    prefixOff: false,
+    prefixOff: true,
     serving: ["go", "zen", "free"],
   };
   const served = (map) =>
     Object.fromEntries([...map].map(([id, set]) => [id, [...set].sort()]));
-  // glm-5.3 has Bare ID on in Zen but is not enabled; qwen3.8-max is
-  // disabled in Go; big-pickle is disabled in Free.
+  // glm-5.3 is disabled in Go by a rule and not enabled in Zen;
+  // qwen3.8-max is disabled in Go; big-pickle is disabled in Free.
   assert.deepEqual(served(bareFamilies(catalog, state)), {
     "kimi-k3": ["OpenCode Go", "OpenCode Zen"],
     "gpt-6-luna": ["OpenCode Zen"],
     "cat-jam-free": ["OpenCode Free"],
   });
+  // With the prefix on, no family serves a bare ID.
   assert.deepEqual(
-    served(bareFamilies(catalog, { ...state, aliases: [], prefixOff: true })),
-    {
-      "kimi-k3": ["OpenCode Go", "OpenCode Zen"],
-      "glm-5.3": ["OpenCode Go"],
-      "gpt-6-luna": ["OpenCode Zen"],
-      "cat-jam-free": ["OpenCode Free"],
-    },
+    served(bareFamilies(catalog, { ...state, prefixOff: false })),
+    {},
   );
   // A family nothing has on serves no bare ID.
   assert.deepEqual(

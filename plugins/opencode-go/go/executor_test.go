@@ -308,9 +308,7 @@ func TestExecutorCustomPrefix(t *testing.T) {
 }
 
 // The executor resolves the same IDs in both modes; which of them clients
-// reach is decided by the IDs model.for_auth registers. With the prefix
-// disabled a prefixed ID arrives only from a kept Bare ID alias, which CPA
-// resolves to the alias's prefixed name for this credential.
+// reach is decided by the IDs model.for_auth registers.
 func TestExecutorRoutesPrefixedAndBareIDsPerMode(t *testing.T) {
 	on := settings{BaseURL: defaultBaseURL, ModelPrefix: "go"}
 	off := on
@@ -326,7 +324,7 @@ func TestExecutorRoutesPrefixedAndBareIDsPerMode(t *testing.T) {
 		{"prefix on, other prefix", on, "opencode-go/deepseek-v4-flash", false},
 		{"prefix off, bare", off, "deepseek-v4-flash", true},
 		{"prefix off, bare with suffix", off, "deepseek-v4-flash(high)", true},
-		{"prefix off, alias target", off, "go/deepseek-v4-flash", true},
+		{"prefix off, configured prefix", off, "go/deepseek-v4-flash", true},
 		{"prefix off, other prefix", off, "opencode-go/deepseek-v4-flash", false},
 	}
 	for _, tt := range tests {

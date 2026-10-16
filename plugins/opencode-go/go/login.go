@@ -242,7 +242,7 @@ func (c loginCredential) loginAuthData() (pluginapi.AuthData, error) {
 	if errName != nil {
 		return pluginapi.AuthData{}, errName
 	}
-	auth := familyAuth(c.authData(name), c.extra, currentSettings(), familyGo)
+	auth := familyAuth(c.authData(name), c.extra, familyGo)
 	auth.FileName = name
 	for field, value := range c.fieldMetadata() {
 		auth.Metadata[field] = value
@@ -254,7 +254,7 @@ func (c loginCredential) loginAuthData() (pluginapi.AuthData, error) {
 // host keeps no metadata of its own once a refresh returns some, so the
 // request's metadata is carried over with the login's fields replaced.
 func (c loginCredential) refreshedAuthData(current map[string]any, family modelFamily) pluginapi.AuthData {
-	auth := familyAuth(c.authData(""), c.extra, currentSettings(), family)
+	auth := familyAuth(c.authData(""), c.extra, family)
 	auth.ID = ""
 	auth.Label = ""
 	metadata := make(map[string]any, len(current)+2)
