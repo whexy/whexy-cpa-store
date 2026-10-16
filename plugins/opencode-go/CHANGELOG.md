@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.5.0...opencode-go-v0.6.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **opencode-go:** make disable_prefix the one switch for bare model IDs
+
+### Features
+
+* **opencode-go:** make disable_prefix the one switch for bare model IDs
+
 ## [0.5.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.4.0...opencode-go-v0.5.0) (2026-10-16)
 
 
