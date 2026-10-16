@@ -2200,7 +2200,7 @@
           const { moved } = migration(latest, ids, models.prefixes);
           if (moved.length === 0) return;
           models.disabled = await editDisabled((list) =>
-            withDisabled(list, moved, true),
+            withModelIDs(list, moved, true),
           );
           const kept = await editChannel(
             EXCLUDED_MAP,
