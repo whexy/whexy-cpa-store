@@ -217,6 +217,9 @@ type testCall struct {
 	APIKey  string
 	// Login, when set, is the login file the auth holds instead of a key.
 	Login []byte
+	// Family is the family of the auth CPA picked; by default the Zen auth
+	// for an opencode/ model and the Go auth otherwise, as CPA routes them.
+	Family modelFamily
 }
 
 func (c testCall) raw(t *testing.T) []byte {
@@ -225,13 +228,33 @@ func (c testCall) raw(t *testing.T) []byte {
 	if apiKey == "" {
 		apiKey = testKeyA
 	}
+	family := c.Family
+	switch {
+	case family != "":
+	case strings.HasPrefix(c.Model, freeModelPrefix+"/"):
+		family = familyFree
+	case strings.HasPrefix(c.Model, defaultZenModelPrefix+"/"):
+		family = familyZen
+	}
 	keyID := keyIDFor(apiKey)
 	storage := mustJSON(t, map[string]any{"type": providerKey, keyIDAttribute: keyID, "api_key": apiKey})
 	authID := authIDFor(keyFileName, keyID)
-	attributes := map[string]string{keyIDAttribute: keyID}
+	attributes := map[string]string{keyIDAttribute: keyID, familyAttribute: string(familyGo)}
+	if family == familyZen {
+		authID += zenAuthSuffix
+		attributes[familyAttribute] = string(familyZen)
+	}
 	var metadata map[string]any
+	if family == familyFree {
+		storage = []byte(`{"type":"opencode-go","free":true}`)
+		authID, attributes = freeFileName, map[string]string{familyAttribute: string(familyFree)}
+	}
 	if c.Login != nil {
-		auth := parseLoginAuth("opencode-go-oauth-"+testOrgID+".json", c.Login)
+		auths := parsedAuths("opencode-go-oauth-"+testOrgID+".json", string(c.Login))
+		auth := auths[0]
+		if family == familyZen {
+			auth = auths[1]
+		}
 		storage = hostStorageJSON(t, auth.StorageJSON, auth.Metadata)
 		authID, attributes, metadata = auth.ID, auth.Attributes, auth.Metadata
 	}

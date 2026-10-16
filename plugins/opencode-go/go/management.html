@@ -672,23 +672,48 @@
           );
       }
 
+      .families {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 16px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .families label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+      }
+
       .routing {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 160px)) auto;
         gap: 12px;
-        align-items: end;
+      }
+
+      .routing-grid {
+        display: grid;
+        grid-template-columns: max-content repeat(2, minmax(0, 160px));
+        gap: 8px 12px;
+        align-items: center;
         justify-content: start;
       }
 
-      .routing > p {
-        grid-column: 1 / -1;
+      .routing-label {
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
       }
 
       @media (max-width: 640px) {
         .add,
-        .usage,
-        .routing {
+        .usage {
           grid-template-columns: minmax(0, 1fr);
+        }
+
+        .routing-grid {
+          grid-template-columns: max-content repeat(2, minmax(0, 1fr));
         }
 
         .key-actions {
@@ -827,11 +852,11 @@
             </div>
             <p class="hint">
               Off by default. Enabling a model adds
-              <code id="zen-prefix-note">opencode/…</code> to CLIProxyAPI and
-              sends its requests to OpenCode Zen, which bills Console credits.
-              Models priced at zero are free: the plugin presents those requests
-              as the OpenCode client, which is the only caller the free tier
-              answers.
+              <code id="zen-prefix-note">opencode/…</code> to CLIProxyAPI for
+              every login and key with OpenCode Zen on, and sends its requests
+              to OpenCode Zen, which bills Console credits. Models priced at
+              zero are free: the plugin presents those requests as the OpenCode
+              client, which is the only caller the free tier answers.
             </p>
             <div class="card table-card">
               <table>
@@ -840,6 +865,12 @@
                     <th>Model</th>
                     <th>Protocol</th>
                     <th class="num">Context</th>
+                    <th
+                      class="toggle"
+                      title="Also list the model under its bare ID, such as kimi-k3, while it is enabled. Every provider serving that ID shares its requests by priority and weight, OpenCode Go included. Stored in the plugin setting zen_bare_models."
+                    >
+                      Bare ID
+                    </th>
                     <th
                       class="toggle"
                       title="Serve this model through CLIProxyAPI as an OpenCode Zen model. Stored in the plugin setting zen_models."
@@ -895,36 +926,136 @@
           </div>
         </section>
 
+        <section class="section" id="free">
+          <div class="section-head">
+            <h2>OpenCode Free</h2>
+            <span class="section-meta" id="free-meta"></span>
+            <div class="section-actions">
+              <button
+                class="btn btn-ghost"
+                id="free-refresh"
+                type="button"
+                hidden
+              >
+                Refresh models
+              </button>
+              <button class="btn btn-primary" id="free-toggle" type="button">
+                Turn on
+              </button>
+            </div>
+          </div>
+          <p class="hint">
+            OpenCode's free models, with no login or key: requests carry no
+            credential of yours and are presented as the OpenCode client, the
+            only caller the free tier answers. Turning this on adds
+            <code>opencode-free/…</code> to CLIProxyAPI.
+          </p>
+          <div class="stack" id="free-notices"></div>
+          <div class="card table-card" id="free-table" hidden>
+            <table>
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>Protocol</th>
+                  <th class="num">Context</th>
+                  <th
+                    class="toggle"
+                    title="Also list the model under its bare ID, such as deepseek-v4.1-flash-free. Every provider serving that ID shares its requests by priority and weight. Stored in the plugin setting free_bare_models."
+                  >
+                    Bare ID
+                  </th>
+                  <th
+                    class="toggle"
+                    title="Remove the model from CLIProxyAPI. Stored in the plugin setting free_disabled_models."
+                  >
+                    Disabled
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="free-body"></tbody>
+            </table>
+          </div>
+        </section>
+
         <section class="section" id="routing" hidden>
           <div class="section-head">
             <h2>Routing</h2>
           </div>
           <form class="card routing" id="routing-form">
             <p class="hint" id="routing-strategy"></p>
-            <label class="field">
-              Priority
+            <div class="routing-grid">
+              <span></span>
+              <span class="routing-label" title="Higher wins. Default 0.">
+                Priority
+              </span>
+              <span
+                class="routing-label"
+                title="Share under weighted-round-robin, per credential. Default 1; 0 takes no share."
+              >
+                Weight
+              </span>
+              <span class="routing-label routing-go">OpenCode Go</span>
               <input
-                class="input"
-                id="routing-priority"
+                class="input routing-go"
+                id="routing-go-priority"
                 type="number"
                 step="1"
                 placeholder="0"
-                title="Higher wins. Default 0."
+                aria-label="OpenCode Go priority"
               />
-            </label>
-            <label class="field">
-              Weight
               <input
-                class="input"
-                id="routing-weight"
+                class="input routing-go"
+                id="routing-go-weight"
                 type="number"
                 step="1"
                 min="0"
                 max="1000000"
                 placeholder="1"
-                title="Share under weighted-round-robin, per credential. Default 1; 0 takes no share."
+                aria-label="OpenCode Go weight"
               />
-            </label>
+              <span class="routing-label routing-zen">OpenCode Zen</span>
+              <input
+                class="input routing-zen"
+                id="routing-zen-priority"
+                type="number"
+                step="1"
+                placeholder="0"
+                aria-label="OpenCode Zen priority"
+              />
+              <input
+                class="input routing-zen"
+                id="routing-zen-weight"
+                type="number"
+                step="1"
+                min="0"
+                max="1000000"
+                placeholder="1"
+                aria-label="OpenCode Zen weight"
+              />
+              <span class="routing-label routing-free" hidden
+                >OpenCode Free</span
+              >
+              <input
+                class="input routing-free"
+                id="routing-free-priority"
+                type="number"
+                step="1"
+                placeholder="0"
+                aria-label="OpenCode Free priority"
+                hidden
+              />
+              <input
+                class="input routing-free"
+                id="routing-free-weight"
+                type="number"
+                step="1"
+                min="0"
+                max="1000000"
+                placeholder="1"
+                aria-label="OpenCode Free weight"
+                hidden
+              />
+            </div>
             <div class="row">
               <button class="btn btn-primary" id="routing-save" type="submit">
                 Save
@@ -1126,9 +1257,58 @@
         return { method: "PATCH", path: "", body: { [key]: list } };
       }
 
-      const disabledWrite = (node, list) =>
-        listWrite(node, "disabled_models", list);
-      const zenWrite = (node, list) => listWrite(node, "zen_models", list);
+      const FAMILY_NAMES = {
+        go: "OpenCode Go",
+        zen: "OpenCode Zen",
+        free: "OpenCode Free",
+      };
+
+      // bareFamilies maps each bare ID the plugin serves to the families
+      // serving it: an OpenCode Go model through Bare ID or disable_prefix
+      // unless it is disabled, an OpenCode Zen model through Bare ID while it
+      // is enabled, and an OpenCode Free model through Bare ID unless it is
+      // disabled. state.serving names the families some login, key or
+      // OpenCode Free has on.
+      function bareFamilies(catalog, state) {
+        const into = new Map();
+        for (const model of catalog) {
+          if (!state.serving.includes(model.family)) continue;
+          let served;
+          if (model.family === "zen")
+            served =
+              hasModel(state.zen, model.upstream_id) &&
+              hasModel(state.zenBare, model.upstream_id);
+          else if (model.family === "free")
+            served =
+              hasModel(state.freeBare, model.upstream_id) &&
+              !hasModel(state.freeDisabled, model.upstream_id);
+          else
+            served =
+              (state.prefixOff || hasBareID(state.aliases, model)) &&
+              !isModelDisabled(state.excluded, state.disabled, model);
+          if (served)
+            addServedBy(into, model.upstream_id, FAMILY_NAMES[model.family]);
+        }
+        return into;
+      }
+
+      // routingBody is the PUT /routing body for the form's fields, one
+      // priority and weight per family; Free is sent only while its row is
+      // shown. An empty field is null, which restores CPA's default.
+      function routingBody(fields, families) {
+        const value = (raw) => {
+          const text = String(raw ?? "").trim();
+          return text === "" ? null : Number(text);
+        };
+        const body = {};
+        for (const family of families) {
+          body[family] = {
+            priority: value(fields[family + "Priority"]),
+            weight: value(fields[family + "Weight"]),
+          };
+        }
+        return body;
+      }
 
       // modelPrefixes are the prefixes an excluded-models entry written by
       // 0.2.0 can carry: the configured model_prefix and the default.
@@ -1511,31 +1691,114 @@
         );
       }
 
-      function statusBadge(key) {
-        if (key.disabled) return badge("Disabled");
-        const runtime = key.runtime;
-        if (!runtime)
-          return badge(
-            "Not loaded",
-            "",
-            "CLIProxyAPI has not registered this key.",
+      // familyRuntimes are the families a login or key has on, each with the
+      // state of its auth.
+      function familyRuntimes(key) {
+        const out = [];
+        if (key.go) out.push({ family: "go", runtime: key.runtime });
+        if (key.zen) out.push({ family: "zen", runtime: key.zen_runtime });
+        return out;
+      }
+
+      const FAMILY_SHORT = { go: "Go", zen: "Zen" };
+
+      // statusBadges is Active while every auth the credential has on is,
+      // and otherwise one badge per auth that is not, named by family.
+      function statusBadges(key) {
+        if (key.disabled) return [badge("Disabled")];
+        const on = familyRuntimes(key);
+        if (on.length === 0)
+          return [
+            badge(
+              "Off",
+              "",
+              "Neither OpenCode Go nor OpenCode Zen is on, so CLIProxyAPI does not use it.",
+            ),
+          ];
+        const problems = on
+          .filter(({ runtime }) => !runtime || !isHealthy(runtime))
+          .map(({ family, runtime }) =>
+            runtime
+              ? runtimeBadge(runtime, FAMILY_SHORT[family] + ": ")
+              : badge(
+                  FAMILY_SHORT[family] + ": Not loaded",
+                  "",
+                  "CLIProxyAPI has not registered this auth.",
+                ),
           );
+        return problems.length > 0 ? problems : [badge("Active", "ok")];
+      }
+
+      function isHealthy(runtime) {
+        const retry = runtime.next_retry_after
+          ? new Date(runtime.next_retry_after)
+          : null;
+        return (
+          runtime.state === "active" &&
+          !runtime.unavailable &&
+          !(retry && retry.getTime() > Date.now())
+        );
+      }
+
+      function runtimeBadge(runtime, prefix) {
         const retry = runtime.next_retry_after
           ? new Date(runtime.next_retry_after)
           : null;
         if (retry && retry.getTime() > Date.now()) {
           return badge(
-            "Cooling down until " + stamp(retry),
+            prefix + "Cooling down until " + stamp(retry),
             "warn",
             runtime.message,
           );
         }
         if (runtime.unavailable)
-          return badge("Unavailable", "warn", runtime.message);
+          return badge(prefix + "Unavailable", "warn", runtime.message);
         if (runtime.state === "error")
-          return badge("Error", "bad", runtime.message);
-        if (runtime.state === "active") return badge("Active", "ok");
-        return badge(runtime.state || "Unknown");
+          return badge(prefix + "Error", "bad", runtime.message);
+        if (runtime.state === "active") return badge(prefix + "Active", "ok");
+        return badge(prefix + (runtime.state || "Unknown"));
+      }
+
+      // requestCounts are the CLIProxyAPI request counts of the credential's
+      // auths, by family.
+      function requestCounts(key) {
+        const out = [];
+        for (const { family, runtime } of familyRuntimes(key)) {
+          if (runtime && (runtime.success || runtime.failed))
+            out.push(
+              FAMILY_SHORT[family] +
+                " requests: " +
+                runtime.success +
+                " ok, " +
+                runtime.failed +
+                " failed",
+            );
+        }
+        return out;
+      }
+
+      // familySwitches turn OpenCode Go and OpenCode Zen on and off for a
+      // login or key; each one on is an auth of its own in CLIProxyAPI.
+      function familySwitches(key) {
+        const working = busy.has(key.id);
+        return h(
+          "div",
+          { class: "families" },
+          ...["go", "zen"].map((family) =>
+            h(
+              "label",
+              {},
+              checkbox(
+                Boolean(key[family]),
+                FAMILY_NAMES[family] + " for " + (key.label || key.id),
+                (on) => setFamily(key, family, on),
+                working,
+                null,
+              ),
+              FAMILY_NAMES[family],
+            ),
+          ),
+        );
       }
 
       function actionButton(label, onclick, disabled, extra) {
@@ -1597,7 +1860,7 @@
             { class: "name" + (key.label ? "" : " name-masked") },
             displayName(key),
           ),
-          statusBadge(key),
+          statusBadges(key),
           h(
             "div",
             { class: "key-actions" },
@@ -1627,16 +1890,7 @@
         if (key.added_at) items.push("added " + day(key.added_at));
         if (key.file && key.file !== SOURCE_FILE)
           items.push(h("span", { title: "Auth file" }, key.file));
-        const runtime = key.runtime;
-        if (runtime && (runtime.success || runtime.failed)) {
-          items.push(
-            "requests: " +
-              runtime.success +
-              " ok, " +
-              runtime.failed +
-              " failed",
-          );
-        }
+        items.push(...requestCounts(key));
         return h(
           "div",
           { class: "meta" },
@@ -1645,16 +1899,22 @@
       }
 
       function runtimeMessage(key) {
-        const runtime = key.runtime;
-        const showing =
-          runtime &&
-          runtime.message &&
-          !key.disabled &&
-          (runtime.state !== "active" || runtime.unavailable);
+        const messages = familyRuntimes(key)
+          .filter(
+            ({ runtime }) =>
+              runtime &&
+              runtime.message &&
+              !key.disabled &&
+              (runtime.state !== "active" || runtime.unavailable),
+          )
+          .map(
+            ({ family, runtime }) =>
+              FAMILY_NAMES[family] + ": " + runtime.message,
+          );
         return h(
           "p",
           { class: "error runtime-message" },
-          showing ? runtime.message : null,
+          messages.length > 0 ? messages.join(" ") : null,
         );
       }
 
@@ -1767,6 +2027,7 @@
           { class: "card key" + (key.disabled ? " is-disabled" : "") },
           buildHead(key),
           buildMeta(key),
+          familySwitches(key),
           runtimeMessage(key),
           usageEl,
           noticeEl,
@@ -1789,7 +2050,7 @@
             "Log in again from OAuth Login → OpenCode Go.",
           );
         }
-        return statusBadge(login);
+        return statusBadges(login);
       }
 
       function buildLoginCard(login) {
@@ -1814,16 +2075,7 @@
         }
         if (login.models) items.push(login.models + " models");
         items.push(h("span", { title: "Auth file" }, login.id));
-        const runtime = login.runtime;
-        if (runtime && (runtime.success || runtime.failed)) {
-          items.push(
-            "requests: " +
-              runtime.success +
-              " ok, " +
-              runtime.failed +
-              " failed",
-          );
-        }
+        items.push(...requestCounts(login));
         const card = h(
           "li",
           { class: "card key" + (login.disabled ? " is-disabled" : "") },
@@ -1847,6 +2099,7 @@
             { class: "meta" },
             items.map((item) => h("span", {}, item)),
           ),
+          familySwitches(login),
           runtimeMessage(login),
           usageEl,
           noticeEl,
@@ -1955,6 +2208,7 @@
       // whether either section has anything to show.
       function loadExtras() {
         loadModels();
+        loadFree();
         loadRouting();
       }
 
@@ -1992,7 +2246,7 @@
           key.models = data.models;
           results.set(key.id, {
             ok: true,
-            text: "Key works: " + data.models + " Go models.",
+            text: "Key works: " + data.models + " models.",
           });
         });
       }
@@ -2021,11 +2275,11 @@
         });
       }
 
-      function setLoginDisabled(login, disabled) {
+      function patchLogin(login, patch) {
         return act(login, async () => {
           const data = await api("PATCH", "/logins", {
             id: login.id,
-            disabled,
+            ...patch,
           });
           const index = data.login
             ? logins.findIndex((item) => item.id === data.login.id)
@@ -2037,12 +2291,23 @@
         });
       }
 
-      function setDisabled(key, disabled) {
+      function patchKey(key, patch) {
         return act(key, async () => {
-          const data = await api("PATCH", "/keys", { id: key.id, disabled });
+          const data = await api("PATCH", "/keys", { id: key.id, ...patch });
           replaceKey(data.key);
           loadExtras();
         });
+      }
+
+      const setLoginDisabled = (login, disabled) =>
+        patchLogin(login, { disabled });
+      const setDisabled = (key, disabled) => patchKey(key, { disabled });
+
+      // setFamily turns OpenCode Go or Zen on or off for a login or key.
+      function setFamily(item, family, on) {
+        return isLogin(item.id)
+          ? patchLogin(item, { [family]: on })
+          : patchKey(item, { [family]: on });
       }
 
       function confirmDelete(key) {
@@ -2125,8 +2390,15 @@
         aliases: [],
         excluded: [],
         disabled: [],
-        // zen are the OpenCode Zen model IDs the page has turned on.
+        // zen are the OpenCode Zen model IDs the page has turned on, and
+        // zenBare those also served under their bare ID.
         zen: [],
+        zenBare: [],
+        // freeBare and freeDisabled are the OpenCode Free lists.
+        freeBare: [],
+        freeDisabled: [],
+        // bare maps a bare ID to the families of this plugin serving it.
+        bare: new Map(),
         zenPrefix: "",
         prefixes: [PROVIDER],
         configLoaded: false,
@@ -2165,6 +2437,11 @@
             models.excluded = channelEntries(maps.excludedMap).map(String);
             models.disabled = stringList(maps.own && maps.own.disabled_models);
             models.zen = stringList(maps.own && maps.own.zen_models);
+            models.zenBare = stringList(maps.own && maps.own.zen_bare_models);
+            models.freeBare = stringList(maps.own && maps.own.free_bare_models);
+            models.freeDisabled = stringList(
+              maps.own && maps.own.free_disabled_models,
+            );
             models.zenPrefix =
               String((maps.own && maps.own.zen_model_prefix) || "").trim() ||
               OPENCODE_ZEN_PREFIX;
@@ -2180,6 +2457,7 @@
           models.notice = { tone: "error", text: err.message };
         }
         renderModels();
+        renderFree();
         if (models.configLoaded) await migrateExclusions();
         if (models.view.models.length > 0 && !models.servedBy) loadServedBy();
       }
@@ -2199,7 +2477,7 @@
           ).map(String);
           const { moved } = migration(latest, ids, models.prefixes);
           if (moved.length === 0) return;
-          models.disabled = await editDisabled((list) =>
+          models.disabled = await editList("disabled_models", (list) =>
             withModelIDs(list, moved, true),
           );
           const kept = await editChannel(
@@ -2291,11 +2569,7 @@
         const disabled =
           Boolean(rule) || hasModel(models.disabled, model.upstream_id);
         const bare = prefixOff || hasBareID(models.aliases, model);
-        const served = [
-          ...((models.servedBy &&
-            models.servedBy.get(model.upstream_id.toLowerCase())) ||
-            []),
-        ];
+        const served = servedElsewhere(model);
         const limits = model.context
           ? model.context.toLocaleString() +
             " tokens" +
@@ -2365,11 +2639,8 @@
       function zenRow(model) {
         const locked = models.busy.has(model.id) || !models.configLoaded;
         const enabled = hasModel(models.zen, model.upstream_id);
-        const served = [
-          ...((models.servedBy &&
-            models.servedBy.get(model.upstream_id.toLowerCase())) ||
-            []),
-        ];
+        const bare = hasModel(models.zenBare, model.upstream_id);
+        const served = servedElsewhere(model);
         const limits = model.context
           ? model.context.toLocaleString() +
             " tokens" +
@@ -2408,6 +2679,17 @@
             "td",
             { class: "toggle" },
             checkbox(
+              bare,
+              "Bare ID " + model.upstream_id,
+              (on) => toggleZenBare(model, on),
+              locked,
+              null,
+            ),
+          ),
+          h(
+            "td",
+            { class: "toggle" },
+            checkbox(
               enabled,
               "Enable " + model.id,
               (on) => toggleZen(model, on),
@@ -2415,6 +2697,51 @@
               null,
             ),
           ),
+        );
+      }
+
+      // servedElsewhere names the other providers that register a model's
+      // bare ID, the plugin's other families included.
+      function servedElsewhere(model) {
+        const id = model.upstream_id.toLowerCase();
+        const out = [...((models.servedBy && models.servedBy.get(id)) || [])];
+        for (const family of models.bare.get(id) || [])
+          if (family !== FAMILY_NAMES[model.family]) out.push(family);
+        return out;
+      }
+
+      // servingFamilies are the families some enabled login or key has on,
+      // and Free while OpenCode Free is on.
+      function servingFamilies() {
+        const out = [];
+        for (const family of ["go", "zen"]) {
+          if (
+            [...keys, ...logins].some((item) => !item.disabled && item[family])
+          )
+            out.push(family);
+        }
+        if (free.view && free.view.file && !free.view.disabled)
+          out.push("free");
+        return out;
+      }
+
+      function updateBareFamilies() {
+        models.bare = bareFamilies(
+          [
+            ...((models.view && models.view.models) || []),
+            ...((free.view && free.view.models) || []),
+          ],
+          {
+            aliases: models.aliases,
+            excluded: models.excluded,
+            disabled: models.disabled,
+            zen: models.zen,
+            zenBare: models.zenBare,
+            freeBare: models.freeBare,
+            freeDisabled: models.freeDisabled,
+            prefixOff: Boolean(models.view && models.view.disable_prefix),
+            serving: servingFamilies(),
+          },
         );
       }
 
@@ -2509,6 +2836,8 @@
         if (section.hidden) return;
         const goModels = view.models.filter((model) => !isZen(model));
         const zenModels = view.models.filter(isZen);
+        updateBareFamilies();
+        const serving = servingFamilies();
         $("models-meta").textContent = [
           view.models.length + " models",
           view.credential,
@@ -2530,7 +2859,13 @@
         $("zen-prefix-note").textContent = models.zenPrefix + "/…";
         const zenOn = zenModels.filter(zenEnabled).length;
         $("zen-meta").textContent = zenModels.length
-          ? zenOn + " of " + zenModels.length + " enabled"
+          ? zenOn +
+            " of " +
+            zenModels.length +
+            " enabled" +
+            (serving.includes("zen")
+              ? ""
+              : " · no login or key has OpenCode Zen on")
           : "";
         const bulkLocked = models.refreshing || !models.configLoaded;
         $("zen-enable-all").disabled =
@@ -2545,7 +2880,11 @@
           isModelDisabled(models.excluded, models.disabled, model);
         $("go-models").hidden = goModels.length === 0;
         $("go-meta").textContent =
-          goModels.length + (goModels.length === 1 ? " model" : " models");
+          goModels.length +
+          (goModels.length === 1 ? " model" : " models") +
+          (serving.includes("go")
+            ? ""
+            : " · no login or key has OpenCode Go on");
         $("models-disable-all").disabled =
           models.refreshing ||
           !models.configLoaded ||
@@ -2601,20 +2940,12 @@
         });
       }
 
-      async function editDisabled(edit) {
+      // editList rewrites one list setting of the plugin's config node:
+      // disabled_models, zen_models or zen_bare_models.
+      async function editList(key, edit) {
         const node = await cpa("GET", PLUGIN_CONFIG, undefined, {});
-        const next = edit(stringList(node && node.disabled_models));
-        const write = disabledWrite(node, next);
-        if (write)
-          await cpa(write.method, PLUGIN_CONFIG + write.path, write.body);
-        return next;
-      }
-
-      // editZen stores the enabled OpenCode Zen model IDs in zen_models.
-      async function editZen(edit) {
-        const node = await cpa("GET", PLUGIN_CONFIG, undefined, {});
-        const next = edit(stringList(node && node.zen_models));
-        const write = zenWrite(node, next);
+        const next = edit(stringList(node && node[key]));
+        const write = listWrite(node, key, next);
         if (write)
           await cpa(write.method, PLUGIN_CONFIG + write.path, write.body);
         return next;
@@ -2622,7 +2953,7 @@
 
       function toggleDisabled(model, on) {
         return toggleModel(model.id, async () => {
-          models.disabled = await editDisabled((list) =>
+          models.disabled = await editList("disabled_models", (list) =>
             withModelIDs(list, [model.upstream_id], on),
           );
         });
@@ -2630,7 +2961,17 @@
 
       function toggleZen(model, on) {
         return toggleModel(model.id, async () => {
-          models.zen = await editZen((list) =>
+          models.zen = await editList("zen_models", (list) =>
+            withModelIDs(list, [model.upstream_id], on),
+          );
+        });
+      }
+
+      // toggleZenBare reaches CPA once the plugin has CPA parse the auth
+      // files again, which it does when zen_bare_models changes.
+      function toggleZenBare(model, on) {
+        return toggleModel(model.id, async () => {
+          models.zenBare = await editList("zen_bare_models", (list) =>
             withModelIDs(list, [model.upstream_id], on),
           );
         });
@@ -2644,7 +2985,7 @@
         return toggleModel(
           targets.map((model) => model.id),
           async () => {
-            models.zen = await editZen((list) =>
+            models.zen = await editList("zen_models", (list) =>
               withModelIDs(
                 list,
                 targets.map((model) => model.upstream_id),
@@ -2675,7 +3016,7 @@
         return toggleModel(
           targets.map((model) => model.id),
           async () => {
-            models.disabled = await editDisabled((list) =>
+            models.disabled = await editList("disabled_models", (list) =>
               withModelIDs(
                 list,
                 targets.map((model) => model.upstream_id),
@@ -2728,13 +3069,206 @@
         }
       });
 
-      // Routing: priority and weight on every opencode-go auth file, and the
-      // strategy that decides what they do.
+      // OpenCode Free: the keyless provider of OpenCode's free models, one
+      // auth file of its own, with its own Bare ID and Disabled lists.
+      const free = {
+        view: null,
+        busy: new Set(),
+        notice: null,
+        working: false,
+      };
+
+      async function loadFree() {
+        try {
+          free.view = await api("GET", "/free");
+        } catch (err) {
+          if (err instanceof AuthError) return;
+          free.notice = { tone: "error", text: err.message };
+        }
+        renderFree();
+        renderModels();
+      }
+
+      function freeRow(model) {
+        const locked = free.busy.has(model.id) || !models.configLoaded;
+        const disabled = hasModel(models.freeDisabled, model.upstream_id);
+        const bare = hasModel(models.freeBare, model.upstream_id);
+        const served = servedElsewhere(model);
+        const limits = model.context
+          ? model.context.toLocaleString() +
+            " tokens" +
+            (model.output ? ", output " + model.output.toLocaleString() : "")
+          : null;
+        return h(
+          "tr",
+          { class: disabled ? "is-off" : null },
+          h(
+            "td",
+            {},
+            h(
+              "div",
+              { class: "model-head" },
+              h("span", { class: "model-name" }, model.name),
+            ),
+            h("div", { class: "model-id" }, model.id),
+            served.length > 0
+              ? h(
+                  "div",
+                  { class: "served" },
+                  model.upstream_id + " is also served by " + served.join(", "),
+                )
+              : null,
+          ),
+          h("td", {}, model.protocol),
+          h("td", { class: "num", title: limits }, tokens(model.context)),
+          h(
+            "td",
+            { class: "toggle" },
+            checkbox(
+              bare,
+              "Bare ID " + model.upstream_id,
+              (on) => toggleFreeList(model, "free_bare_models", on),
+              locked,
+              null,
+            ),
+          ),
+          h(
+            "td",
+            { class: "toggle cross" },
+            checkbox(
+              disabled,
+              "Disable " + model.id,
+              (on) => toggleFreeList(model, "free_disabled_models", on),
+              locked,
+              null,
+            ),
+          ),
+        );
+      }
+
+      function renderFree() {
+        const view = free.view;
+        const present = Boolean(view && view.file);
+        const on = present && !view.disabled;
+        const toggle = $("free-toggle");
+        toggle.textContent = on ? "Turn off" : "Turn on";
+        toggle.className = "btn " + (on ? "btn-ghost" : "btn-primary");
+        toggle.disabled = free.working || !view;
+        $("free-refresh").hidden = !on;
+        $("free-refresh").disabled = free.working || models.refreshing;
+        const notices = [];
+        if (free.notice) {
+          const tone = { ok: "ok-text", warn: "warn-text", error: "error" };
+          notices.push(note(tone[free.notice.tone], free.notice.text));
+        }
+        if (on && view.error)
+          notices.push(
+            note(
+              "error",
+              "Could not read the free catalog, so this is the last list read: " +
+                view.error,
+            ),
+          );
+        if (on && view.unregistered.length + view.unlisted.length > 0)
+          notices.push(
+            note(
+              "warn-text",
+              "CLIProxyAPI has not registered this list yet. Refresh models registers it.",
+            ),
+          );
+        $("free-notices").replaceChildren(...notices);
+        $("free-meta").textContent = !present
+          ? ""
+          : !on
+            ? "Off · " + view.file
+            : [
+                view.models.length + " models",
+                view.fetched_at
+                  ? "read " + stamp(new Date(view.fetched_at))
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" · ");
+        $("free-table").hidden = !on || view.models.length === 0;
+        if (!on) return;
+        const isOff = (model) =>
+          hasModel(models.freeDisabled, model.upstream_id);
+        $("free-body").replaceChildren(
+          ...enabledFirst(view.models, isOff).map(freeRow),
+        );
+      }
+
+      // toggleFreeList adds or removes a Free model in free_bare_models or
+      // free_disabled_models.
+      function toggleFreeList(model, key, on) {
+        free.busy.add(model.id);
+        free.notice = null;
+        renderFree();
+        return queued(async () => {
+          const next = await editList(key, (list) =>
+            withModelIDs(list, [model.upstream_id], on),
+          );
+          if (key === "free_bare_models") models.freeBare = next;
+          else models.freeDisabled = next;
+        })
+          .catch((err) => {
+            if (!(err instanceof AuthError))
+              free.notice = { tone: "error", text: err.message };
+          })
+          .finally(() => {
+            free.busy.delete(model.id);
+            renderFree();
+            renderModels();
+          });
+      }
+
+      $("free-toggle").addEventListener("click", async () => {
+        const on = !(free.view && free.view.file && !free.view.disabled);
+        free.working = true;
+        free.notice = null;
+        renderFree();
+        try {
+          free.view = await api("PUT", "/free", { enabled: on });
+        } catch (err) {
+          if (!(err instanceof AuthError))
+            free.notice = { tone: "error", text: err.message };
+        } finally {
+          free.working = false;
+          renderFree();
+          renderModels();
+          loadRouting();
+        }
+      });
+
+      $("free-refresh").addEventListener("click", async () => {
+        free.working = true;
+        free.notice = null;
+        renderFree();
+        try {
+          const report = await api("POST", "/models/refresh");
+          free.notice = {
+            tone: report.registered ? "ok" : "warn",
+            text: refreshSummary(report),
+          };
+          free.view = await api("GET", "/free");
+        } catch (err) {
+          if (!(err instanceof AuthError))
+            free.notice = { tone: "error", text: err.message };
+        } finally {
+          free.working = false;
+          renderFree();
+          renderModels();
+        }
+      });
+
+      // Routing: the OpenCode Go and OpenCode Zen priority and weight on
+      // every opencode-go auth file, and the strategy that decides what they
+      // do. Each login and key routes as one credential per family.
       const STRATEGY_NOTES = {
         "round-robin":
           "Requests for a model go to the highest priority with a ready credential and rotate per credential within it; weight has no effect.",
         "weighted-round-robin":
-          "Requests for a model go to the highest priority with a ready credential and split within it by credential weight; each OpenCode Go login and key counts with the weight set here.",
+          "Requests for a model go to the highest priority with a ready credential and split within it by credential weight; the OpenCode Go and OpenCode Zen auth of each login and key, and OpenCode Free, each count with the weight set here.",
         "fill-first":
           "Requests for a model go to the highest priority with a ready credential, and within it to the first ready one; weight has no effect.",
       };
@@ -2765,9 +3299,18 @@
         $("routing-error").hidden = !message;
       }
 
+      // routingFamilies are the rows the routing form shows: Go and Zen while
+      // a login or key file exists, Free while the OpenCode Free file does.
+      let routingFamilies = [];
+
       function renderRouting(view, config) {
-        $("routing").hidden = view.files.length === 0;
-        if (view.files.length === 0) return;
+        const credentialFiles = view.files.filter((file) => file.go);
+        routingFamilies = [
+          ...(credentialFiles.length > 0 ? ["go", "zen"] : []),
+          ...(view.free ? ["free"] : []),
+        ];
+        $("routing").hidden = routingFamilies.length === 0;
+        if (routingFamilies.length === 0) return;
         const strategy = config
           ? "Strategy " +
             routingStrategy(config.strategy) +
@@ -2778,28 +3321,45 @@
               : "")
           : "Could not read routing.strategy.";
         $("routing-strategy").textContent = strategy;
-        $("routing-priority").value = view.priority ?? "";
-        $("routing-weight").value = view.weight ?? "";
+        for (const family of ["go", "zen", "free"]) {
+          const shown = routingFamilies.includes(family);
+          for (const el of document.querySelectorAll(".routing-" + family))
+            el.hidden = !shown;
+          if (!shown) continue;
+          $("routing-" + family + "-priority").value =
+            view[family].priority ?? "";
+          $("routing-" + family + "-weight").value = view[family].weight ?? "";
+        }
         const names = view.files.map((file) => file.file).join(", ");
-        $("routing-files").textContent = view.mixed
-          ? "The files differ now (" +
-            view.files
-              .map(
-                (file) =>
-                  file.file +
-                  ": priority " +
-                  (file.priority ?? 0) +
-                  ", weight " +
-                  (file.weight ?? 1),
-              )
-              .join("; ") +
-            "). Save sets both on every file."
-          : "Stored in " + names + ".";
-      }
-
-      function routingInput(id) {
-        const raw = $(id).value.trim();
-        return raw === "" ? null : Number(raw);
+        const describe = (values) =>
+          "priority " +
+          (values.priority ?? 0) +
+          ", weight " +
+          (values.weight ?? 1);
+        const notes = [];
+        if (view.go.mixed || view.zen.mixed)
+          notes.push(
+            "The files differ now (" +
+              credentialFiles
+                .map(
+                  (file) =>
+                    file.file +
+                    ": Go " +
+                    describe(file.go) +
+                    ", Zen " +
+                    describe(file.zen),
+                )
+                .join("; ") +
+              "). Save sets Go and Zen on every login and key file.",
+          );
+        else notes.push("Stored in " + names + ".");
+        const shared = view.files.filter((file) => file.shared);
+        if (shared.length > 0)
+          notes.push(
+            shared.map((file) => file.file).join(", ") +
+              " set one priority or weight for both Go and Zen; Save separates them.",
+          );
+        $("routing-files").textContent = notes.join(" ");
       }
 
       $("routing-form").addEventListener("submit", async (event) => {
@@ -2808,10 +3368,20 @@
         save.disabled = true;
         showRoutingError("");
         try {
-          const view = await api("PUT", "/routing", {
-            priority: routingInput("routing-priority"),
-            weight: routingInput("routing-weight"),
-          });
+          const fields = {};
+          for (const family of routingFamilies) {
+            fields[family + "Priority"] = $(
+              "routing-" + family + "-priority",
+            ).value;
+            fields[family + "Weight"] = $(
+              "routing-" + family + "-weight",
+            ).value;
+          }
+          const view = await api(
+            "PUT",
+            "/routing",
+            routingBody(fields, routingFamilies),
+          );
           const config = await cpa(
             "GET",
             "/config/routing",

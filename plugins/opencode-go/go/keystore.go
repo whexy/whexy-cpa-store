@@ -37,6 +37,7 @@ func (f *keyFile) addKey(apiKey, label string, now time.Time) (keyEntry, error) 
 type keyPatch struct {
 	Label    *string
 	Disabled *bool
+	Go, Zen  *bool
 }
 
 func (f *keyFile) updateKey(id string, patch keyPatch) (keyEntry, error) {
@@ -50,6 +51,14 @@ func (f *keyFile) updateKey(id string, patch keyPatch) (keyEntry, error) {
 		if patch.Disabled != nil {
 			f.Keys[index].Disabled = *patch.Disabled
 		}
+		set := f.Keys[index].families()
+		if patch.Go != nil {
+			set.Go = *patch.Go
+		}
+		if patch.Zen != nil {
+			set.Zen = *patch.Zen
+		}
+		f.Keys[index].setFamilies(set)
 		return f.Keys[index], nil
 	}
 	return keyEntry{}, errKeyNotFound
@@ -74,9 +83,13 @@ type storedKeyFile struct {
 	Auths []pluginapi.HostAuthFileEntry
 }
 
-// runtimeAuth returns the host's runtime record for one key of the file.
-func (s storedKeyFile) runtimeAuth(keyID string) (pluginapi.HostAuthFileEntry, bool) {
+// runtimeAuth returns the host's runtime record for one family's auth of
+// a key of the file.
+func (s storedKeyFile) runtimeAuth(keyID string, family modelFamily) (pluginapi.HostAuthFileEntry, bool) {
 	want := authIDFor(s.Name, keyID)
+	if family == familyZen {
+		want += zenAuthSuffix
+	}
 	for _, entry := range s.Auths {
 		if entry.ID == want {
 			return entry, true
@@ -90,15 +103,28 @@ type storedLogin struct {
 	// Name is the file name in the auth directory.
 	Name  string
 	Login loginCredential
-	// Auth is the host's runtime record of the login.
-	Auth pluginapi.HostAuthFileEntry
+	// Auth and ZenAuth are the host's runtime records of the login's Go and
+	// Zen auths.
+	Auth    pluginapi.HostAuthFileEntry
+	ZenAuth pluginapi.HostAuthFileEntry
 }
 
-// storedAuthFiles are the opencode-go auth files, split by kind.
+// storedAuthFiles are the opencode-go auth files, split by kind. Free is
+// the OpenCode Free file, nil until it is created.
 type storedAuthFiles struct {
 	Keys   []storedKeyFile
 	Logins []storedLogin
+	Free   *storedFree
 }
+
+// fileKind says which shape an opencode-go auth file has.
+type fileKind int
+
+const (
+	keyFileKind fileKind = iota
+	loginFileKind
+	freeFileKind
+)
 
 // keyStoreMu serializes read-modify-write cycles on key files.
 var keyStoreMu sync.Mutex
@@ -151,13 +177,32 @@ func readAuthFiles(entries []pluginapi.HostAuthFileEntry) (storedAuthFiles, erro
 			continue
 		}
 		name := authFileBase(got.Path, got.Name)
+		if isFreeFile(got.JSON) {
+			free, errFree := parseFreeFile(got.JSON)
+			if errFree != nil {
+				failures = append(failures, fmt.Sprintf("%s: %v", auths[0].Name, errFree))
+				continue
+			}
+			if out.Free == nil {
+				out.Free = &storedFree{Name: name, File: free, Auth: auths[0]}
+			}
+			continue
+		}
 		if isLoginFile(got.JSON) {
 			login, errLogin := parseLoginFile(got.JSON)
 			if errLogin != nil {
 				failures = append(failures, fmt.Sprintf("%s: %v", auths[0].Name, errLogin))
 				continue
 			}
-			out.Logins = append(out.Logins, storedLogin{Name: name, Login: login, Auth: auths[0]})
+			stored := storedLogin{Name: name, Login: login}
+			for _, auth := range auths {
+				if strings.HasSuffix(auth.ID, zenAuthSuffix) {
+					stored.ZenAuth = auth
+				} else {
+					stored.Auth = auth
+				}
+			}
+			out.Logins = append(out.Logins, stored)
 			continue
 		}
 		parsed, errParse := parseKeyFile(got.JSON)
@@ -167,7 +212,7 @@ func readAuthFiles(entries []pluginapi.HostAuthFileEntry) (storedAuthFiles, erro
 		}
 		files = append(files, storedKeyFile{Name: name, File: parsed, Auths: auths})
 	}
-	if len(files) == 0 && len(out.Logins) == 0 && len(failures) > 0 {
+	if len(files) == 0 && len(out.Logins) == 0 && out.Free == nil && len(failures) > 0 {
 		return storedAuthFiles{}, fmt.Errorf("read OpenCode Go auth files: %s", strings.Join(failures, "; "))
 	}
 	sort.SliceStable(out.Logins, func(i, j int) bool { return out.Logins[i].Name < out.Logins[j].Name })
@@ -287,16 +332,27 @@ func (f fileFields) apply(extra map[string]json.RawMessage) map[string]json.RawM
 	return extra
 }
 
-// setFileFields writes fields into the named key or login file, keeping
-// everything else in it.
-func setFileFields(name string, login bool, fields fileFields) error {
-	if login {
+// setFileFields writes fields into the named auth file, keeping everything
+// else in it.
+func setFileFields(name string, kind fileKind, fields fileFields) error {
+	return editFileFields(name, kind, fields.apply)
+}
+
+// editFileFields rewrites the top-level fields the plugin does not own in
+// the named auth file.
+func editFileFields(name string, kind fileKind, edit func(map[string]json.RawMessage) map[string]json.RawMessage) error {
+	switch kind {
+	case loginFileKind:
 		return editLoginFile(name, func(stored *loginCredential) {
-			stored.extra = fields.apply(stored.extra)
+			stored.extra = edit(stored.extra)
+		})
+	case freeFileKind:
+		return editFreeFile(false, func(file *freeFile) {
+			file.extra = edit(file.extra)
 		})
 	}
 	return editKeyFile(name, false, func(file *keyFile) error {
-		file.extra = fields.apply(file.extra)
+		file.extra = edit(file.extra)
 		return nil
 	})
 }

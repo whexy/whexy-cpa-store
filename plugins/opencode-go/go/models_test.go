@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -203,7 +204,7 @@ func TestManagementListModels(t *testing.T) {
 	if errParse != nil {
 		t.Fatal(errParse)
 	}
-	catalogs.markRegistered(keyIDFor(testKeyA), defaultSettings(), older)
+	catalogs.markRegistered(keyIDFor(testKeyA), familyGo, defaultSettings(), older)
 	view = decodeBodyAs[modelsView](t, fx.call(http.MethodGet, modelsPath, nil, nil))
 	if strings.Join(view.Unregistered, ",") != "opencode-go/kimi-k3,opencode-go/qwen3.8-max" || strings.Join(view.Unlisted, ",") != "opencode-go/retired-two" {
 		t.Fatalf("diff = %v / %v", view.Unregistered, view.Unlisted)
@@ -246,7 +247,7 @@ func TestManagementListModelsWithPrefixDisabled(t *testing.T) {
 			t.Fatalf("model %+v is not bare", model)
 		}
 	}
-	reg, _ := catalogs.registeredFor(keyIDFor(testKeyA))
+	reg, _ := catalogs.registeredFor(keyIDFor(testKeyA), familyGo)
 	if slices.Contains(reg.ids, "kimi-k3") || !slices.Contains(reg.ids, "deepseek-v4-flash") {
 		t.Fatalf("registered = %v", reg.ids)
 	}
@@ -254,7 +255,7 @@ func TestManagementListModelsWithPrefixDisabled(t *testing.T) {
 
 func TestManagementRefreshModels(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{
-		testLoginName:      string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"priority": 4})),
+		testLoginName:      string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"priority": 4, "zen": true})),
 		"opencode-go.json": `{"type":"opencode-go","weight":2,"keys":[{"label":"Work","api_key":"` + testKeyA + `"},{"label":"Home","api_key":"` + testKeyB + `"}]}`,
 	})
 	store := useLoginStore(t, time.Now())
@@ -278,8 +279,8 @@ func TestManagementRefreshModels(t *testing.T) {
 		strings.Join(report.Files, ",") != testLoginName+",opencode-go.json" || !report.Registered || len(report.Failures) != 0 || report.FetchedAt.IsZero() {
 		t.Fatalf("status %d: %s", resp.Status, resp.Body)
 	}
-	if len(*asked) != 3 {
-		t.Fatalf("model.for_auth asked for %v, want both keys and the login", *asked)
+	if len(*asked) != 4 {
+		t.Fatalf("model.for_auth asked for %v, want the Go auth of both keys and both auths of the login", *asked)
 	}
 	for _, name := range []string{testLoginName, "opencode-go.json"} {
 		if !strings.Contains(fx.topLevel(name)[catalogRefreshedField], "T") {
@@ -293,7 +294,7 @@ func TestManagementRefreshModels(t *testing.T) {
 	if file := fx.storedFile("opencode-go.json"); len(file.Keys) != 2 || string(file.extra["weight"]) != "2" {
 		t.Fatalf("key file after refresh = %s", fx.files["opencode-go.json"])
 	}
-	reg, _ := catalogs.registeredFor(keyIDFor(testKeyB))
+	reg, _ := catalogs.registeredFor(keyIDFor(testKeyB), familyGo)
 	if !slices.Contains(reg.ids, "opencode-go/new-model") || slices.Contains(reg.ids, "opencode-go/kimi-k3") {
 		t.Fatalf("registered = %v", reg.ids)
 	}
@@ -301,7 +302,7 @@ func TestManagementRefreshModels(t *testing.T) {
 	// A refresh from the page re-registers an unchanged list too.
 	*asked = nil
 	report = decodeBodyAs[refreshReport](t, fx.call(http.MethodPost, modelsPath+"/refresh", nil, nil))
-	if len(report.Added)+len(report.Removed) != 0 || len(report.Files) != 2 || len(*asked) != 3 || !report.Registered {
+	if len(report.Added)+len(report.Removed) != 0 || len(report.Files) != 2 || len(*asked) != 4 || !report.Registered {
 		t.Fatalf("second refresh = %+v, asked %v", report, *asked)
 	}
 
@@ -369,6 +370,42 @@ func TestBackgroundRecheckRewritesOnlyChangedFiles(t *testing.T) {
 	}
 }
 
+// Turning Bare ID on for a Zen model makes every auth file parse again, so
+// the Zen auths carry the alias and CPA registers it.
+func TestReparseAuthFilesAppliesZenAliases(t *testing.T) {
+	fx := newManagementFixture(t, map[string]string{
+		testLoginName:      string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"zen": true})),
+		"opencode-go.json": `{"type":"opencode-go","keys":[{"label":"Work","api_key":"` + testKeyA + `","zen":true},{"api_key":"` + testKeyB + `","disabled":true}]}`,
+	})
+	useLoginStore(t, time.Now())
+	fx.serveCatalogs(map[string][]byte{testAccessToken: readFixture(t, "config.json"), testKeyA: readFixture(t, "config.json")})
+	cfg := defaultSettings()
+	cfg.ZenModels = []string{"kimi-k3"}
+	useSettings(t, cfg)
+	fx.registerAll()
+	asked := fx.registerOnSave()
+	fetched := len(fx.httpCalls())
+
+	cfg.ZenBareModels = []string{"kimi-k3"}
+	useSettings(t, cfg)
+	reparseAuthFiles(context.Background(), newHost(""))
+	keyA := authIDFor(keyFileName, keyIDFor(testKeyA))
+	want := []string{testLoginName, testLoginName + zenAuthSuffix, keyA, keyA + zenAuthSuffix}
+	slices.Sort(*asked)
+	slices.Sort(want)
+	if fx.saves() != 2 || !slices.Equal(*asked, want) || len(fx.httpCalls()) != fetched {
+		t.Fatalf("saves %d, asked %v, upstream calls %d", fx.saves(), *asked, len(fx.httpCalls())-fetched)
+	}
+	for name, content := range fx.files {
+		for _, auth := range parsedAuths(name, content) {
+			aliases := auth.Attributes["model_aliases"]
+			if (authFamily(auth.Attributes) == familyZen) != strings.Contains(aliases, `"alias":"kimi-k3"`) {
+				t.Fatalf("%s aliases = %q", auth.ID, aliases)
+			}
+		}
+	}
+}
+
 func TestRefreshStopsWithContext(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{"opencode-go.json": `{"type":"opencode-go","api_key":"` + testKeyA + `"}`})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -381,27 +418,55 @@ func TestRefreshStopsWithContext(t *testing.T) {
 
 func TestManagementRouting(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{
-		testLoginName:      string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"proxy_url": "socks5://p:1"})),
+		testLoginName:      string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"proxy_url": "socks5://p:1", "priority": -1})),
 		"opencode-go.json": `{"type":"opencode-go","prefix":"x","keys":[{"label":"Work","api_key":"` + testKeyA + `"},{"label":"Home","api_key":"` + testKeyB + `"}]}`,
 		"single.json":      `{"type":"opencode-go","api_key":"` + testKeyC + `"}`,
 		"claude.json":      `{"type":"claude","priority":9}`,
 	})
 	useLoginStore(t, time.Now())
 	fx.serveCatalogs(map[string][]byte{testAccessToken: readFixture(t, "config.json"), testKeyA: readFixture(t, "config.json"), testKeyB: readFixture(t, "config.json"), testKeyC: readFixture(t, "config.json")})
+	value := func(v *int64) string {
+		if v == nil {
+			return "-"
+		}
+		return strconv.FormatInt(*v, 10)
+	}
+	routing := func(values *routingValues) string {
+		if values == nil {
+			return "none"
+		}
+		return value(values.Priority) + "/" + value(values.Weight)
+	}
 
+	// CPA applies the login's top-level priority to both of its auths.
 	view := decodeBodyAs[routingView](t, fx.call(http.MethodGet, routingPath, nil, nil))
-	if len(view.Files) != 3 || view.Priority != nil || view.Weight != nil || view.Mixed {
+	if len(view.Files) != 3 || view.Files[0].File != testLoginName || !view.Files[0].Shared || routing(view.Files[0].Go) != "-1/-" || routing(view.Files[0].Zen) != "-1/-" ||
+		!view.Go.Mixed || !view.Zen.Mixed || view.Files[1].Shared || routing(view.Files[1].Zen) != "-/-" {
 		t.Fatalf("initial = %+v", view)
 	}
 
-	resp := fx.call(http.MethodPut, routingPath, nil, map[string]any{"priority": 5, "weight": 3})
+	resp := fx.call(http.MethodPut, routingPath, nil, map[string]any{"go": map[string]any{"priority": 5, "weight": 3}, "zen": map[string]any{"priority": -2}})
 	view = decodeBodyAs[routingView](t, resp)
-	if resp.Status != http.StatusOK || view.Priority == nil || *view.Priority != 5 || view.Weight == nil || *view.Weight != 3 || view.Mixed {
+	if resp.Status != http.StatusOK || routing(&view.Go.routingValues) != "5/3" || routing(&view.Zen.routingValues) != "-2/-" || view.Go.Mixed || view.Zen.Mixed || view.Files[0].Shared {
 		t.Fatalf("status %d: %s", resp.Status, resp.Body)
 	}
 	for _, name := range []string{testLoginName, "opencode-go.json", "single.json"} {
-		if top := fx.topLevel(name); top["priority"] != "5" || top["weight"] != "3" {
+		top := fx.topLevel(name)
+		if top["go_priority"] != "5" || top["go_weight"] != "3" || top["zen_priority"] != "-2" {
 			t.Fatalf("%s = %s", name, fx.files[name])
+		}
+		for _, field := range []string{"zen_weight", "priority", "weight"} {
+			if _, ok := top[field]; ok {
+				t.Fatalf("%s keeps %s: %s", name, field, fx.files[name])
+			}
+		}
+		// Each family's auths carry their own routing, which CPA no longer
+		// overrides with a top-level field.
+		for _, auth := range parsedAuths(name, fx.files[name]) {
+			want := map[modelFamily]string{familyGo: "5/3", familyZen: "-2/"}[authFamily(auth.Attributes)]
+			if got := auth.Attributes["priority"] + "/" + auth.Attributes["weight"]; got != want {
+				t.Fatalf("%s auth %s routing = %s, want %s", name, auth.ID, got, want)
+			}
 		}
 	}
 	if fx.topLevel("claude.json")["priority"] != "9" || fx.topLevel("opencode-go.json")["prefix"] != `"x"` || fx.topLevel(testLoginName)["proxy_url"] != `"socks5://p:1"` {
@@ -411,7 +476,7 @@ func TestManagementRouting(t *testing.T) {
 		t.Fatalf("login tokens changed: %+v", login)
 	}
 
-	// The plugin's own rewrites keep both fields: rename, add and disable a
+	// The plugin's own rewrites keep the fields: rename, add and disable a
 	// key, disable the login, and a model refresh.
 	if resp := fx.call(http.MethodPatch, keysPath, nil, map[string]any{"id": keyIDFor(testKeyA), "label": "Renamed", "disabled": true}); resp.Status != http.StatusOK {
 		t.Fatalf("rename: %d %s", resp.Status, resp.Body)
@@ -423,34 +488,40 @@ func TestManagementRouting(t *testing.T) {
 		t.Fatal(errRefresh)
 	}
 	for _, name := range []string{testLoginName, "opencode-go.json", "single.json"} {
-		if top := fx.topLevel(name); top["priority"] != "5" || top["weight"] != "3" {
+		if top := fx.topLevel(name); top["go_priority"] != "5" || top["go_weight"] != "3" || top["zen_priority"] != "-2" {
 			t.Fatalf("%s lost routing fields: %s", name, fx.files[name])
 		}
 	}
 
-	// null restores the default by removing the field; an absent field
+	// null restores the default by removing the field; a field left out
 	// stays as it is.
-	view = decodeBodyAs[routingView](t, fx.call(http.MethodPut, routingPath, nil, map[string]any{"priority": nil}))
-	if view.Priority != nil || view.Weight == nil || *view.Weight != 3 {
+	view = decodeBodyAs[routingView](t, fx.call(http.MethodPut, routingPath, nil, map[string]any{"go": map[string]any{"priority": nil}, "zen": map[string]any{"weight": 2}}))
+	if routing(&view.Go.routingValues) != "-/3" || routing(&view.Zen.routingValues) != "-2/2" {
 		t.Fatalf("after null = %+v", view)
 	}
-	if _, ok := fx.topLevel("single.json")["priority"]; ok {
-		t.Fatalf("priority kept: %s", fx.files["single.json"])
+	if _, ok := fx.topLevel("single.json")["go_priority"]; ok {
+		t.Fatalf("go_priority kept: %s", fx.files["single.json"])
 	}
 
+	// A top-level field written by hand applies to both families; saving
+	// moves it into the family fields, so only what was sent changes.
 	fx.files["single.json"] = `{"type":"opencode-go","api_key":"` + testKeyC + `","priority":"7","weight":3}`
 	view = decodeBodyAs[routingView](t, fx.call(http.MethodGet, routingPath, nil, nil))
-	if !view.Mixed || view.Priority != nil || view.Weight == nil || *view.Weight != 3 || *view.Files[2].Priority != 7 {
+	if !view.Go.Mixed || !view.Zen.Mixed || !view.Files[2].Shared || routing(view.Files[2].Go) != "7/3" || routing(view.Files[2].Zen) != "7/3" {
 		t.Fatalf("mixed = %+v", view)
 	}
+	decodeBodyAs[routingView](t, fx.call(http.MethodPut, routingPath, nil, map[string]any{"zen": map[string]any{"priority": -2}}))
+	if top := fx.topLevel("single.json"); top["go_priority"] != "7" || top["go_weight"] != "3" || top["zen_priority"] != "-2" || top["zen_weight"] != "3" || top["priority"] != "" || top["weight"] != "" {
+		t.Fatalf("moved = %s", fx.files["single.json"])
+	}
 
-	for _, body := range []string{`{}`, `{"weight":-1}`, `{"weight":1.5}`, `{"weight":1000001}`, `{"priority":"x"}`, `{"priority":3000000000}`, `[]`} {
+	for _, body := range []string{`{}`, `{"priority":5}`, `{"go":{}}`, `{"go":5}`, `{"go":null}`, `{"go":{"weight":-1}}`, `{"zen":{"weight":1.5}}`, `{"go":{"weight":1000001}}`, `{"go":{"priority":"x"}}`, `{"zen":{"priority":3000000000}}`, `[]`} {
 		if resp := fx.call(http.MethodPut, routingPath, nil, body); resp.Status != http.StatusBadRequest {
 			t.Fatalf("%s: status %d: %s", body, resp.Status, resp.Body)
 		}
 	}
 	empty := newManagementFixture(t, map[string]string{})
-	if resp := empty.call(http.MethodPut, routingPath, nil, map[string]any{"weight": 1}); resp.Status != http.StatusConflict {
+	if resp := empty.call(http.MethodPut, routingPath, nil, map[string]any{"go": map[string]any{"weight": 1}}); resp.Status != http.StatusConflict {
 		t.Fatalf("no files: status %d", resp.Status)
 	}
 }
@@ -462,19 +533,21 @@ func TestAuthRefreshKeepsRoutingFieldsAndMark(t *testing.T) {
 	console.token = func(url.Values) gatewayReply { return tokenJSON(testAccessToken2, testRefreshToken2, testOrgID) }
 	installFakeGateway(t, console.reply(t, nil))
 
-	storage := loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"priority": 6, "weight": 4, catalogRefreshedField: "2026-10-12T20:00:00Z"})
+	storage := loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"priority": 6, "go_weight": 4, "zen_priority": -2, catalogRefreshedField: "2026-10-12T20:00:00Z"})
 	raw, errHandle := handleMethod(pluginabi.MethodAuthRefresh, mustJSON(t, rpcAuthRefreshRequest{AuthRefreshRequest: pluginapi.AuthRefreshRequest{
-		AuthID: testLoginName, StorageJSON: storage, Metadata: map[string]any{"priority": float64(6), "access_token": testAccessToken, "refresh_token": testRefreshToken},
+		AuthID: testLoginName + zenAuthSuffix, StorageJSON: storage, Attributes: map[string]string{familyAttribute: "zen"},
+		Metadata: map[string]any{"priority": float64(6), "access_token": testAccessToken, "refresh_token": testRefreshToken},
 	}}))
 	if errHandle != nil {
 		t.Fatal(errHandle)
 	}
 	resp := decodeResult[pluginapi.AuthRefreshResponse](t, raw)
 	persisted := persistedFile(t, resp.Auth)
-	if persisted.RefreshToken != testRefreshToken2 || string(persisted.extra["priority"]) != "6" || string(persisted.extra["weight"]) != "4" {
+	if persisted.RefreshToken != testRefreshToken2 || string(persisted.extra["priority"]) != "6" || string(persisted.extra["go_weight"]) != "4" || string(persisted.extra["zen_priority"]) != "-2" {
 		t.Fatalf("persisted = %+v", persisted)
 	}
-	if resp.Auth.Attributes[catalogRefreshedField] != "2026-10-12T20:00:00Z" {
+	// The refreshed auth stays its family's.
+	if attrs := resp.Auth.Attributes; attrs[catalogRefreshedField] != "2026-10-12T20:00:00Z" || attrs[familyAttribute] != "zen" || attrs["priority"] != "-2" || attrs["weight"] != "" {
 		t.Fatalf("attributes = %v", resp.Auth.Attributes)
 	}
 }

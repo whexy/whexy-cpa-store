@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,18 +24,14 @@ const (
 	// Refreshing at half-life leaves 15 days to retry a failed refresh, and
 	// rotates the single-use refresh token only twice a month.
 	loginRefreshInterval = 15 * 24 * time.Hour
+	// loginCheckInterval is how often the plugin looks for a login due a
+	// refresh; loginCheckDelay gives CPA time to load the auth files first.
+	loginCheckInterval = 30 * time.Minute
+	loginCheckDelay    = time.Minute
 
-	// CPA schedules a plugin auth's refresh only through this attribute:
-	// it has no refresh lead for plugin providers, and it clears
-	// NextRefreshAfter after every successful refresh.
-	refreshIntervalAttribute = "refresh_interval_seconds"
-	// CPA refreshes an interval-scheduled auth at once when it does not know
-	// when it last refreshed it, which is the case for an auth registered
-	// before this plugin parsed it. This attribute tells it.
-	lastRefreshAttribute = "last_refresh"
-	authKindAttribute    = "auth_kind"
-	orgIDAttribute       = "org_id"
-	emailAttribute       = "email"
+	authKindAttribute = "auth_kind"
+	orgIDAttribute    = "org_id"
+	emailAttribute    = "email"
 )
 
 // loginCredential is an OpenCode Console login, stored as
@@ -52,6 +46,9 @@ type loginCredential struct {
 	Workspace string
 	Email     string
 	Disabled  bool
+	// Go and Zen say which families the login serves; Go is on unless the
+	// file says false, Zen only when it says true.
+	Go, Zen bool
 	// extra keeps fields the host or the user added (priority, prefix,
 	// proxy_url, ...) across a rewrite.
 	extra map[string]json.RawMessage
@@ -59,7 +56,11 @@ type loginCredential struct {
 
 var loginFields = map[string]struct{}{
 	"type": {}, "auth_method": {}, "access_token": {}, "refresh_token": {}, "expires_at": {},
-	"org_id": {}, "label": {}, "email": {}, "disabled": {},
+	"org_id": {}, "label": {}, "email": {}, "disabled": {}, "go": {}, "zen": {},
+}
+
+func (c loginCredential) families() familySet {
+	return familySet{Go: c.Go, Zen: c.Zen}
 }
 
 var errNotLoginFile = errors.New("not an OpenCode login file")
@@ -98,6 +99,8 @@ func parseLoginFile(raw []byte) (loginCredential, error) {
 		Workspace:    text("label"),
 		Email:        text("email"),
 		Disabled:     jsonTrue(top["disabled"]),
+		Go:           !jsonFalse(top["go"]),
+		Zen:          jsonTrue(top["zen"]),
 		extra:        make(map[string]json.RawMessage),
 	}
 	for name, value := range top {
@@ -139,6 +142,12 @@ func (c loginCredential) marshal() ([]byte, error) {
 	if c.Disabled {
 		out["disabled"] = true
 	}
+	if !c.Go {
+		out["go"] = false
+	}
+	if c.Zen {
+		out["zen"] = true
+	}
 	return json.MarshalIndent(out, "", "  ")
 }
 
@@ -159,15 +168,6 @@ func (c loginCredential) credential() credential {
 
 func (c loginCredential) expired(now time.Time) bool {
 	return !c.ExpiresAt.IsZero() && !now.Before(c.ExpiresAt)
-}
-
-// refreshDue is when the host should first refresh the login; zero means
-// at once.
-func (c loginCredential) refreshDue() time.Time {
-	if c.ExpiresAt.IsZero() {
-		return time.Time{}
-	}
-	return c.ExpiresAt.Add(-loginRefreshInterval)
 }
 
 var orgIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -206,62 +206,43 @@ func (c loginCredential) fieldMetadata() map[string]any {
 	}
 }
 
+// authData is the login's auth before familyAuth makes it one family's.
+// It carries no refresh schedule: CPA never writes back a file that yields
+// two auths, so the plugin refreshes logins and saves the tokens itself.
 func (c loginCredential) authData(id string) pluginapi.AuthData {
 	storage, _ := c.marshal()
 	attributes := map[string]string{
-		authKindAttribute:        loginAuthMethod,
-		orgIDAttribute:           c.OrgID,
-		refreshIntervalAttribute: strconv.FormatInt(int64(loginRefreshInterval/time.Second), 10),
+		authKindAttribute: loginAuthMethod,
+		orgIDAttribute:    c.OrgID,
 	}
 	if c.Email != "" {
 		attributes[emailAttribute] = c.Email
-	}
-	if !c.ExpiresAt.IsZero() {
-		attributes[lastRefreshAttribute] = c.ExpiresAt.Add(-2 * loginRefreshInterval).UTC().Format(time.RFC3339)
 	}
 	if mark := extraString(c.extra, catalogRefreshedField); mark != "" {
 		attributes[catalogRefreshedField] = mark
 	}
 	return pluginapi.AuthData{
-		Provider:         providerKey,
-		ID:               id,
-		Label:            c.displayName(),
-		Disabled:         c.Disabled,
-		StorageJSON:      storage,
-		Metadata:         c.tokenMetadata(),
-		Attributes:       attributes,
-		NextRefreshAfter: c.refreshDue(),
+		Provider:    providerKey,
+		ID:          id,
+		Label:       c.displayName(),
+		Disabled:    c.Disabled,
+		StorageJSON: storage,
+		Metadata:    c.tokenMetadata(),
+		Attributes:  attributes,
 	}
 }
 
-// parseLoginAuth turns a login file into its auth. StorageJSON is the file
-// as read, because the host may write it back over the file.
-func parseLoginAuth(base string, raw []byte) pluginapi.AuthData {
-	login, errParse := parseLoginFile(raw)
-	if errParse != nil {
-		return pluginapi.AuthData{
-			Provider:    providerKey,
-			ID:          base,
-			Label:       displayName + " (invalid login file)",
-			Disabled:    true,
-			StorageJSON: bytes.Clone(raw),
-		}
-	}
-	auth := login.authData(base)
-	auth.StorageJSON = bytes.Clone(raw)
-	return auth
-}
-
-// loginAuthData is a fresh login as auth.login.poll returns it. Saving it
-// merges the existing file's non-token fields into the metadata unless the
-// metadata already holds them, and metadata wins over StorageJSON on disk,
-// so every field the file owns is set here.
+// loginAuthData is a fresh login as auth.login.poll returns it: the Go auth
+// of the file CPA saves it as, which CPA then parses into both families'
+// auths. Saving it merges the existing file's non-token fields into the
+// metadata unless the metadata already holds them, and metadata wins over
+// StorageJSON on disk, so every field the file owns is set here.
 func (c loginCredential) loginAuthData() (pluginapi.AuthData, error) {
 	name, errName := loginFileName(c.OrgID)
 	if errName != nil {
 		return pluginapi.AuthData{}, errName
 	}
-	auth := c.authData(name)
+	auth := familyAuth(c.authData(name), c.extra, currentSettings(), familyGo)
 	auth.FileName = name
 	for field, value := range c.fieldMetadata() {
 		auth.Metadata[field] = value
@@ -269,11 +250,12 @@ func (c loginCredential) loginAuthData() (pluginapi.AuthData, error) {
 	return auth, nil
 }
 
-// refreshedAuthData is the auth.refresh result. The host keeps no metadata
-// of its own once a refresh returns some, so the request's metadata is
-// carried over with the login's fields replaced.
-func (c loginCredential) refreshedAuthData(current map[string]any) pluginapi.AuthData {
-	auth := c.authData("")
+// refreshedAuthData is the auth.refresh result for one family's auth. The
+// host keeps no metadata of its own once a refresh returns some, so the
+// request's metadata is carried over with the login's fields replaced.
+func (c loginCredential) refreshedAuthData(current map[string]any, family modelFamily) pluginapi.AuthData {
+	auth := familyAuth(c.authData(""), c.extra, currentSettings(), family)
+	auth.ID = ""
 	auth.Label = ""
 	metadata := make(map[string]any, len(current)+2)
 	for field, value := range current {
@@ -403,15 +385,18 @@ type loginStore struct {
 	latest map[string]loginCredential
 	// rejected holds the error OpenCode gave for a refresh token.
 	rejected map[[32]byte]string
+	// refreshedAt is when this process last rotated each workspace's tokens.
+	refreshedAt map[string]time.Time
 }
 
 func newLoginStore() *loginStore {
 	return &loginStore{
-		now:      time.Now,
-		locks:    make(map[string]*sync.Mutex),
-		spent:    make(map[[32]byte]string),
-		latest:   make(map[string]loginCredential),
-		rejected: make(map[[32]byte]string),
+		now:         time.Now,
+		locks:       make(map[string]*sync.Mutex),
+		spent:       make(map[[32]byte]string),
+		latest:      make(map[string]loginCredential),
+		rejected:    make(map[[32]byte]string),
+		refreshedAt: make(map[string]time.Time),
 	}
 }
 
@@ -459,6 +444,21 @@ func (s *loginStore) rotated(previous, next loginCredential) {
 		s.spent[tokenHash(previous.RefreshToken)] = previous.OrgID
 	}
 	s.latest[next.OrgID] = next
+	s.refreshedAt[next.OrgID] = s.now()
+}
+
+// due reports whether login should be refreshed now: at half the access
+// token's life, or, when its expiry is unknown, once per refresh interval
+// of this process.
+func (s *loginStore) due(login loginCredential) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	if !login.ExpiresAt.IsZero() {
+		return !now.Before(login.ExpiresAt.Add(-loginRefreshInterval))
+	}
+	last, ok := s.refreshedAt[login.OrgID]
+	return !ok || now.Sub(last) >= loginRefreshInterval
 }
 
 func (s *loginStore) rejection(refreshToken string) (string, bool) {
@@ -522,11 +522,16 @@ type rpcAuthRefreshRequest struct {
 	HostCallbackID string `json:"host_callback_id,omitempty"`
 }
 
-// handleAuthRefresh rotates a login's tokens. Keys never expire, so a key
-// auth gets an empty answer, which tells the host to keep it as is.
+// handleAuthRefresh rotates a login's tokens; CPA asks when a request got a
+// 401. Keys never expire, so a key auth gets an empty answer, which tells the
+// host to keep it as is.
 //
-// CPA runs at most one refresh per auth at a time and writes the result to
-// the auth file before it releases that auth's refresh lock.
+// The login file yields two auths, which CPA never writes back, so the new
+// tokens are saved here before CPA gets them: OpenCode revokes the session
+// when a spent refresh token is presented again, which a restart would do
+// with tokens CPA only held in memory. Saving makes CPA parse the file
+// again, which hands both auths the new tokens; CPA then keeps those over
+// this answer.
 func handleAuthRefresh(raw []byte) ([]byte, error) {
 	var req rpcAuthRefreshRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
@@ -549,10 +554,88 @@ func handleAuthRefresh(raw []byte) ([]byte, error) {
 		}
 		return errorEnvelope("refresh_failed", "refresh OpenCode login: "+errRefresh.Error(), refreshErrorStatus(errRefresh)), nil
 	}
+	if errSave := saveRotatedLogins(refreshed.OrgID); errSave != nil {
+		h.Log("warn", "OpenCode login refreshed but its file was not saved; the plugin tries again", map[string]any{"auth_id": req.AuthID, "error": errSave.Error()})
+	}
 	return okEnvelope(pluginapi.AuthRefreshResponse{
-		Auth:             refreshed.refreshedAuthData(req.Metadata),
-		NextRefreshAfter: refreshed.refreshDue(),
+		Auth: refreshed.refreshedAuthData(req.Metadata, authFamily(req.Attributes)),
 	})
+}
+
+// saveRotatedLogins rewrites every login file of the workspace whose
+// refresh token this process has already spent. orgID "" covers every
+// workspace.
+func saveRotatedLogins(orgID string) error {
+	files, errLoad := loadAuthFiles()
+	if errLoad != nil {
+		return errLoad
+	}
+	var failures []string
+	for _, stored := range files.Logins {
+		if orgID != "" && stored.Login.OrgID != orgID {
+			continue
+		}
+		if logins.current(stored.Login).RefreshToken == stored.Login.RefreshToken {
+			continue
+		}
+		if errSave := editLoginFile(stored.Name, func(*loginCredential) {}); errSave != nil {
+			failures = append(failures, stored.Name+": "+errSave.Error())
+		}
+	}
+	if len(failures) > 0 {
+		return errors.New(strings.Join(failures, "; "))
+	}
+	return nil
+}
+
+var loginRefreshOnce sync.Once
+
+// startLoginRefresh refreshes due logins for the plugin's lifetime.
+func startLoginRefresh() {
+	loginRefreshOnce.Do(func() {
+		startBackground(func(ctx context.Context) {
+			timer := time.NewTimer(loginCheckDelay)
+			defer timer.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-timer.C:
+					refreshDueLogins(ctx, newHost(""))
+					timer.Reset(loginCheckInterval)
+				}
+			}
+		})
+	})
+}
+
+// refreshDueLogins refreshes each enabled login that is due, once per
+// workspace, and saves every login file holding a spent refresh token. A
+// token OpenCode rejected is left alone: the login needs a new one.
+func refreshDueLogins(ctx context.Context, h host) {
+	files, errLoad := loadAuthFiles()
+	if errLoad != nil {
+		h.Log("warn", "OpenCode login check could not read the auth files", map[string]any{"error": errLoad.Error()})
+		return
+	}
+	cfg := currentSettings()
+	checked := map[string]bool{}
+	for _, stored := range files.Logins {
+		login := logins.current(stored.Login)
+		if login.Disabled || checked[login.OrgID] {
+			continue
+		}
+		checked[login.OrgID] = true
+		if _, rejected := logins.rejection(login.RefreshToken); rejected || !logins.due(login) {
+			continue
+		}
+		if _, errRefresh := logins.refresh(ctx, h, cfg, login); errRefresh != nil {
+			h.Log("warn", "OpenCode login refresh failed", map[string]any{"workspace": login.OrgID, "error": errRefresh.Error()})
+		}
+	}
+	if errSave := saveRotatedLogins(""); errSave != nil {
+		h.Log("warn", "OpenCode login refreshed but its file was not saved; the plugin tries again", map[string]any{"error": errSave.Error()})
+	}
 }
 
 // refreshErrorStatus keeps a failed refresh retryable: CPA backs off and

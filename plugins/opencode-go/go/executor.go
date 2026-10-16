@@ -99,7 +99,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	if errCred != nil {
 		return nil, errorEnvelope("invalid_auth", "OpenCode Go auth "+req.AuthID+": "+errCred.Error(), http.StatusUnauthorized)
 	}
-	route, found := resolveRoute(ctx, h, cfg, req.Model, cred)
+	route, found := resolveRoute(ctx, h, cfg, req.Model, cred, authFamily(req.AuthAttributes))
 	if !found {
 		return nil, errorEnvelope("model_not_found", fmt.Sprintf("model %s is not in the OpenCode catalog", req.Model), http.StatusNotFound)
 	}
@@ -132,7 +132,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	// request gets that identity, the streaming body its gate expects and a
 	// session identifier it decodes. A caller that already is OpenCode keeps
 	// its own identity and session.
-	cloaked := cfg.CloakFreeModels && route.Family == familyZen && route.Free
+	cloaked := cfg.CloakFreeModels && route.Family != familyGo && route.Free
 	impersonate := false
 	if cloaked {
 		body, errBody = ensureReadTool(route.Protocol, body)
@@ -160,17 +160,18 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	}, nil
 }
 
-// resolveRoute finds the requested model in the credential's catalog,
-// refreshing a catalog older than its TTL once on a miss so a newly added
-// Go model works before the host next asks for the model list.
-func resolveRoute(ctx context.Context, h host, cfg settings, model string, cred credential) (modelRoute, bool) {
-	if route, ok := lookupModel(model, cred.ID); ok {
+// resolveRoute finds the requested model among the auth family's models in
+// the credential's catalog, refreshing a catalog older than its TTL once on
+// a miss so a newly added Go model works before the host next asks for the
+// model list.
+func resolveRoute(ctx context.Context, h host, cfg settings, model string, cred credential, family modelFamily) (modelRoute, bool) {
+	if route, ok := lookupModel(model, cred.ID, family); ok {
 		return route, true
 	}
-	if _, _, errFetch := catalogs.forKey(ctx, h, cfg, cred); errFetch != nil {
+	if _, _, errFetch := catalogFor(ctx, h, cfg, cred, family); errFetch != nil {
 		return modelRoute{}, false
 	}
-	return lookupModel(model, cred.ID)
+	return lookupModel(model, cred.ID, family)
 }
 
 func (c *executorCall) upstreamRequest() pluginapi.HTTPRequest {

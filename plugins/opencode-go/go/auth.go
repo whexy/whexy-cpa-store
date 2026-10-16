@@ -38,6 +38,41 @@ type keyEntry struct {
 	APIKey   string `json:"api_key"`
 	Disabled bool   `json:"disabled,omitempty"`
 	AddedAt  string `json:"added_at,omitempty"`
+	// Go and Zen say which families the key serves; Go is on unless the file
+	// says false, Zen only when it says true.
+	Go  *bool `json:"go,omitempty"`
+	Zen bool  `json:"zen,omitempty"`
+}
+
+// familySet says which of OpenCode Go and OpenCode Zen a credential serves;
+// each one it serves is an auth of its own in CPA.
+type familySet struct {
+	Go, Zen bool
+}
+
+func (s familySet) has(family modelFamily) bool {
+	switch family {
+	case familyGo:
+		return s.Go
+	case familyZen:
+		return s.Zen
+	}
+	return false
+}
+
+func (k keyEntry) families() familySet {
+	return familySet{Go: k.Go == nil || *k.Go, Zen: k.Zen}
+}
+
+// setFamilies stores which families the key serves, leaving Go unset when
+// it is on.
+func (k *keyEntry) setFamilies(set familySet) {
+	k.Go = nil
+	if !set.Go {
+		off := false
+		k.Go = &off
+	}
+	k.Zen = set.Zen
 }
 
 // keyFile is an opencode-go auth file in either accepted shape: the multi-key
@@ -52,6 +87,7 @@ type keyFile struct {
 // keyFields are the top-level fields keyFile owns; marshal rewrites them.
 var keyFields = map[string]struct{}{
 	"type": {}, "keys": {}, "api_key": {}, "label": {}, "disabled": {}, "id": {}, "key_id": {}, "added_at": {},
+	"go": {}, "zen": {},
 }
 
 func keyIDFor(apiKey string) string {
@@ -135,6 +171,7 @@ func parseKeyFile(raw []byte) (keyFile, error) {
 		if rawAdded, okAdded := top["added_at"]; okAdded {
 			_ = json.Unmarshal(rawAdded, &single.AddedAt)
 		}
+		single.setFamilies(familySet{Go: !jsonFalse(top["go"]), Zen: jsonTrue(top["zen"])})
 		file.appendEntry(single)
 	}
 	if jsonTrue(top["disabled"]) {
@@ -155,6 +192,7 @@ func (f *keyFile) appendEntry(entry keyEntry) bool {
 	entry.APIKey = apiKey
 	entry.ID = keyIDFor(apiKey)
 	entry.Label = strings.TrimSpace(entry.Label)
+	entry.setFamilies(entry.families())
 	if _, exists := f.find(entry.ID); exists {
 		return false
 	}
@@ -189,6 +227,24 @@ func (f keyFile) marshal() ([]byte, error) {
 
 func isJSONNull(raw json.RawMessage) bool {
 	return len(bytes.TrimSpace(raw)) == 0 || string(bytes.TrimSpace(raw)) == "null"
+}
+
+// jsonFalse reports a field that is explicitly false, so an absent field
+// keeps its default.
+func jsonFalse(raw json.RawMessage) bool {
+	if isJSONNull(raw) {
+		return false
+	}
+	var flag bool
+	if json.Unmarshal(raw, &flag) == nil {
+		return !flag
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		parsed, errParse := strconv.ParseBool(strings.TrimSpace(text))
+		return errParse == nil && !parsed
+	}
+	return false
 }
 
 func jsonTrue(raw json.RawMessage) bool {
@@ -234,23 +290,37 @@ func handleAuthParse(raw []byte) ([]byte, error) {
 	return okEnvelope(parseAuths(req))
 }
 
-// parseAuths expands one auth file into one runtime auth per key, or into
-// the single auth of a login file.
+// parseAuths expands one auth file into its runtime auths: one per family
+// each login and key serves, so OpenCode Go and OpenCode Zen route as
+// separate credentials with their own models, priority and weight, and the
+// keyless OpenCode Free auth of the free file.
 //
-// With two or more keys the host marks the auths plugin-virtual: it never
-// writes them back, and quota calls receive the whole file. A single auth is
-// an ordinary file auth the host may persist by writing its StorageJSON over
-// the file, so it carries the whole file rather than the key alone.
+// A file that yields two or more auths makes them plugin-virtual: the host
+// never writes them back, and quota calls receive the whole file. A single
+// auth is an ordinary file auth the host may persist by writing its
+// StorageJSON over the file, so it carries the whole file. Either way a
+// login's refreshed tokens are saved by the plugin; see handleAuthRefresh.
 //
-// A file without a usable key still yields a disabled auth; declining it
-// would make the host register the raw file as an enabled, keyless auth.
+// A file that serves nothing still yields a disabled auth: declining it
+// would make the host register the raw file as an enabled, keyless auth,
+// and the plugin finds its files through the host's auths.
 func parseAuths(req pluginapi.AuthParseRequest) pluginapi.AuthParseResponse {
 	if !isKeyFile(req.RawJSON) {
 		return pluginapi.AuthParseResponse{}
 	}
 	base := authFileBase(req.Path, req.FileName)
+	cfg := currentSettings()
+	if isFreeFile(req.RawJSON) {
+		return pluginapi.AuthParseResponse{Handled: true, Auth: freeAuth(base, req.RawJSON, cfg)}
+	}
 	if isLoginFile(req.RawJSON) {
-		return pluginapi.AuthParseResponse{Handled: true, Auth: parseLoginAuth(base, req.RawJSON)}
+		login, errParse := parseLoginFile(req.RawJSON)
+		if errParse != nil {
+			return pluginapi.AuthParseResponse{Handled: true, Auth: placeholderAuth(base, displayName+" (invalid login file)", req.RawJSON)}
+		}
+		auth := login.authData(base)
+		auth.StorageJSON = bytes.Clone(req.RawJSON)
+		return fileAuths(base, req.RawJSON, credentialAuths(auth, login.extra, cfg, login.families()), login.displayName())
 	}
 	file, errParse := parseKeyFile(req.RawJSON)
 	if errParse != nil || len(file.Keys) == 0 {
@@ -258,25 +328,52 @@ func parseAuths(req pluginapi.AuthParseRequest) pluginapi.AuthParseResponse {
 		if errParse != nil {
 			label = displayName + " (invalid file)"
 		}
-		return pluginapi.AuthParseResponse{Handled: true, Auth: pluginapi.AuthData{
-			Provider:    providerKey,
-			ID:          base,
-			Label:       label,
-			Disabled:    true,
-			StorageJSON: bytes.Clone(req.RawJSON),
-		}}
+		return pluginapi.AuthParseResponse{Handled: true, Auth: placeholderAuth(base, label, req.RawJSON)}
 	}
 	mark := extraString(file.extra, catalogRefreshedField)
-	if len(file.Keys) == 1 {
-		auth := keyAuth(base, file.Keys[0], mark)
-		auth.StorageJSON = bytes.Clone(req.RawJSON)
+	auths := make([]pluginapi.AuthData, 0, 2*len(file.Keys))
+	for _, entry := range file.Keys {
+		auths = append(auths, credentialAuths(keyAuth(base, entry, mark), file.extra, cfg, entry.families())...)
+	}
+	return fileAuths(base, req.RawJSON, auths, displayName)
+}
+
+// fileAuths answers auth.parse for a file's family auths: the whole file
+// as the StorageJSON of a single auth, and a disabled auth when the file
+// serves no family at all.
+func fileAuths(base string, raw []byte, auths []pluginapi.AuthData, name string) pluginapi.AuthParseResponse {
+	switch len(auths) {
+	case 0:
+		return pluginapi.AuthParseResponse{Handled: true, Auth: placeholderAuth(base, name+" (OpenCode Go and Zen off)", raw)}
+	case 1:
+		auth := auths[0]
+		auth.StorageJSON = bytes.Clone(raw)
 		return pluginapi.AuthParseResponse{Handled: true, Auth: auth}
 	}
-	auths := make([]pluginapi.AuthData, 0, len(file.Keys))
-	for _, entry := range file.Keys {
-		auths = append(auths, keyAuth(base, entry, mark))
-	}
 	return pluginapi.AuthParseResponse{Handled: true, Auths: auths}
+}
+
+// placeholderAuth keeps a file that serves nothing known to the host.
+func placeholderAuth(base, label string, raw []byte) pluginapi.AuthData {
+	return pluginapi.AuthData{
+		Provider:    providerKey,
+		ID:          base,
+		Label:       label,
+		Disabled:    true,
+		StorageJSON: bytes.Clone(raw),
+		Attributes:  map[string]string{familyAttribute: string(familyGo)},
+	}
+}
+
+// credentialAuths are a credential's auths for the families it serves.
+func credentialAuths(auth pluginapi.AuthData, extra map[string]json.RawMessage, cfg settings, set familySet) []pluginapi.AuthData {
+	var out []pluginapi.AuthData
+	for _, family := range []modelFamily{familyGo, familyZen} {
+		if set.has(family) {
+			out = append(out, familyAuth(auth, extra, cfg, family))
+		}
+	}
+	return out
 }
 
 func keyAuth(base string, entry keyEntry, catalogMark string) pluginapi.AuthData {
@@ -298,6 +395,84 @@ func keyAuth(base string, entry keyEntry, catalogMark string) pluginapi.AuthData
 		StorageJSON: storage,
 		Attributes:  attributes,
 	}
+}
+
+const (
+	// familyAttribute names the catalog an auth serves; an auth without it
+	// serves OpenCode Go.
+	familyAttribute = "family"
+	// zenAuthSuffix turns a credential's Go auth ID into its Zen auth ID,
+	// so the Go auth keeps the ID, cooldowns and stats it had before the
+	// split.
+	zenAuthSuffix  = "#zen"
+	zenDisplayName = "OpenCode Zen"
+	// modelAliasesAttribute holds per-auth model aliases, which CPA applies
+	// before its oauth-model-alias config.
+	modelAliasesAttribute = "model_aliases"
+	// pathAttribute is the auth file CPA loaded an auth from.
+	pathAttribute = "path"
+)
+
+var families = []modelFamily{familyGo, familyZen, familyFree}
+
+func authFamily(attributes map[string]string) modelFamily {
+	switch strings.ToLower(strings.TrimSpace(attributes[familyAttribute])) {
+	case string(familyZen):
+		return familyZen
+	case string(familyFree):
+		return familyFree
+	}
+	return familyGo
+}
+
+// familyAuth is the credential's auth for one family, with that family's
+// routing fields of the file as its priority and weight.
+func familyAuth(auth pluginapi.AuthData, extra map[string]json.RawMessage, cfg settings, family modelFamily) pluginapi.AuthData {
+	out := auth
+	out.Attributes = make(map[string]string, len(auth.Attributes)+4)
+	for name, value := range auth.Attributes {
+		out.Attributes[name] = value
+	}
+	if auth.Metadata != nil {
+		out.Metadata = make(map[string]any, len(auth.Metadata))
+		for name, value := range auth.Metadata {
+			out.Metadata[name] = value
+		}
+	}
+	out.StorageJSON = bytes.Clone(auth.StorageJSON)
+	out.Attributes[familyAttribute] = string(family)
+	for name, value := range routingAttributes(extra, family) {
+		out.Attributes[name] = value
+	}
+	if family == familyZen {
+		out.ID = auth.ID + zenAuthSuffix
+		if auth.Label != "" {
+			out.Label = auth.Label + " · " + zenDisplayName
+		}
+		if aliases := bareModelAliases(cfg, familyZen, cfg.ZenBareModels); aliases != "" {
+			out.Attributes[modelAliasesAttribute] = aliases
+		}
+	}
+	return out
+}
+
+// bareModelAliases lists each model of a family with Bare ID on under its
+// bare ID as well, as CPA's model_aliases attribute.
+func bareModelAliases(cfg settings, family modelFamily, ids []string) string {
+	type alias struct {
+		Name  string `json:"name"`
+		Alias string `json:"alias"`
+		Fork  bool   `json:"fork"`
+	}
+	if len(ids) == 0 {
+		return ""
+	}
+	out := make([]alias, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, alias{Name: exposedModelID(cfg, family, id), Alias: id, Fork: true})
+	}
+	raw, _ := json.Marshal(out)
+	return string(raw)
 }
 
 // extraString reads a string field kept in a file's extra fields.
@@ -324,6 +499,9 @@ type credential struct {
 // login returns its credential together with a *loginExpiredError, so
 // callers can still name it and use its cached catalog.
 func resolveCredential(storageJSON []byte, attributes map[string]string, metadata map[string]any) (credential, error) {
+	if authFamily(attributes) == familyFree || isFreeFile(storageJSON) {
+		return freeCredential, nil
+	}
 	if isLoginFile(storageJSON) {
 		login, errParse := parseLoginFile(storageJSON)
 		if errParse != nil {
@@ -348,8 +526,9 @@ func keyCredential(key keyEntry) credential {
 
 // resolveAuthKey finds the key a host call is about. Executor and
 // model.for_auth calls receive the auth's own StorageJSON (one key, or the
-// whole file for a single-key file); quota calls receive the whole physical
-// file. Every auth carries the key_id attribute, so both resolve the same way.
+// whole file for a file that yields one auth); quota calls receive the whole
+// physical file. Every auth carries the key_id attribute, so both resolve
+// the same way.
 func resolveAuthKey(storageJSON []byte, attributes map[string]string, metadata map[string]any) (keyEntry, error) {
 	keyID := strings.TrimSpace(attributes[keyIDAttribute])
 	if keyID == "" {

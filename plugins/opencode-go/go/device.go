@@ -309,6 +309,7 @@ func completeLogin(ctx context.Context, h host, cfg settings, token tokenRespons
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 		ExpiresAt:    token.expiresAt(now),
+		Go:           true,
 		extra:        make(map[string]json.RawMessage),
 	}
 	if token.OrgID != nil {

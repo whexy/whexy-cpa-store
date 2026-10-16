@@ -101,6 +101,33 @@ func TestParseSettings(t *testing.T) {
 	}
 }
 
+// The Zen auths' Bare ID aliases come from auth.parse, so changing them
+// makes the plugin have CPA parse the files again; other settings do not.
+func TestReconfigureReparsesWhenZenAliasesChange(t *testing.T) {
+	useSettings(t, defaultSettings())
+	reparses := 0
+	previous := reparseLater
+	reparseLater = func() { reparses++ }
+	t.Cleanup(func() { reparseLater = previous })
+	for _, step := range []struct {
+		yaml string
+		want int
+	}{
+		{"user_agent: ua/2\nzen_models: [kimi-k3]\n", 0},
+		{"zen_bare_models: [kimi-k3]\n", 1},
+		{"zen_bare_models: [' KIMI-K3 ', kimi-k3]\nuser_agent: ua/3\n", 1},
+		{"zen_bare_models: [kimi-k3]\nzen_model_prefix: zen\n", 2},
+		{"", 3},
+	} {
+		if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte(step.yaml)})); errHandle != nil {
+			t.Fatal(errHandle)
+		}
+		if reparses != step.want {
+			t.Fatalf("after %q: %d reparses, want %d", step.yaml, reparses, step.want)
+		}
+	}
+}
+
 func TestReconfigureStoresSettings(t *testing.T) {
 	useSettings(t, defaultSettings())
 	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("model_prefix: go\nuser_agent: ua/2\n")})); errHandle != nil {

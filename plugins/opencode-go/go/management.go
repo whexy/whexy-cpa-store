@@ -34,6 +34,7 @@ const (
 	loginsPath         = managementBasePath + "/logins"
 	modelsPath         = managementBasePath + "/models"
 	routingPath        = managementBasePath + "/routing"
+	freePath           = managementBasePath + "/free"
 
 	maxLabelLength = 64
 )
@@ -81,24 +82,26 @@ type resourceRoute struct {
 var managementRoutes = []managementRoute{
 	{Method: http.MethodGet, Path: keysPath, Description: "List OpenCode Go keys: masked key, label, state, workspace.", handle: handleListKeys},
 	{Method: http.MethodPost, Path: keysPath, Description: "Check and add an OpenCode Go key: {label, api_key}.", handle: handleAddKey},
-	{Method: http.MethodPatch, Path: keysPath, Description: "Rename, enable or disable an OpenCode Go key: {id, label?, disabled?}.", handle: handleUpdateKey},
+	{Method: http.MethodPatch, Path: keysPath, Description: "Rename, enable or disable an OpenCode Go key, or turn OpenCode Go or Zen on or off for it: {id, label?, disabled?, go?, zen?}.", handle: handleUpdateKey},
 	{Method: http.MethodDelete, Path: keysPath, Description: "Remove an OpenCode Go key: ?id=.", handle: handleDeleteKey},
 	{Method: http.MethodPost, Path: keysPath + "/test", Description: "Check a stored OpenCode Go key against the gateway: {id}.", handle: handleTestKey},
 	{Method: http.MethodGet, Path: keysPath + "/usage", Description: "Read the 5-hour, weekly and monthly usage of an OpenCode Go key: ?id=.", handle: handleKeyUsage},
 	{Method: http.MethodGet, Path: loginsPath, Description: "List OpenCode logins: workspace, account, token expiry, state.", handle: handleListLogins},
-	{Method: http.MethodPatch, Path: loginsPath, Description: "Enable or disable an OpenCode login: {id, disabled}.", handle: handleUpdateLogin},
+	{Method: http.MethodPatch, Path: loginsPath, Description: "Enable or disable an OpenCode login, or turn OpenCode Go or Zen on or off for it: {id, disabled?, go?, zen?}.", handle: handleUpdateLogin},
 	{Method: http.MethodGet, Path: loginsPath + "/usage", Description: "Read the 5-hour, weekly and monthly usage of an OpenCode login: ?id=.", handle: handleLoginUsage},
 	{Method: http.MethodGet, Path: modelsPath, Description: "List the OpenCode Go catalog of the first working login or key, and how it differs from the models CLIProxyAPI registered.", handle: handleListModels},
 	{Method: http.MethodPost, Path: modelsPath + "/refresh", Description: "Read every catalog again and make CLIProxyAPI register the current model lists.", handle: handleRefreshModels},
-	{Method: http.MethodGet, Path: routingPath, Description: "Read the priority and weight of the OpenCode Go auth files.", handle: handleGetRouting},
-	{Method: http.MethodPut, Path: routingPath, Description: "Set priority and weight on every OpenCode Go auth file: {priority, weight}, null for the default.", handle: handleSetRouting},
+	{Method: http.MethodGet, Path: routingPath, Description: "Read the OpenCode Go and OpenCode Zen priority and weight of every OpenCode Go auth file.", handle: handleGetRouting},
+	{Method: http.MethodPut, Path: routingPath, Description: "Set the OpenCode Go, Zen and Free priority and weight: {go: {priority, weight}, zen: {...}, free: {...}}, null for the default.", handle: handleSetRouting},
+	{Method: http.MethodGet, Path: freePath, Description: "Read OpenCode Free: its auth file, state and free models.", handle: handleGetFree},
+	{Method: http.MethodPut, Path: freePath, Description: "Turn OpenCode Free on or off: {enabled}.", handle: handlePutFree},
 }
 
 func managementRegister(raw []byte) ([]byte, error) {
 	return okEnvelope(managementRegistration{
 		Routes: managementRoutes,
 		Resources: []resourceRoute{
-			{Path: resourcePagePath, Menu: displayName, Description: "Manage OpenCode Go logins, keys, models and routing."},
+			{Path: resourcePagePath, Menu: displayName, Description: "Manage OpenCode Go logins, keys, models, OpenCode Free and routing."},
 			{Path: logoPath, Description: "OpenCode Go logo."},
 		},
 	})
@@ -221,18 +224,23 @@ func failf(status int, format string, args ...any) error {
 }
 
 type keyView struct {
-	ID        string       `json:"id"`
-	Label     string       `json:"label"`
-	MaskedKey string       `json:"masked_key"`
-	Disabled  bool         `json:"disabled"`
-	AddedAt   string       `json:"added_at,omitempty"`
-	File      string       `json:"file"`
-	Workspace string       `json:"workspace,omitempty"`
-	Models    int          `json:"models,omitempty"`
-	Runtime   *runtimeView `json:"runtime,omitempty"`
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	MaskedKey string `json:"masked_key"`
+	Disabled  bool   `json:"disabled"`
+	AddedAt   string `json:"added_at,omitempty"`
+	File      string `json:"file"`
+	Workspace string `json:"workspace,omitempty"`
+	Models    int    `json:"models,omitempty"`
+	// Go and Zen say which families the key serves; Runtime and ZenRuntime
+	// are the states of their auths.
+	Go         bool         `json:"go"`
+	Zen        bool         `json:"zen"`
+	Runtime    *runtimeView `json:"runtime,omitempty"`
+	ZenRuntime *runtimeView `json:"zen_runtime,omitempty"`
 }
 
-// runtimeView is CLIProxyAPI's routing state of a key's auth.
+// runtimeView is CLIProxyAPI's routing state of one of a credential's auths.
 type runtimeView struct {
 	State          string `json:"state"`
 	Message        string `json:"message,omitempty"`
@@ -263,13 +271,18 @@ func newKeyView(file storedKeyFile, entry keyEntry) keyView {
 		Disabled:  entry.Disabled,
 		AddedAt:   entry.AddedAt,
 		File:      file.Name,
+		Go:        entry.families().Go,
+		Zen:       entry.families().Zen,
 	}
 	if cat, ok := catalogs.ownCatalog(entry.ID); ok {
 		view.Workspace = cat.Workspace
-		view.Models = len(cat.servedModels(currentSettings()))
+		view.Models = cat.servedCount(currentSettings(), entry.families())
 	}
-	if auth, ok := file.runtimeAuth(entry.ID); ok {
+	if auth, ok := file.runtimeAuth(entry.ID, familyGo); ok {
 		view.Runtime = newRuntimeView(auth)
+	}
+	if auth, ok := file.runtimeAuth(entry.ID, familyZen); ok {
+		view.ZenRuntime = newRuntimeView(auth)
 	}
 	return view
 }
@@ -290,15 +303,20 @@ func newRuntimeView(auth pluginapi.HostAuthFileEntry) *runtimeView {
 
 // loginView is a login as the page shows it; it never carries a token.
 type loginView struct {
-	ID        string       `json:"id"`
-	Workspace string       `json:"workspace"`
-	OrgID     string       `json:"org_id"`
-	Email     string       `json:"email,omitempty"`
-	Disabled  bool         `json:"disabled"`
-	ExpiresAt string       `json:"expires_at,omitempty"`
-	Expired   bool         `json:"expired,omitempty"`
-	Models    int          `json:"models,omitempty"`
-	Runtime   *runtimeView `json:"runtime,omitempty"`
+	ID        string `json:"id"`
+	Workspace string `json:"workspace"`
+	OrgID     string `json:"org_id"`
+	Email     string `json:"email,omitempty"`
+	Disabled  bool   `json:"disabled"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+	Expired   bool   `json:"expired,omitempty"`
+	Models    int    `json:"models,omitempty"`
+	// Go and Zen say which families the login serves; Runtime and
+	// ZenRuntime are the states of their auths.
+	Go         bool         `json:"go"`
+	Zen        bool         `json:"zen"`
+	Runtime    *runtimeView `json:"runtime,omitempty"`
+	ZenRuntime *runtimeView `json:"zen_runtime,omitempty"`
 }
 
 func newLoginView(stored storedLogin) loginView {
@@ -310,15 +328,20 @@ func newLoginView(stored storedLogin) loginView {
 		Email:     login.Email,
 		Disabled:  login.Disabled,
 		Expired:   login.expired(time.Now()),
+		Go:        login.Go,
+		Zen:       login.Zen,
 	}
 	if !login.ExpiresAt.IsZero() {
 		view.ExpiresAt = login.ExpiresAt.Format(time.RFC3339)
 	}
 	if cat, ok := catalogs.ownCatalog(login.credential().ID); ok {
-		view.Models = len(cat.servedModels(currentSettings()))
+		view.Models = cat.servedCount(currentSettings(), login.families())
 	}
 	if stored.Auth.AuthIndex != "" {
 		view.Runtime = newRuntimeView(stored.Auth)
+	}
+	if stored.ZenAuth.AuthIndex != "" {
+		view.ZenRuntime = newRuntimeView(stored.ZenAuth)
 	}
 	return view
 }
@@ -407,6 +430,8 @@ type updateKeyRequest struct {
 	ID       string  `json:"id"`
 	Label    *string `json:"label"`
 	Disabled *bool   `json:"disabled"`
+	Go       *bool   `json:"go"`
+	Zen      *bool   `json:"zen"`
 }
 
 func handleUpdateKey(_ host, req pluginapi.ManagementRequest) (int, any, error) {
@@ -414,10 +439,10 @@ func handleUpdateKey(_ host, req pluginapi.ManagementRequest) (int, any, error) 
 	if errDecode := decodeBody(req.Body, &body); errDecode != nil {
 		return 0, nil, errDecode
 	}
-	if body.Label == nil && body.Disabled == nil {
-		return 0, nil, failf(http.StatusBadRequest, "Nothing to change: send label or disabled.")
+	if body.Label == nil && body.Disabled == nil && body.Go == nil && body.Zen == nil {
+		return 0, nil, failf(http.StatusBadRequest, "Nothing to change: send label, disabled, go or zen.")
 	}
-	patch := keyPatch{Disabled: body.Disabled}
+	patch := keyPatch{Disabled: body.Disabled, Go: body.Go, Zen: body.Zen}
 	if body.Label != nil {
 		label, errLabel := cleanLabel(*body.Label)
 		if errLabel != nil {
@@ -477,7 +502,7 @@ func handleTestKey(h host, req pluginapi.ManagementRequest) (int, any, error) {
 		"ok":        true,
 		"usage":     newUsageView(check.Usage),
 		"workspace": check.Catalog.Workspace,
-		"models":    len(check.Catalog.servedModels(currentSettings())),
+		"models":    check.Catalog.servedCount(currentSettings(), entry.families()),
 	}, nil
 }
 
@@ -505,25 +530,36 @@ func handleListLogins(host, pluginapi.ManagementRequest) (int, any, error) {
 	return http.StatusOK, map[string]any{"logins": views}, nil
 }
 
-// handleUpdateLogin enables or disables a login. Deleting needs a host
-// callback plugins lack; the page sends the user to Auth Files for that.
+// handleUpdateLogin enables or disables a login, and turns OpenCode Go or
+// Zen on or off for it. Deleting needs a host callback plugins lack; the
+// page sends the user to Auth Files for that.
 func handleUpdateLogin(_ host, req pluginapi.ManagementRequest) (int, any, error) {
 	var body struct {
 		ID       string `json:"id"`
 		Disabled *bool  `json:"disabled"`
+		Go       *bool  `json:"go"`
+		Zen      *bool  `json:"zen"`
 	}
 	if errDecode := decodeBody(req.Body, &body); errDecode != nil {
 		return 0, nil, errDecode
 	}
-	if body.Disabled == nil {
-		return 0, nil, failf(http.StatusBadRequest, "Nothing to change: send disabled.")
+	if body.Disabled == nil && body.Go == nil && body.Zen == nil {
+		return 0, nil, failf(http.StatusBadRequest, "Nothing to change: send disabled, go or zen.")
 	}
 	stored, errFind := findStoredLogin(body.ID)
 	if errFind != nil {
 		return 0, nil, errFind
 	}
 	errSave := editLoginFile(stored.Name, func(login *loginCredential) {
-		login.Disabled = *body.Disabled
+		if body.Disabled != nil {
+			login.Disabled = *body.Disabled
+		}
+		if body.Go != nil {
+			login.Go = *body.Go
+		}
+		if body.Zen != nil {
+			login.Zen = *body.Zen
+		}
 	})
 	if errors.Is(errSave, errFileGone) {
 		return 0, nil, failf(http.StatusNotFound, "That login is no longer stored. Reload the list.")

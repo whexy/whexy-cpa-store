@@ -1,7 +1,7 @@
 {
   "id": "opencode-go",
   "name": "OpenCode Go",
-  "description": "Serves an OpenCode Go subscription through CLIProxyAPI: the Go models of a workspace over Chat Completions, Messages and Responses, the workspace's opt-in OpenCode Zen pay-as-you-go models as opencode/... next to them, free-tier models included, an OpenCode login from the OAuth Login page or keys on a Management Center page that also enables and disables models and shares bare model IDs with other providers, and 5-hour, weekly and monthly quota in the Plugin tab.",
+  "description": "Serves an OpenCode Go subscription through CLIProxyAPI: the Go models of a workspace over Chat Completions, Messages and Responses, the workspace's opt-in OpenCode Zen pay-as-you-go models as opencode/..., OpenCode's free models as opencode-free/... with no account at all, each with a priority and weight of its own, an OpenCode login from the OAuth Login page or keys on a Management Center page that also enables and disables models and shares bare model IDs with other providers, and 5-hour, weekly and monthly quota in the Plugin tab.",
   "author": "Whexy",
   "repository": "https://github.com/whexy/whexy-cpa-store",
   "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/opencode-go",

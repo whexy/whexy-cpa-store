@@ -29,6 +29,14 @@ func handleQuotaFetch(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode quota fetch request: %w", errUnmarshal)
 	}
+	// The 5-hour, weekly and monthly windows are the Go subscription's; Zen
+	// models bill Console credits and Free models nothing, so neither has any.
+	switch authFamily(req.Attributes) {
+	case familyZen:
+		return okEnvelope(pluginapi.QuotaFetchResponse{Subscription: &pluginapi.QuotaSubscription{Plan: zenDisplayName}})
+	case familyFree:
+		return okEnvelope(pluginapi.QuotaFetchResponse{Subscription: &pluginapi.QuotaSubscription{Plan: freeDisplayName}})
+	}
 	cred, errCred := resolveCredential(req.StorageJSON, req.Attributes, req.Metadata)
 	var expired *loginExpiredError
 	if errors.As(errCred, &expired) {

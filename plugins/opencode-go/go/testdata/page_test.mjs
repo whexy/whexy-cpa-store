@@ -117,46 +117,113 @@ test("disabled models are those with an entry or a matching rule", () => {
   );
 });
 
-test("disabled_models writes touch only that key", () => {
-  const disabledWrite = fn("disabledWrite");
-  const node = { enabled: true, model_prefix: "go", disabled_models: ["a"] };
-  assert.deepEqual(plain(disabledWrite(node, ["a", "b"])), {
-    method: "PATCH",
-    path: "",
-    body: { disabled_models: ["a", "b"] },
-  });
-  assert.equal(disabledWrite(node, ["a"]), null);
-  assert.deepEqual(plain(disabledWrite(node, [])), {
-    method: "DELETE",
-    path: "/disabled_models",
-  });
-  assert.equal(disabledWrite({ enabled: true }, []), null);
-  assert.equal(disabledWrite({}, []), null);
-  assert.deepEqual(plain(disabledWrite({}, ["a"])), {
-    method: "PATCH",
-    path: "",
-    body: { disabled_models: ["a"] },
-  });
+test("list settings writes touch only their key", () => {
+  const listWrite = fn("listWrite");
+  for (const key of ["disabled_models", "zen_models", "zen_bare_models"]) {
+    const node = { enabled: true, model_prefix: "go", [key]: ["a"] };
+    assert.deepEqual(plain(listWrite(node, key, ["a", "b"])), {
+      method: "PATCH",
+      path: "",
+      body: { [key]: ["a", "b"] },
+    });
+    assert.equal(listWrite(node, key, ["a"]), null);
+    assert.deepEqual(plain(listWrite(node, key, [])), {
+      method: "DELETE",
+      path: "/" + key,
+    });
+    assert.equal(listWrite({ enabled: true }, key, []), null);
+    assert.equal(listWrite({}, key, []), null);
+    assert.deepEqual(plain(listWrite({}, key, ["a"])), {
+      method: "PATCH",
+      path: "",
+      body: { [key]: ["a"] },
+    });
+  }
 });
 
-test("zen_models writes touch only that key", () => {
-  const zenWrite = fn("zenWrite");
-  const node = { enabled: true, model_prefix: "go", zen_models: ["a"] };
-  assert.deepEqual(plain(zenWrite(node, ["a", "b"])), {
-    method: "PATCH",
-    path: "",
-    body: { zen_models: ["a", "b"] },
+test("bare IDs name the families of the plugin serving them", () => {
+  const bareFamilies = fn("bareFamilies");
+  const go = (id) => ({
+    id: "opencode-go/" + id,
+    upstream_id: id,
+    family: "go",
   });
-  assert.equal(zenWrite(node, ["a"]), null);
-  assert.deepEqual(plain(zenWrite(node, [])), {
-    method: "DELETE",
-    path: "/zen_models",
+  const zen = (id) => ({
+    id: "opencode/" + id,
+    upstream_id: id,
+    family: "zen",
   });
-  assert.equal(zenWrite({ enabled: true }, []), null);
-  assert.deepEqual(plain(zenWrite({}, ["a"])), {
-    method: "PATCH",
-    path: "",
-    body: { zen_models: ["a"] },
+  const free = (id) => ({
+    id: "opencode-free/" + id,
+    upstream_id: id,
+    family: "free",
+  });
+  const catalog = [
+    go("kimi-k3"),
+    go("glm-5.3"),
+    go("qwen3.8-max"),
+    zen("kimi-k3"),
+    zen("glm-5.3"),
+    zen("gpt-6-luna"),
+    free("cat-jam-free"),
+    free("big-pickle"),
+  ];
+  const state = {
+    aliases: [
+      { name: "opencode-go/kimi-k3", alias: "kimi-k3", fork: true },
+      { name: "opencode-go/qwen3.8-max", alias: "qwen3.8-max", fork: true },
+    ],
+    excluded: [],
+    disabled: ["qwen3.8-max"],
+    zen: ["kimi-k3", "gpt-6-luna"],
+    zenBare: ["KIMI-K3", "glm-5.3", "gpt-6-luna"],
+    freeBare: ["cat-jam-free", "big-pickle"],
+    freeDisabled: ["big-pickle"],
+    prefixOff: false,
+    serving: ["go", "zen", "free"],
+  };
+  const served = (map) =>
+    Object.fromEntries([...map].map(([id, set]) => [id, [...set].sort()]));
+  // glm-5.3 has Bare ID on in Zen but is not enabled; qwen3.8-max is
+  // disabled in Go; big-pickle is disabled in Free.
+  assert.deepEqual(served(bareFamilies(catalog, state)), {
+    "kimi-k3": ["OpenCode Go", "OpenCode Zen"],
+    "gpt-6-luna": ["OpenCode Zen"],
+    "cat-jam-free": ["OpenCode Free"],
+  });
+  assert.deepEqual(
+    served(bareFamilies(catalog, { ...state, aliases: [], prefixOff: true })),
+    {
+      "kimi-k3": ["OpenCode Go", "OpenCode Zen"],
+      "glm-5.3": ["OpenCode Go"],
+      "gpt-6-luna": ["OpenCode Zen"],
+      "cat-jam-free": ["OpenCode Free"],
+    },
+  );
+  // A family nothing has on serves no bare ID.
+  assert.deepEqual(
+    served(bareFamilies(catalog, { ...state, serving: ["go"] })),
+    {
+      "kimi-k3": ["OpenCode Go"],
+    },
+  );
+});
+
+test("the routing body sends the shown families, empty fields as null", () => {
+  const routingBody = fn("routingBody");
+  const fields = {
+    goPriority: "-1",
+    goWeight: " ",
+    zenPriority: "-2",
+    zenWeight: "3",
+    freePriority: "-3",
+  };
+  assert.deepEqual(plain(routingBody(fields, ["go", "zen"])), {
+    go: { priority: -1, weight: null },
+    zen: { priority: -2, weight: 3 },
+  });
+  assert.deepEqual(plain(routingBody(fields, ["free"])), {
+    free: { priority: -3, weight: null },
   });
 });
 

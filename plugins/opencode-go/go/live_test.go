@@ -61,7 +61,7 @@ func TestLiveCatalog(t *testing.T) {
 		if !strings.HasPrefix(route.Endpoint, defaultBaseURL+"/") {
 			t.Fatalf("%s routes outside the Go gateway: %s", model.UpstreamID, route.Endpoint)
 		}
-		if known, ok := snapshot.find(cfg, model.UpstreamID); ok && known.Protocol != model.Protocol {
+		if known, ok := snapshot.find(cfg, model.UpstreamID, model.Family); ok && known.Protocol != model.Protocol {
 			t.Errorf("%s protocol changed: snapshot %s, live %s", model.UpstreamID, known.Protocol, model.Protocol)
 		}
 	}

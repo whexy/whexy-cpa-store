@@ -1,0 +1,55 @@
+{
+  "anthropic": {
+    "models": { "claude-free": { "cost": { "input": 0, "output": 0 } } }
+  },
+  "opencode": {
+    "api": "https://opencode.ai/inference/openai/v1",
+    "npm": "@ai-sdk/openai-compatible",
+    "models": {
+      "free-chat": {
+        "name": "Free Chat",
+        "cost": { "input": 0, "output": 0, "cache_read": 0 },
+        "limit": { "context": 200000, "output": 32000 },
+        "modalities": { "input": ["text", "image"], "output": ["text"] }
+      },
+      "free-responses": {
+        "name": "Free Responses",
+        "cost": { "input": 0, "output": 0 },
+        "limit": { "context": 1048576, "output": 131072 },
+        "provider": {
+          "npm": "@ai-sdk/openai",
+          "api": "https://opencode.ai/inference/openai/v1"
+        }
+      },
+      "free-messages": {
+        "name": "Free Messages",
+        "cost": { "input": 0, "output": 0 },
+        "limit": { "context": 204800 },
+        "provider": {
+          "npm": "@ai-sdk/anthropic",
+          "api": "https://opencode.ai/inference/anthropic/v1"
+        }
+      },
+      "free-retired": {
+        "name": "Retired",
+        "status": "deprecated",
+        "cost": { "input": 0, "output": 0 }
+      },
+      "free-gemini": {
+        "name": "Free Gemini",
+        "cost": { "input": 0, "output": 0 },
+        "provider": { "npm": "@ai-sdk/google" }
+      },
+      "free-not-live": {
+        "name": "Not Live",
+        "cost": { "input": 0, "output": 0 }
+      },
+      "paid": { "name": "Paid", "cost": { "input": 1.2, "output": 0 } },
+      "tiered": {
+        "name": "Tiered",
+        "cost": { "input": 0, "output": 0, "context_over_200k": { "input": 2 } }
+      },
+      "no-cost": { "name": "No Cost" }
+    }
+  }
+}

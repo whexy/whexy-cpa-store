@@ -175,8 +175,10 @@ func TestLoginPollRespectsIntervalAndSucceeds(t *testing.T) {
 			t.Fatalf("metadata %s = %v", field, auth.Metadata[field])
 		}
 	}
-	if auth.Attributes["refresh_interval_seconds"] != "1296000" || !auth.NextRefreshAfter.Equal(wantExpiry.Add(-15*24*time.Hour)) {
-		t.Fatalf("refresh schedule = %v, %v", auth.Attributes, auth.NextRefreshAfter)
+	// The poll answers with the file's Go auth; CPA parses the saved file
+	// into both families' auths. The plugin, not CPA, schedules refreshes.
+	if auth.Attributes["family"] != "go" || auth.Attributes["refresh_interval_seconds"] != "" || !auth.NextRefreshAfter.IsZero() {
+		t.Fatalf("attributes = %v, next refresh %v", auth.Attributes, auth.NextRefreshAfter)
 	}
 	for _, req := range gateway.requests {
 		if strings.HasSuffix(req.URL, "/api/user") || strings.HasSuffix(req.URL, "/api/orgs") {

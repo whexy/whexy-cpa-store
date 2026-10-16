@@ -156,6 +156,15 @@ type settings struct {
 	// <ZenModelPrefix>/<id>. The page edits this list; a Zen model stays out
 	// of CPA until it is named here, since those calls bill Console credits.
 	ZenModels []string
+	// ZenBareModels are the OpenCode Zen model IDs also served under their
+	// bare ID. They are model aliases of the Zen auths alone, because CPA's
+	// oauth-model-alias maps an alias to one upstream ID per provider and a
+	// Go model may own the same alias there.
+	ZenBareModels []string
+	// FreeDisabledModels are OpenCode Free model IDs kept out of CPA, and
+	// FreeBareModels those also served under their bare ID.
+	FreeDisabledModels []string
+	FreeBareModels     []string
 	// CloakFreeModels presents free OpenCode Zen models as the OpenCode
 	// client, which is the only caller OpenCode's free tier answers.
 	CloakFreeModels bool
@@ -163,15 +172,19 @@ type settings struct {
 }
 
 type rawSettings struct {
-	BaseURL         string   `yaml:"base_url"`
-	ConsoleURL      string   `yaml:"console_url"`
-	ModelPrefix     string   `yaml:"model_prefix"`
-	DisablePrefix   bool     `yaml:"disable_prefix"`
-	DisabledModels  []string `yaml:"disabled_models"`
-	ZenModelPrefix  string   `yaml:"zen_model_prefix"`
-	ZenModels       []string `yaml:"zen_models"`
-	CloakFreeModels *bool    `yaml:"cloak_free_models"`
-	UserAgent       string   `yaml:"user_agent"`
+	BaseURL        string   `yaml:"base_url"`
+	ConsoleURL     string   `yaml:"console_url"`
+	ModelPrefix    string   `yaml:"model_prefix"`
+	DisablePrefix  bool     `yaml:"disable_prefix"`
+	DisabledModels []string `yaml:"disabled_models"`
+	ZenModelPrefix string   `yaml:"zen_model_prefix"`
+	ZenModels      []string `yaml:"zen_models"`
+	ZenBareModels  []string `yaml:"zen_bare_models"`
+	// FreeDisabledModels and FreeBareModels are the OpenCode Free lists.
+	FreeDisabledModels []string `yaml:"free_disabled_models"`
+	FreeBareModels     []string `yaml:"free_bare_models"`
+	CloakFreeModels    *bool    `yaml:"cloak_free_models"`
+	UserAgent          string   `yaml:"user_agent"`
 }
 
 var currentConfig atomic.Pointer[settings]
@@ -221,9 +234,10 @@ func (s settings) zenBaseURL() string {
 }
 
 // gatewayBase is the canonical root the catalog's base URLs are rebased from,
-// and the configured base they are rebased onto.
+// and the configured base they are rebased onto. Free models are served by
+// the pay-as-you-go gateway.
 func (s settings) gatewayBase(family modelFamily) (root, base string) {
-	if family == familyZen {
+	if family != familyGo {
 		return defaultZenBaseURL, s.zenBaseURL()
 	}
 	return defaultBaseURL, s.BaseURL
@@ -237,6 +251,33 @@ func (s settings) modelDisabled(upstreamID string) bool {
 // OpenCode Zen model.
 func (s settings) zenEnabled(upstreamID string) bool {
 	return containsFold(s.ZenModels, upstreamID)
+}
+
+// zenBare reports whether a Zen model is also served under its bare ID.
+func (s settings) zenBare(upstreamID string) bool {
+	return containsFold(s.ZenBareModels, upstreamID)
+}
+
+func (s settings) freeDisabled(upstreamID string) bool {
+	return containsFold(s.FreeDisabledModels, upstreamID)
+}
+
+func (s settings) freeBare(upstreamID string) bool {
+	return containsFold(s.FreeBareModels, upstreamID)
+}
+
+// aliasKey covers the settings auth.parse turns into the Zen and Free
+// auths' model aliases.
+func (s settings) aliasKey() string {
+	list := func(ids []string) string {
+		lower := make([]string, 0, len(ids))
+		for _, id := range ids {
+			lower = append(lower, strings.ToLower(id))
+		}
+		slices.Sort(lower)
+		return strings.Join(lower, ",")
+	}
+	return s.zenPrefix() + "|" + list(s.ZenBareModels) + "|" + list(s.FreeBareModels)
 }
 
 func containsFold(ids []string, id string) bool {
@@ -291,6 +332,7 @@ func cliproxy_plugin_init(host *C.cliproxy_host_api, plugin *C.cliproxy_plugin_a
 	plugin.free_buffer = C.cliproxy_plugin_free_fn(C.cliproxyPluginFree)
 	plugin.shutdown = C.cliproxy_plugin_shutdown_fn(C.cliproxyPluginShutdown)
 	startCatalogWatch()
+	startLoginRefresh()
 	return 0
 }
 
@@ -407,7 +449,7 @@ func pluginRegistration() registration {
 				{Name: "base_url", Type: pluginapi.ConfigFieldTypeString, Description: "OpenCode Go gateway base URL. Default " + defaultBaseURL + "."},
 				{Name: "console_url", Type: pluginapi.ConfigFieldTypeString, Description: "OpenCode Console base URL, used for login, token refresh and the model catalog. Default: the base_url host followed by /console, which is " + defaultConsoleURL + " for the default base_url."},
 				{Name: "model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every OpenCode Go model ID, as in opencode-go/kimi-k3. Default " + defaultModelPrefix + ". To share a bare ID such as deepseek-v4-pro with another provider, turn on Bare ID for that model on the OpenCode Go page. disable_prefix overrides this setting."},
-				{Name: "zen_model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every OpenCode Zen model ID, as in " + defaultZenModelPrefix + "/gpt-5.5. Default " + defaultZenModelPrefix + ". Zen models share upstream IDs with Go models, so their prefix is never dropped."},
+				{Name: "zen_model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every OpenCode Zen model ID, as in " + defaultZenModelPrefix + "/gpt-5.5. Default " + defaultZenModelPrefix + ". Zen models share upstream IDs with Go models, so the prefix stays; Bare ID on the OpenCode Go page also serves one model under its bare ID."},
 				{Name: "cloak_free_models", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Present free OpenCode Zen models as the OpenCode client, which is the only caller the free tier answers. The plugin adds a placeholder tool that gate requires and tells the model not to call it; a caller that declares its own read tool keeps it. Nothing else about the request changes and no credential is added. Default on; turning it off makes those models fail the way any other non-OpenCode client fails."},
 				{Name: "disable_prefix", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Serve every OpenCode Go model under its bare ID only, as in kimi-k3, and ignore model_prefix. A bare ID shares routing with every other provider that serves the same ID, so disable the models you do not want on the OpenCode Go page. Zen model IDs keep their prefix."},
 				{Name: "user_agent", Type: pluginapi.ConfigFieldTypeString, Description: "User-Agent sent upstream when the client sends none. Default whexy-cpa-opencode-go/" + pluginVersion + "."},
@@ -439,8 +481,20 @@ func configure(raw []byte) error {
 	if errParse != nil {
 		return errParse
 	}
-	currentConfig.Store(&cfg)
+	previous := currentConfig.Swap(&cfg)
+	// CPA asks for every auth's models again after a config change, but
+	// keeps the attributes auth.parse gave them, so new Zen aliases need the
+	// files parsed again.
+	if previous != nil && previous.aliasKey() != cfg.aliasKey() {
+		reparseLater()
+	}
 	return nil
+}
+
+// reparseLater runs reparseAuthFiles off the host's config call; tests
+// replace it.
+var reparseLater = func() {
+	startBackground(func(ctx context.Context) { reparseAuthFiles(ctx, newHost("")) })
 }
 
 func parseSettings(configYAML []byte) (settings, error) {
@@ -482,6 +536,21 @@ func parseSettings(configYAML []byte) (settings, error) {
 	for _, id := range raw.ZenModels {
 		if id = strings.TrimSpace(id); id != "" && !cfg.zenEnabled(id) {
 			cfg.ZenModels = append(cfg.ZenModels, id)
+		}
+	}
+	for _, id := range raw.ZenBareModels {
+		if id = strings.TrimSpace(id); id != "" && !cfg.zenBare(id) {
+			cfg.ZenBareModels = append(cfg.ZenBareModels, id)
+		}
+	}
+	for _, id := range raw.FreeDisabledModels {
+		if id = strings.TrimSpace(id); id != "" && !cfg.freeDisabled(id) {
+			cfg.FreeDisabledModels = append(cfg.FreeDisabledModels, id)
+		}
+	}
+	for _, id := range raw.FreeBareModels {
+		if id = strings.TrimSpace(id); id != "" && !cfg.freeBare(id) {
+			cfg.FreeBareModels = append(cfg.FreeBareModels, id)
 		}
 	}
 	cfg.CloakFreeModels = true

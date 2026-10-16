@@ -145,9 +145,12 @@ func TestLoadKeyFilesGroupsAuthsByFile(t *testing.T) {
 	if len(files[0].File.Keys) != 2 || len(files[0].Auths) != 2 {
 		t.Fatalf("source file = %+v", files[0])
 	}
-	runtime, ok := files[0].runtimeAuth(keyIDFor(testKeyB))
+	runtime, ok := files[0].runtimeAuth(keyIDFor(testKeyB), familyGo)
 	if !ok || runtime.AuthIndex != "idx-opencode-go.json#"+keyIDFor(testKeyB) {
 		t.Fatalf("runtime = %+v, %v", runtime, ok)
+	}
+	if zen, ok := files[0].runtimeAuth(keyIDFor(testKeyB), familyZen); ok {
+		t.Fatalf("a key with OpenCode Zen off has a Zen auth: %+v", zen)
 	}
 	index, entry, found := locateKey(files, keyIDFor(testKeyC))
 	if !found || index != 1 || entry.APIKey != testKeyC {

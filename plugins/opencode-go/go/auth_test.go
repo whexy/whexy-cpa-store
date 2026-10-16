@@ -57,9 +57,11 @@ func TestParseKeyFileSingleKeyAndFileDisabled(t *testing.T) {
 	}
 }
 
-func TestParseAuthsExpandsOneAuthPerKey(t *testing.T) {
-	raw := multiKeyFile(t)
-	resp := parseAuths(pluginapi.AuthParseRequest{Provider: "opencode-go", Path: "/data/auths/opencode-go.json", FileName: "opencode-go.json", RawJSON: raw})
+// Each key is an auth per family it serves: OpenCode Go unless it says
+// "go": false, OpenCode Zen only when it says "zen": true.
+func TestParseAuthsServesTheFamiliesEachKeyHasOn(t *testing.T) {
+	useSettings(t, defaultSettings())
+	resp := parseAuths(pluginapi.AuthParseRequest{Provider: "opencode-go", Path: "/data/auths/opencode-go.json", FileName: "opencode-go.json", RawJSON: multiKeyFile(t)})
 	if !resp.Handled || len(resp.Auths) != 2 {
 		t.Fatalf("resp = %+v", resp)
 	}
@@ -68,7 +70,7 @@ func TestParseAuthsExpandsOneAuthPerKey(t *testing.T) {
 	if a.ID != "opencode-go.json#"+idA || b.ID != "opencode-go.json#"+idB {
 		t.Fatalf("ids = %q %q", a.ID, b.ID)
 	}
-	if a.Provider != "opencode-go" || a.Label != "Work" || a.Disabled || a.Attributes["key_id"] != idA {
+	if a.Provider != "opencode-go" || a.Label != "Work" || a.Disabled || a.Attributes["key_id"] != idA || a.Attributes["family"] != "go" {
 		t.Fatalf("a = %+v", a)
 	}
 	if !b.Disabled || b.Label != "OpenCode Go oc_sk_…2222" || b.Attributes["key_id"] != idB {
@@ -80,16 +82,103 @@ func TestParseAuthsExpandsOneAuthPerKey(t *testing.T) {
 	if a.FileName != "" || len(a.Metadata) != 0 {
 		t.Fatalf("a sets fields the host derives: %+v", a)
 	}
+	// The top-level priority is CPA's to apply, to every family.
+	if _, ok := a.Attributes["priority"]; ok {
+		t.Fatalf("a attributes = %v", a.Attributes)
+	}
+
+	mixed := `{"type":"opencode-go","keys":[{"label":"Zen","api_key":"` + testKeyA + `","go":false,"zen":true},{"label":"Both","api_key":"` + testKeyB + `","zen":true},{"label":"Off","api_key":"` + testKeyC + `","go":false}]}`
+	auths := parseAuths(pluginapi.AuthParseRequest{FileName: "opencode-go.json", RawJSON: []byte(mixed)}).Auths
+	var got []string
+	for _, auth := range auths {
+		got = append(got, auth.ID+"="+auth.Label+"/"+auth.Attributes["family"])
+	}
+	want := []string{
+		"opencode-go.json#" + idA + "#zen=Zen · OpenCode Zen/zen",
+		"opencode-go.json#" + idB + "=Both/go",
+		"opencode-go.json#" + idB + "#zen=Both · OpenCode Zen/zen",
+	}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("auths = %v", got)
+	}
 }
 
-func TestParseAuthsSingleKeyKeepsWholeFile(t *testing.T) {
+// A file that yields one auth is an ordinary file auth CPA may write back,
+// so it carries the whole file; one that serves nothing stays known to the
+// host as a disabled auth.
+func TestParseAuthsSingleAuthAndPlaceholder(t *testing.T) {
+	useSettings(t, defaultSettings())
 	raw := []byte(`{"type":"opencode-go","keys":[{"label":"Only","api_key":"` + testKeyA + `"}],"proxy_url":"socks5://proxy:1080"}`)
 	resp := parseAuths(pluginapi.AuthParseRequest{FileName: "sub/opencode-go.json", RawJSON: raw})
-	if !resp.Handled || len(resp.Auths) != 0 {
+	if !resp.Handled || len(resp.Auths) != 0 || resp.Auth.ID != "opencode-go.json#"+keyIDFor(testKeyA) || resp.Auth.Label != "Only" || string(resp.Auth.StorageJSON) != string(raw) {
 		t.Fatalf("resp = %+v", resp)
 	}
-	if resp.Auth.ID != "opencode-go.json#"+keyIDFor(testKeyA) || string(resp.Auth.StorageJSON) != string(raw) || resp.Auth.Label != "Only" {
-		t.Fatalf("auth = %+v", resp.Auth)
+	zenOnly := []byte(`{"type":"opencode-go","api_key":"` + testKeyA + `","go":"false","zen":true}`)
+	resp = parseAuths(pluginapi.AuthParseRequest{FileName: "k.json", RawJSON: zenOnly})
+	if resp.Auth.ID != "k.json#"+keyIDFor(testKeyA)+"#zen" || resp.Auth.Attributes["family"] != "zen" || string(resp.Auth.StorageJSON) != string(zenOnly) {
+		t.Fatalf("zen only = %+v", resp)
+	}
+	for name, raw := range map[string]string{
+		"key":   `{"type":"opencode-go","keys":[{"api_key":"` + testKeyA + `","go":false}]}`,
+		"login": string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"go": false})),
+	} {
+		resp := parseAuths(pluginapi.AuthParseRequest{FileName: name + ".json", RawJSON: []byte(raw)})
+		if !resp.Handled || len(resp.Auths) != 0 || resp.Auth.ID != name+".json" || !resp.Auth.Disabled ||
+			!strings.HasSuffix(resp.Auth.Label, "(OpenCode Go and Zen off)") || string(resp.Auth.StorageJSON) != raw {
+			t.Fatalf("%s placeholder = %+v", name, resp)
+		}
+	}
+}
+
+func TestKeyFamiliesRoundTrip(t *testing.T) {
+	file, errParse := parseKeyFile([]byte(`{"type":"opencode-go","api_key":"` + testKeyA + `","go":false,"zen":"true"}`))
+	if errParse != nil || len(file.Keys) != 1 || file.Keys[0].families() != (familySet{Zen: true}) {
+		t.Fatalf("file = %+v, %v", file, errParse)
+	}
+	file.Keys[0].setFamilies(familySet{Go: true})
+	raw, _ := file.marshal()
+	if strings.Contains(string(raw), `"go"`) || strings.Contains(string(raw), `"zen"`) {
+		t.Fatalf("defaults written: %s", raw)
+	}
+	file.Keys[0].setFamilies(familySet{Zen: true})
+	raw, _ = file.marshal()
+	again, _ := parseKeyFile(raw)
+	if !strings.Contains(string(raw), `"go": false`) || !strings.Contains(string(raw), `"zen": true`) || again.Keys[0].families() != (familySet{Zen: true}) {
+		t.Fatalf("marshal = %s", raw)
+	}
+}
+
+// Each family's auths take the file's routing fields of that family, and
+// only the Zen auths carry the Zen Bare ID aliases.
+func TestParseAuthsFamilyRoutingAndAliases(t *testing.T) {
+	cfg := defaultSettings()
+	cfg.ZenBareModels = []string{"kimi-k3", "gpt-6-luna"}
+	useSettings(t, cfg)
+	extra := map[string]any{"go_priority": 2, "go_weight": "5", "zen_priority": -2, "zen_weight": 2000000}
+	extra["zen"] = true
+	key := mustJSON(t, map[string]any{"type": "opencode-go", "api_key": testKeyA, "zen": true, "go_priority": 2, "go_weight": "5", "zen_priority": -2, "zen_weight": 2000000})
+	login := loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, extra)
+	for name, raw := range map[string][]byte{"key": key, "login": login} {
+		auths := parseAuths(pluginapi.AuthParseRequest{FileName: name + ".json", RawJSON: raw}).Auths
+		if len(auths) != 2 {
+			t.Fatalf("%s auths = %+v", name, auths)
+		}
+		goAuth, zenAuth := auths[0], auths[1]
+		if goAuth.Attributes["priority"] != "2" || goAuth.Attributes["weight"] != "5" || goAuth.Attributes["model_aliases"] != "" {
+			t.Fatalf("%s go attributes = %v", name, goAuth.Attributes)
+		}
+		// CPA refuses every auth of a file with an invalid weight, so an out
+		// of range one is left to CPA's default.
+		if _, ok := zenAuth.Attributes["weight"]; ok || zenAuth.Attributes["priority"] != "-2" {
+			t.Fatalf("%s zen attributes = %v", name, zenAuth.Attributes)
+		}
+		want := `[{"name":"opencode/kimi-k3","alias":"kimi-k3","fork":true},{"name":"opencode/gpt-6-luna","alias":"gpt-6-luna","fork":true}]`
+		if zenAuth.Attributes["model_aliases"] != want {
+			t.Fatalf("%s zen aliases = %s", name, zenAuth.Attributes["model_aliases"])
+		}
+		if authFamily(goAuth.Attributes) != familyGo || authFamily(zenAuth.Attributes) != familyZen || authFamily(nil) != familyGo {
+			t.Fatal("family attribute")
+		}
 	}
 }
 
@@ -145,6 +234,7 @@ func hostStorageJSON(t *testing.T, storage []byte, metadata map[string]any) []by
 func TestResolveAuthKey(t *testing.T) {
 	physical := multiKeyFile(t)
 	auths := parseAuths(pluginapi.AuthParseRequest{FileName: "opencode-go.json", RawJSON: physical}).Auths
+	zenAuths := parseAuths(pluginapi.AuthParseRequest{FileName: "opencode-go.json", RawJSON: []byte(`{"type":"opencode-go","keys":[{"api_key":"` + testKeyA + `"},{"api_key":"` + testKeyB + `","go":false,"zen":true}]}`)}).Auths
 	idA, idB := keyIDFor(testKeyA), keyIDFor(testKeyB)
 
 	tests := []struct {
@@ -156,6 +246,7 @@ func TestResolveAuthKey(t *testing.T) {
 		wantErr    string
 	}{
 		{name: "executor per-key storage", storage: hostStorageJSON(t, auths[1].StorageJSON, map[string]any{"disabled": true}), attributes: auths[1].Attributes, wantKey: testKeyB},
+		{name: "zen auth", storage: hostStorageJSON(t, zenAuths[1].StorageJSON, nil), attributes: zenAuths[1].Attributes, wantKey: testKeyB},
 		{name: "quota physical file", storage: physical, attributes: map[string]string{"key_id": idA, "path": "/a/opencode-go.json"}, wantKey: testKeyA},
 		{name: "key id from metadata", storage: physical, metadata: map[string]any{"key_id": idB}, wantKey: testKeyB},
 		{name: "single-key file without key id", storage: []byte(`{"type":"opencode-go","api_key":"` + testKeyC + `"}`), wantKey: testKeyC},

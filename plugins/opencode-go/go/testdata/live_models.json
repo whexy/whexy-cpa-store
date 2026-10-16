@@ -1,0 +1,13 @@
+{
+  "object": "list",
+  "data": [
+    { "id": "free-chat" },
+    { "id": "free-responses" },
+    { "id": "free-messages" },
+    { "id": "free-retired" },
+    { "id": "free-gemini" },
+    { "id": "paid" },
+    { "id": "tiered" },
+    { "id": "no-cost" }
+  ]
+}

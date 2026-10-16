@@ -25,11 +25,12 @@ const catalogRecheckInterval = 3 * time.Hour
 var registrationWait = 5 * time.Second
 
 // storedCredential is an enabled credential that can call OpenCode, with
-// the file it lives in.
+// the file it lives in and the families it serves.
 type storedCredential struct {
-	cred  credential
-	file  string
-	login bool
+	cred     credential
+	file     string
+	kind     fileKind
+	families familySet
 }
 
 // usableCredentials lists enabled, unexpired credentials, logins first.
@@ -41,12 +42,12 @@ func usableCredentials(files storedAuthFiles) []storedCredential {
 		if login.Disabled || login.expired(now) {
 			continue
 		}
-		out = append(out, storedCredential{cred: login.credential(), file: stored.Name, login: true})
+		out = append(out, storedCredential{cred: login.credential(), file: stored.Name, kind: loginFileKind, families: login.families()})
 	}
 	for _, file := range files.Keys {
 		for _, entry := range file.File.Keys {
 			if !entry.Disabled {
-				out = append(out, storedCredential{cred: keyCredential(entry), file: file.Name})
+				out = append(out, storedCredential{cred: keyCredential(entry), file: file.Name, kind: keyFileKind, families: entry.families()})
 			}
 		}
 	}
@@ -61,8 +62,8 @@ type refreshReport struct {
 	Removed   []string  `json:"removed"`
 	// Files are the auth files rewritten so CPA registers their models again.
 	Files []string `json:"files"`
-	// Registered reports that CPA asked for the models of every rewritten
-	// credential before the refresh answered.
+	// Registered reports that CPA asked for the models of every auth of the
+	// rewritten files before the refresh answered.
 	Registered bool     `json:"registered"`
 	Failures   []string `json:"failures,omitempty"`
 }
@@ -74,10 +75,11 @@ type refreshOptions struct {
 	wait  time.Duration
 }
 
-// refreshCatalogs fetches every usable credential's catalog and rewrites
-// the files of those whose list differs from what CPA registered. Rewriting
-// a file changes catalog_refreshed_at on each of its auths, which makes CPA
-// call model.for_auth for them; that answers from the catalog just cached.
+// refreshCatalogs fetches every usable credential's catalog, and the free
+// catalog while OpenCode Free is on, and rewrites the files of the auths
+// whose list differs from what CPA registered. Rewriting a file changes
+// catalog_refreshed_at on each of its auths, which makes CPA call
+// model.for_auth for them; that answers from the catalog just cached.
 func refreshCatalogs(ctx context.Context, doer httpDoer, opts refreshOptions) (refreshReport, error) {
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
@@ -85,48 +87,57 @@ func refreshCatalogs(ctx context.Context, doer httpDoer, opts refreshOptions) (r
 	}
 	cfg := currentSettings()
 	report := refreshReport{Added: []string{}, Removed: []string{}, Files: []string{}}
-	added, removed := map[string]bool{}, map[string]bool{}
+	diff := registrationDiff{added: map[string]bool{}, removed: map[string]bool{}}
 	pending := map[string][]string{}
-	loginFiles := map[string]bool{}
+	kinds := map[string]fileKind{}
+	fetched := func(at time.Time, ok bool) {
+		if ok && at.After(report.FetchedAt) {
+			report.FetchedAt = at
+		}
+	}
 	for _, stored := range usableCredentials(files) {
 		cat, errFetch := catalogs.refresh(ctx, doer, cfg, stored.cred)
 		if errFetch != nil {
 			report.Failures = append(report.Failures, stored.cred.Name+": "+errFetch.Error())
 			continue
 		}
-		if at, ok := catalogs.fetchedAt(stored.cred.ID); ok && at.After(report.FetchedAt) {
-			report.FetchedAt = at
-		}
-		reg, known := catalogs.registeredFor(stored.cred.ID)
-		if known {
-			if reg.fingerprint == cat.fingerprint(cfg) && !opts.force {
+		fetched(catalogs.fetchedAt(stored.cred.ID))
+		var keys []string
+		changed := false
+		for _, family := range []modelFamily{familyGo, familyZen} {
+			if !stored.families.has(family) {
 				continue
 			}
-			now := cat.exposedIDs(cfg)
-			for _, id := range now {
-				if !slices.Contains(reg.ids, id) {
-					added[id] = true
-				}
-			}
-			for _, id := range reg.ids {
-				if !slices.Contains(now, id) {
-					removed[id] = true
-				}
+			keys = append(keys, registrationKey(stored.cred.ID, family))
+			changed = diff.compare(stored.cred.ID, family, cfg, cat) || changed
+		}
+		if len(keys) == 0 || (!changed && !opts.force) {
+			continue
+		}
+		pending[stored.file] = append(pending[stored.file], keys...)
+		kinds[stored.file] = stored.kind
+	}
+	if free := files.Free; free != nil && !free.File.Disabled {
+		cat, errFetch := freeCatalogs.refresh(ctx, doer, cfg)
+		if errFetch != nil {
+			report.Failures = append(report.Failures, freeDisplayName+": "+errFetch.Error())
+		} else {
+			fetched(freeCatalogs.fetchedAt())
+			if diff.compare(freeCredentialID, familyFree, cfg, cat) || opts.force {
+				pending[free.Name] = []string{registrationKey(freeCredentialID, familyFree)}
+				kinds[free.Name] = freeFileKind
 			}
 		}
-		pending[stored.file] = append(pending[stored.file], stored.cred.ID)
-		loginFiles[stored.file] = stored.login
 	}
-	report.Added, report.Removed = sortedKeys(added), sortedKeys(removed)
+	report.Added, report.Removed = sortedKeys(diff.added), sortedKeys(diff.removed)
 	if len(pending) == 0 {
 		report.Registered = len(report.Failures) == 0
 		return report, nil
 	}
 	started := time.Now()
-	mark, _ := json.Marshal(started.UTC().Format(time.RFC3339Nano))
 	var waitFor []string
 	for _, name := range sortedKeys(pending) {
-		if errSave := setFileFields(name, loginFiles[name], fileFields{catalogRefreshedField: mark}); errSave != nil {
+		if errSave := stampFile(name, kinds[name], started); errSave != nil {
 			report.Failures = append(report.Failures, name+": "+errSave.Error())
 			continue
 		}
@@ -137,14 +148,78 @@ func refreshCatalogs(ctx context.Context, doer httpDoer, opts refreshOptions) (r
 	return report, nil
 }
 
-// awaitRegistration waits until model.for_auth has run for every credential
-// since started.
-func awaitRegistration(ctx context.Context, credIDs []string, started time.Time, limit time.Duration) bool {
+// registrationDiff collects the model IDs a refresh adds and removes.
+type registrationDiff struct {
+	added, removed map[string]bool
+}
+
+// compare reports whether CPA must register one auth's list again: it has
+// not registered it yet, or the catalog changed what it serves.
+func (d registrationDiff) compare(credID string, family modelFamily, cfg settings, cat catalog) bool {
+	reg, known := catalogs.registeredFor(credID, family)
+	if !known {
+		return true
+	}
+	if reg.fingerprint == cat.fingerprint(cfg, family) {
+		return false
+	}
+	now := cat.exposedIDs(cfg, family)
+	for _, id := range now {
+		if !slices.Contains(reg.ids, id) {
+			d.added[id] = true
+		}
+	}
+	for _, id := range reg.ids {
+		if !slices.Contains(now, id) {
+			d.removed[id] = true
+		}
+	}
+	return true
+}
+
+// stampFile sets catalog_refreshed_at on a file, which changes every auth
+// it yields, so CPA parses it and asks for the auths' models again.
+func stampFile(name string, kind fileKind, at time.Time) error {
+	mark, _ := json.Marshal(at.UTC().Format(time.RFC3339Nano))
+	return setFileFields(name, kind, fileFields{catalogRefreshedField: mark})
+}
+
+// reparseAuthFiles makes CPA parse every OpenCode Go auth file again, for
+// settings auth.parse reads.
+func reparseAuthFiles(ctx context.Context, h host) {
+	files, errLoad := loadAuthFiles()
+	if errLoad != nil {
+		h.Log("warn", "OpenCode Go settings changed but the auth files could not be read; CPA applies them when the files next change", map[string]any{"error": errLoad.Error()})
+		return
+	}
+	now := time.Now()
+	stamp := func(name string, kind fileKind) {
+		if ctx.Err() != nil {
+			return
+		}
+		if errSave := stampFile(name, kind, now); errSave != nil {
+			h.Log("warn", "OpenCode Go settings changed but an auth file could not be rewritten", map[string]any{"file": name, "error": errSave.Error()})
+		}
+	}
+	for _, stored := range files.Logins {
+		stamp(stored.Name, loginFileKind)
+	}
+	for _, stored := range files.Keys {
+		stamp(stored.Name, keyFileKind)
+	}
+	if files.Free != nil {
+		stamp(files.Free.Name, freeFileKind)
+	}
+}
+
+// awaitRegistration waits until model.for_auth has run for every
+// registration key since started.
+func awaitRegistration(ctx context.Context, keys []string, started time.Time, limit time.Duration) bool {
 	deadline := time.Now().Add(limit)
 	for {
 		done := true
-		for _, id := range credIDs {
-			if reg, ok := catalogs.registeredFor(id); !ok || reg.at.Before(started) {
+		for _, key := range keys {
+			if reg, ok := catalogs.registration(key); !ok || reg.at.Before(started) {
 				done = false
 				break
 			}
@@ -238,9 +313,23 @@ type modelsView struct {
 	Error  string      `json:"error,omitempty"`
 	Models []modelView `json:"models"`
 	// Unregistered are catalog models CPA has not registered for the
-	// credential yet; Unlisted are registered models the catalog dropped.
+	// credential's auths yet; Unlisted are registered models the catalog
+	// dropped.
 	Unregistered []string `json:"unregistered"`
 	Unlisted     []string `json:"unlisted"`
+}
+
+func newModelView(cfg settings, model catalogModel) modelView {
+	return modelView{
+		ID:         exposedModelID(cfg, model.Family, model.UpstreamID),
+		UpstreamID: model.UpstreamID,
+		Name:       model.Name,
+		Protocol:   protocolLabels[model.Protocol],
+		Family:     string(model.Family),
+		Context:    model.ContextLength,
+		Output:     model.OutputLimit,
+		Free:       model.Free,
+	}
 }
 
 var protocolLabels = map[sdktranslator.Format]string{
@@ -281,19 +370,14 @@ func handleListModels(h host, _ pluginapi.ManagementRequest) (int, any, error) {
 		view.FetchedAt = at.UTC().Format(time.RFC3339)
 	}
 	for _, model := range append(append([]catalogModel{}, cat.Models...), cat.Zen...) {
-		view.Models = append(view.Models, modelView{
-			ID:         exposedModelID(cfg, model.Family, model.UpstreamID),
-			UpstreamID: model.UpstreamID,
-			Name:       model.Name,
-			Protocol:   protocolLabels[model.Protocol],
-			Family:     string(model.Family),
-			Context:    model.ContextLength,
-			Output:     model.OutputLimit,
-			Free:       model.Free,
-		})
+		view.Models = append(view.Models, newModelView(cfg, model))
 	}
-	if reg, ok := catalogs.registeredFor(chosen.cred.ID); ok {
-		ids := cat.exposedIDs(cfg)
+	for _, family := range []modelFamily{familyGo, familyZen} {
+		reg, ok := catalogs.registeredFor(chosen.cred.ID, family)
+		if !ok {
+			continue
+		}
+		ids := cat.exposedIDs(cfg, family)
 		for _, id := range ids {
 			if !slices.Contains(reg.ids, id) {
 				view.Unregistered = append(view.Unregistered, id)
@@ -317,7 +401,7 @@ func handleRefreshModels(h host, _ pluginapi.ManagementRequest) (int, any, error
 		return 0, nil, failf(http.StatusBadGateway, "Could not read the OpenCode catalog: %s", strings.Join(report.Failures, "; "))
 	}
 	if len(report.Files) == 0 {
-		return 0, nil, failf(http.StatusConflict, "No enabled login or key can read the catalog.")
+		return 0, nil, failf(http.StatusConflict, "Nothing serves models: no enabled login or key has OpenCode Go or Zen on, and OpenCode Free is off.")
 	}
 	return http.StatusOK, report, nil
 }

@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
@@ -27,12 +28,14 @@ var snapshotJSON []byte
 const catalogTTL = 10 * time.Minute
 
 // modelFamily is which OpenCode catalog a model belongs to: the Go
-// subscription gateway or the pay-as-you-go Console (OpenCode Zen) gateway.
+// subscription gateway, the pay-as-you-go Console (OpenCode Zen) gateway, or
+// the free models that gateway serves without a key (OpenCode Free).
 type modelFamily string
 
 const (
-	familyGo  modelFamily = "go"
-	familyZen modelFamily = "zen"
+	familyGo   modelFamily = "go"
+	familyZen  modelFamily = "zen"
+	familyFree modelFamily = "free"
 )
 
 // catalog is the model list of one workspace: the Go subscription models and
@@ -45,6 +48,9 @@ type catalog struct {
 	// Console has enabled. The plugin serves one only once the page turns it
 	// on, because those calls bill Console credits.
 	Zen []catalogModel
+	// Free holds the models OpenCode serves without a key; it is read from
+	// public catalogs, not a workspace's.
+	Free []catalogModel
 }
 
 // catalogModel is one enabled model as the catalog describes it.
@@ -260,7 +266,7 @@ func endpointFor(cfg settings, family modelFamily, protocol sdktranslator.Format
 // none is dropped in favour of the model's protocol rather than aiming a chat
 // request at a path the gateway does not serve it from.
 func rebasablePath(family modelFamily, rel string) bool {
-	if family != familyZen {
+	if family == familyGo {
 		return true
 	}
 	return strings.HasPrefix(rel, "openai/") || strings.HasPrefix(rel, "anthropic/")
@@ -272,8 +278,11 @@ func rebasablePath(family modelFamily, rel string) bool {
 // that a native provider serves would share its traffic.
 func exposedModelID(cfg settings, family modelFamily, upstreamID string) string {
 	prefix := cfg.prefix()
-	if family == familyZen {
+	switch family {
+	case familyZen:
 		prefix = cfg.zenPrefix()
+	case familyFree:
+		prefix = freeModelPrefix
 	}
 	if prefix == "" {
 		return upstreamID
@@ -298,27 +307,49 @@ func (m catalogModel) route(cfg settings) modelRoute {
 	}
 }
 
-// servedModels are the catalog models the settings register with CPA: every
-// Go model except the disabled ones, and the Zen models the page has turned
-// on, Go models first.
-func (c catalog) servedModels(cfg settings) []catalogModel {
-	out := make([]catalogModel, 0, len(c.Models)+len(c.Zen))
-	for _, model := range c.Models {
-		if !cfg.modelDisabled(model.UpstreamID) {
-			out = append(out, model)
+// served are the catalog models of one family the settings register with
+// CPA: every Go or Free model except the disabled ones, or the Zen models
+// the page has turned on.
+func (c catalog) served(cfg settings, family modelFamily) []catalogModel {
+	var out []catalogModel
+	switch family {
+	case familyZen:
+		for _, model := range c.Zen {
+			if cfg.zenEnabled(model.UpstreamID) {
+				out = append(out, model)
+			}
 		}
-	}
-	for _, model := range c.Zen {
-		if cfg.zenEnabled(model.UpstreamID) {
-			out = append(out, model)
+	case familyFree:
+		for _, model := range c.Free {
+			if !cfg.freeDisabled(model.UpstreamID) {
+				out = append(out, model)
+			}
+		}
+	default:
+		for _, model := range c.Models {
+			if !cfg.modelDisabled(model.UpstreamID) {
+				out = append(out, model)
+			}
 		}
 	}
 	return out
 }
 
-func (c catalog) modelInfos(cfg settings) []pluginapi.ModelInfo {
+// servedCount is how many models a credential serves through the families
+// it has on.
+func (c catalog) servedCount(cfg settings, set familySet) int {
+	count := 0
+	for _, family := range []modelFamily{familyGo, familyZen} {
+		if set.has(family) {
+			count += len(c.served(cfg, family))
+		}
+	}
+	return count
+}
+
+func (c catalog) modelInfos(cfg settings, family modelFamily) []pluginapi.ModelInfo {
 	out := make([]pluginapi.ModelInfo, 0, len(c.Models)+len(c.Zen))
-	for _, model := range c.servedModels(cfg) {
+	for _, model := range c.served(cfg, family) {
 		inputLimit := model.InputLimit
 		if inputLimit == 0 {
 			inputLimit = model.ContextLength
@@ -341,21 +372,32 @@ func (c catalog) modelInfos(cfg settings) []pluginapi.ModelInfo {
 	return out
 }
 
-// find resolves a requested model ID: the prefixed or the bare Go ID, or a
-// Zen model the page has turned on, optionally with a CPA thinking suffix
-// such as "(high)". The prefixed Go form resolves with disable_prefix on as
-// well: CPA then registers bare IDs only, so it never routes a client's
-// prefixed request here, but a Bare ID alias kept from the prefixed mode
-// still makes CPA hand this executor the alias's prefixed name for a request
-// of the bare ID.
-func (c catalog) find(cfg settings, model string) (catalogModel, bool) {
+// find resolves a model ID requested of one family's auth, optionally with
+// a CPA thinking suffix such as "(high)": the prefixed or the bare ID of a
+// Go model, or of a Zen model the page has turned on. A Zen auth's Bare ID
+// alias reaches it as the prefixed ID. The prefixed Go form resolves with
+// disable_prefix on as well: CPA then registers bare IDs only, so it never
+// routes a client's prefixed request here, but a Bare ID alias kept from the
+// prefixed mode still makes CPA hand this executor the alias's prefixed name
+// for a request of the bare ID.
+func (c catalog) find(cfg settings, model string, family modelFamily) (catalogModel, bool) {
 	model = strings.TrimSpace(model)
 	if open := strings.LastIndex(model, "("); open > 0 && strings.HasSuffix(model, ")") {
 		model = model[:open]
 	}
-	if rest, ok := strings.CutPrefix(model, cfg.zenPrefix()+"/"); ok {
+	switch family {
+	case familyZen:
+		model = strings.TrimPrefix(model, cfg.zenPrefix()+"/")
 		for _, candidate := range c.Zen {
-			if candidate.UpstreamID == rest && cfg.zenEnabled(rest) {
+			if candidate.UpstreamID == model && cfg.zenEnabled(model) {
+				return candidate, true
+			}
+		}
+		return catalogModel{}, false
+	case familyFree:
+		model = strings.TrimPrefix(model, freeModelPrefix+"/")
+		for _, candidate := range c.Free {
+			if candidate.UpstreamID == model && !cfg.freeDisabled(model) {
 				return candidate, true
 			}
 		}
@@ -410,8 +452,9 @@ type catalogEntry struct {
 	fetchedAt time.Time
 }
 
-// modelRegistration is the model list model.for_auth last returned for a
-// credential, which is the list CPA has registered for it.
+// modelRegistration is the model list model.for_auth last returned for one
+// family's auth of a credential, which is the list CPA has registered for
+// it.
 type modelRegistration struct {
 	fingerprint string
 	ids         []string
@@ -478,40 +521,65 @@ func (s *catalogStore) fetchedAt(credID string) (time.Time, bool) {
 	return entry.fetchedAt, ok
 }
 
-func (s *catalogStore) markRegistered(credID string, cfg settings, cat catalog) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.registered[credID] = modelRegistration{fingerprint: cat.fingerprint(cfg), ids: cat.exposedIDs(cfg), at: s.now()}
+// registrationKey names one family's auth of a credential.
+func registrationKey(credID string, family modelFamily) string {
+	return credID + "|" + string(family)
 }
 
-func (s *catalogStore) registeredFor(credID string) (modelRegistration, bool) {
+func (s *catalogStore) markRegistered(credID string, family modelFamily, cfg settings, cat catalog) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	reg, ok := s.registered[credID]
+	s.registered[registrationKey(credID, family)] = modelRegistration{fingerprint: cat.fingerprint(cfg, family), ids: cat.exposedIDs(cfg, family), at: s.now()}
+}
+
+func (s *catalogStore) registeredFor(credID string, family modelFamily) (modelRegistration, bool) {
+	return s.registration(registrationKey(credID, family))
+}
+
+func (s *catalogStore) registration(key string) (modelRegistration, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reg, ok := s.registered[key]
 	return reg, ok
 }
 
-// fingerprint covers what decides whether CPA must register a catalog
-// again: the models the settings serve, each with its family, protocol and
+// fingerprint covers what decides whether CPA must register one family's
+// list again: the models the settings serve, each with its protocol and
 // token limits. It is settings-dependent so that turning a model on or off
 // makes the next refresh rewrite the auth files, which is what makes CPA ask
 // for the model list again.
-func (c catalog) fingerprint(cfg settings) string {
+func (c catalog) fingerprint(cfg settings, family modelFamily) string {
 	sum := sha256.New()
-	for _, model := range c.servedModels(cfg) {
+	for _, model := range c.served(cfg, family) {
 		fmt.Fprintf(sum, "%s|%s|%s|%d|%d|%d\n", model.Family, model.UpstreamID, model.Protocol, model.ContextLength, model.InputLimit, model.OutputLimit)
 	}
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
-// exposedIDs are the IDs model.for_auth registers for the catalog.
-func (c catalog) exposedIDs(cfg settings) []string {
-	served := c.servedModels(cfg)
+// exposedIDs are the IDs model.for_auth registers for one family's auth.
+func (c catalog) exposedIDs(cfg settings, family modelFamily) []string {
+	served := c.served(cfg, family)
 	ids := make([]string, 0, len(served))
 	for _, model := range served {
 		ids = append(ids, exposedModelID(cfg, model.Family, model.UpstreamID))
 	}
 	return ids
+}
+
+// catalogFor returns the catalog one family's auth of a credential serves
+// from: the workspace's for Go and Zen, the public one for Free.
+func catalogFor(ctx context.Context, doer httpDoer, cfg settings, cred credential, family modelFamily) (catalog, catalogSource, error) {
+	if family == familyFree {
+		return freeCatalogs.get(ctx, doer, cfg)
+	}
+	return catalogs.forKey(ctx, doer, cfg, cred)
+}
+
+func cachedCatalog(credID string, family modelFamily) (catalog, catalogSource) {
+	if family == familyFree {
+		return freeCatalogs.cached()
+	}
+	return catalogs.cached(credID)
 }
 
 // cached returns the best catalog for keyID without network access.
@@ -533,13 +601,13 @@ func (s *catalogStore) cached(keyID string) (catalog, catalogSource) {
 	return *s.snapshot, catalogSnapshot
 }
 
-// lookupModel resolves a requested model for the key keyID from the cached
-// catalog, without network access. It accepts the exposed ID, the bare Go
-// ID and a trailing thinking suffix.
-func lookupModel(model, keyID string) (modelRoute, bool) {
+// lookupModel resolves a model requested of one family's auth of the key
+// keyID from the cached catalog, without network access. It accepts the
+// exposed ID, the bare ID and a trailing thinking suffix.
+func lookupModel(model, keyID string, family modelFamily) (modelRoute, bool) {
 	cfg := currentSettings()
-	cat, _ := catalogs.cached(keyID)
-	found, ok := cat.find(cfg, model)
+	cat, _ := cachedCatalog(keyID, family)
+	found, ok := cat.find(cfg, model, family)
 	if !ok {
 		return modelRoute{}, false
 	}
@@ -582,33 +650,43 @@ func legacyExclusions(cfg settings, excluded map[string][]string) []string {
 	return out
 }
 
+// staleReparsed records that model.for_auth met a file auth an earlier
+// plugin version parsed. CPA keeps such auths until their file changes, and
+// without a family attribute they would serve Go models only, so the plugin
+// has CPA parse every file again, once.
+var staleReparsed atomic.Bool
+
 func handleModelsForAuth(raw []byte) ([]byte, error) {
 	var req rpcAuthModelRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode model request: %w", errUnmarshal)
 	}
+	if req.Attributes[pathAttribute] != "" && req.Attributes[familyAttribute] == "" && staleReparsed.CompareAndSwap(false, true) {
+		reparseLater()
+	}
 	cfg := currentSettings()
 	cfg = cfg.withDisabled(legacyExclusions(cfg, req.Host.ExcludedModels))
+	family := authFamily(req.Attributes)
 	cred, errCred := resolveCredential(req.StorageJSON, req.Attributes, req.Metadata)
 	var expired *loginExpiredError
 	if errors.As(errCred, &expired) {
 		// The models stay registered so a request still reaches the auth, and
 		// the 401 it gets makes the host refresh the login.
-		cat, _ := catalogs.cached(cred.ID)
-		catalogs.markRegistered(cred.ID, cfg, cat)
-		return okEnvelope(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg)})
+		cat, _ := cachedCatalog(cred.ID, family)
+		catalogs.markRegistered(cred.ID, family, cfg, cat)
+		return okEnvelope(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg, family)})
 	}
 	if errCred != nil {
 		return okEnvelope(pluginapi.ModelResponse{Provider: providerKey})
 	}
 	h := newHost(req.HostCallbackID)
-	cat, source, errFetch := catalogs.forKey(context.Background(), h, cfg, cred)
+	cat, source, errFetch := catalogFor(context.Background(), h, cfg, cred, family)
 	if errFetch != nil {
-		h.Log("warn", "OpenCode Go catalog refresh failed; serving "+string(source)+" catalog", map[string]any{
+		h.Log("warn", "OpenCode "+string(family)+" catalog refresh failed; serving "+string(source)+" catalog", map[string]any{
 			"auth_id": req.AuthID,
 			"error":   errFetch.Error(),
 		})
 	}
-	catalogs.markRegistered(cred.ID, cfg, cat)
-	return okEnvelope(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg)})
+	catalogs.markRegistered(cred.ID, family, cfg, cat)
+	return okEnvelope(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg, family)})
 }

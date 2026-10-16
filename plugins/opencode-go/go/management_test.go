@@ -116,6 +116,22 @@ func (fx *managementFixture) call(method, path string, query url.Values, body an
 	return result
 }
 
+// serveConsole answers OpenCode Console requests from console. Token
+// requests run under a timeout, so they open a cancellable host operation.
+func (fx *managementFixture) serveConsole(console *fakeConsole) {
+	ok := func(json.RawMessage) (any, error) { return struct{}{}, nil }
+	fx.fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
+		return hostOperationResponse{OperationID: "op-1"}, nil
+	})
+	fx.fake.handle(pluginabi.MethodHostHTTPCancel, ok)
+	fx.fake.handle(pluginabi.MethodHostLog, ok)
+	reply := console.reply(fx.t, nil)
+	fx.upstream = func(req hostHTTPRequest) (any, error) {
+		got := reply(req)
+		return pluginapi.HTTPResponse{StatusCode: got.Status, Headers: got.Headers, Body: got.Body}, nil
+	}
+}
+
 func (fx *managementFixture) httpCalls() []hostHTTPRequest {
 	var out []hostHTTPRequest
 	for _, payload := range fx.fake.callsTo(pluginabi.MethodHostHTTPDo) {
@@ -218,6 +234,8 @@ func TestManagementRegistrationWireShape(t *testing.T) {
 		"POST /v0/management/opencode-go/models/refresh",
 		"GET /v0/management/opencode-go/routing",
 		"PUT /v0/management/opencode-go/routing",
+		"GET /v0/management/opencode-go/free",
+		"PUT /v0/management/opencode-go/free",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("routes =\n%s", strings.Join(got, "\n"))
@@ -292,13 +310,14 @@ func TestManagementPageServed(t *testing.T) {
 
 func TestManagementListKeys(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{
-		"opencode-go.json": string(multiKeyFile(t)),
+		"opencode-go.json": strings.Replace(string(multiKeyFile(t)), `"label": "Work",`, `"label": "Work", "zen": true,`, 1),
 		"a-single.json":    `{"type":"opencode-go","api_key":"` + testKeyC + `","label":"Solo"}`,
 		"claude.json":      `{"type":"claude"}`,
 	})
 	idA, idB, idC := keyIDFor(testKeyA), keyIDFor(testKeyB), keyIDFor(testKeyC)
 	retry := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
 	fx.runtime[authIDFor(keyFileName, idA)] = pluginapi.HostAuthFileEntry{Status: "active", Success: 12, Failed: 1}
+	fx.runtime[authIDFor(keyFileName, idA)+zenAuthSuffix] = pluginapi.HostAuthFileEntry{Status: "error", StatusMessage: "quota", NextRetryAfter: retry}
 	fx.runtime[authIDFor(keyFileName, idB)] = pluginapi.HostAuthFileEntry{Status: "disabled", Disabled: true}
 	fx.runtime[authIDFor("a-single.json", idC)] = pluginapi.HostAuthFileEntry{
 		Status:         "error",
@@ -331,6 +350,9 @@ func TestManagementListKeys(t *testing.T) {
 	}
 	if a.Runtime == nil || a.Runtime.State != "active" || a.Runtime.Success != 12 || a.Runtime.Failed != 1 {
 		t.Fatalf("key A runtime = %+v", a.Runtime)
+	}
+	if !a.Go || !a.Zen || a.ZenRuntime == nil || a.ZenRuntime.State != "error" || a.ZenRuntime.NextRetryAfter != "2026-10-13T00:00:00Z" {
+		t.Fatalf("key A zen = %v, runtime %+v", a.Zen, a.ZenRuntime)
 	}
 	if b.Label != "" || !b.Disabled || b.MaskedKey != "oc_sk_…2222" || b.Workspace != "" || b.Runtime == nil || b.Runtime.State != "disabled" {
 		t.Fatalf("key B = %+v, runtime %+v", b, b.Runtime)
@@ -397,7 +419,7 @@ func TestManagementAddKey(t *testing.T) {
 
 	// The host loads models for the saved auth next; the check's catalog
 	// serves it without another fetch.
-	auth := parseAuths(pluginapi.AuthParseRequest{FileName: keyFileName, RawJSON: []byte(fx.files[keyFileName])}).Auth
+	auth := parsedAuths(keyFileName, fx.files[keyFileName])[0]
 	models, _ := handleMethod(pluginabi.MethodModelForAuth, mustJSON(t, rpcAuthModelRequest{AuthModelRequest: pluginapi.AuthModelRequest{
 		AuthID: auth.ID, StorageJSON: auth.StorageJSON, Attributes: auth.Attributes,
 	}}))

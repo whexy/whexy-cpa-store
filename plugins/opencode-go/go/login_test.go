@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -169,35 +170,61 @@ func TestLoginFileRoundTrip(t *testing.T) {
 }
 
 func TestParseAuthsLoginFile(t *testing.T) {
+	useSettings(t, defaultSettings())
+	name := "opencode-go-oauth-" + testOrgID + ".json"
 	raw := loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil)
-	resp := parseAuths(pluginapi.AuthParseRequest{Path: "/auths/opencode-go-oauth-" + testOrgID + ".json", RawJSON: raw})
-	if !resp.Handled || len(resp.Auths) != 0 {
+	// OpenCode Go only, by default: one ordinary file auth.
+	resp := parseAuths(pluginapi.AuthParseRequest{Path: "/auths/" + name, RawJSON: raw})
+	if !resp.Handled || len(resp.Auths) != 0 || resp.Auth.ID != name || resp.Auth.Label != "Acme" || resp.Auth.Attributes["family"] != "go" || string(resp.Auth.StorageJSON) != string(raw) {
 		t.Fatalf("resp = %+v", resp)
 	}
-	auth := resp.Auth
-	if auth.ID != "opencode-go-oauth-"+testOrgID+".json" || auth.Provider != "opencode-go" || auth.Label != "Acme" || auth.Disabled {
-		t.Fatalf("auth = %+v", auth)
+	both := loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"zen": true})
+	resp = parseAuths(pluginapi.AuthParseRequest{Path: "/auths/" + name, RawJSON: both})
+	if !resp.Handled || len(resp.Auths) != 2 {
+		t.Fatalf("resp = %+v", resp)
 	}
-	if string(auth.StorageJSON) != string(raw) {
-		t.Fatalf("storage = %s", auth.StorageJSON)
+	goAuth, zenAuth := resp.Auths[0], resp.Auths[1]
+	if goAuth.ID != name || goAuth.Provider != "opencode-go" || goAuth.Label != "Acme" || goAuth.Disabled {
+		t.Fatalf("go auth = %+v", goAuth)
 	}
-	if auth.Metadata["access_token"] != testAccessToken || auth.Metadata["refresh_token"] != testRefreshToken || len(auth.Metadata) != 2 {
-		t.Fatalf("metadata = %v", auth.Metadata)
+	if zenAuth.ID != name+"#zen" || zenAuth.Label != "Acme · OpenCode Zen" || zenAuth.Attributes["family"] != "zen" {
+		t.Fatalf("zen auth = %+v", zenAuth)
 	}
-	want := map[string]string{"auth_kind": "oauth", "org_id": testOrgID, "email": "dev@example.test", "refresh_interval_seconds": "1296000",
-		"last_refresh": testLoginExpiry.Add(-30 * 24 * time.Hour).Format(time.RFC3339)}
-	for name, value := range want {
-		if auth.Attributes[name] != value {
-			t.Fatalf("attributes = %v", auth.Attributes)
+	for _, auth := range resp.Auths {
+		if string(auth.StorageJSON) != string(both) {
+			t.Fatalf("storage = %s", auth.StorageJSON)
 		}
-	}
-	if !auth.NextRefreshAfter.Equal(testLoginExpiry.Add(-15 * 24 * time.Hour)) {
-		t.Fatalf("next refresh = %v", auth.NextRefreshAfter)
+		if auth.Metadata["access_token"] != testAccessToken || auth.Metadata["refresh_token"] != testRefreshToken || len(auth.Metadata) != 2 {
+			t.Fatalf("metadata = %v", auth.Metadata)
+		}
+		for name, value := range map[string]string{"auth_kind": "oauth", "org_id": testOrgID, "email": "dev@example.test"} {
+			if auth.Attributes[name] != value {
+				t.Fatalf("attributes = %v", auth.Attributes)
+			}
+		}
+		// CPA never writes back a file that yields two auths, so it must not
+		// rotate the login's tokens on its own schedule; the plugin does.
+		if _, ok := auth.Attributes["refresh_interval_seconds"]; ok || !auth.NextRefreshAfter.IsZero() {
+			t.Fatalf("refresh schedule = %v, %v", auth.Attributes, auth.NextRefreshAfter)
+		}
 	}
 
 	broken := parseAuths(pluginapi.AuthParseRequest{FileName: "x.json", RawJSON: []byte(`{"type":"opencode-go","auth_method":"oauth"}`)})
-	if !broken.Handled || !broken.Auth.Disabled || broken.Auth.ID != "x.json" || len(broken.Auth.Metadata) != 0 {
+	if !broken.Handled || !broken.Auth.Disabled || broken.Auth.ID != "x.json" || len(broken.Auth.Metadata) != 0 || len(broken.Auths) != 0 {
 		t.Fatalf("broken = %+v", broken)
+	}
+}
+
+func TestLoginFamiliesRoundTrip(t *testing.T) {
+	login, errParse := parseLoginFile(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil))
+	if errParse != nil || login.families() != (familySet{Go: true}) {
+		t.Fatalf("default = %+v, %v", login.families(), errParse)
+	}
+	login.Go, login.Zen = false, true
+	raw, _ := login.marshal()
+	again, _ := parseLoginFile(raw)
+	if again.families() != (familySet{Zen: true}) || len(again.extra) != 0 {
+		t.Fatalf("round trip = %+v (%s)", again, raw)
 	}
 }
 
@@ -298,7 +325,7 @@ func TestAuthRefreshRotatesAndPersistsTokens(t *testing.T) {
 	if first.Auth.ID != "" || first.Auth.Label != "" || first.Auth.FileName != "" {
 		t.Fatalf("refresh renames the auth: %+v", first.Auth)
 	}
-	if !first.NextRefreshAfter.Equal(wantExpiry.Add(-15 * 24 * time.Hour)) {
+	if !first.NextRefreshAfter.IsZero() {
 		t.Fatalf("next refresh = %v", first.NextRefreshAfter)
 	}
 
@@ -368,6 +395,102 @@ func TestAuthRefreshTransientFailureIsRetried(t *testing.T) {
 	}
 }
 
+// A login file yields two auths, which CPA never writes back, so a refresh
+// saves the rotated tokens before CPA gets them. CPA then parses the file
+// again and both auths carry them.
+func TestAuthRefreshSavesLoginFile(t *testing.T) {
+	fx := newManagementFixture(t, map[string]string{
+		testLoginName: string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"go_priority": 5})),
+	})
+	useLoginStore(t, time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC))
+	console := newFakeConsole()
+	console.token = func(form url.Values) gatewayReply {
+		if form.Get("refresh_token") == testRefreshToken {
+			return tokenJSON(testAccessToken2, testRefreshToken2, testOrgID)
+		}
+		return consoleJSON(400, `{"error":"invalid_grant"}`)
+	}
+	fx.serveConsole(console)
+	refresh := func() pluginapi.AuthRefreshResponse {
+		t.Helper()
+		raw, errHandle := handleMethod(pluginabi.MethodAuthRefresh, mustJSON(t, rpcAuthRefreshRequest{AuthRefreshRequest: pluginapi.AuthRefreshRequest{
+			AuthID:      testLoginName + zenAuthSuffix,
+			StorageJSON: loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil),
+			Attributes:  map[string]string{familyAttribute: "zen"},
+			Metadata:    map[string]any{"access_token": testAccessToken, "refresh_token": testRefreshToken},
+		}}))
+		if errHandle != nil {
+			t.Fatal(errHandle)
+		}
+		return decodeResult[pluginapi.AuthRefreshResponse](t, raw)
+	}
+	refresh()
+	saved, _ := parseLoginFile([]byte(fx.files[testLoginName]))
+	if saved.AccessToken != testAccessToken2 || saved.RefreshToken != testRefreshToken2 || string(saved.extra["go_priority"]) != "5" || fx.saves() != 1 {
+		t.Fatalf("saved = %+v after %d saves", saved, fx.saves())
+	}
+	// The other auth's stale token is answered from memory, and the file
+	// already holds the tokens.
+	if got := persistedFile(t, refresh().Auth); got.RefreshToken != testRefreshToken2 || len(console.tokenCalls()) != 1 || fx.saves() != 1 {
+		t.Fatalf("second refresh = %+v, %d token calls, %d saves", got, len(console.tokenCalls()), fx.saves())
+	}
+}
+
+// The plugin refreshes each enabled login at half its token's life, once
+// per workspace, and saves every file still holding a spent token.
+func TestRefreshDueLogins(t *testing.T) {
+	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+	const (
+		dueOrg      = "wrk_DUE"
+		laterOrg    = "wrk_LATER"
+		disabledOrg = "wrk_OFF"
+	)
+	login := func(org string, expires time.Time, extra map[string]any) string {
+		fields := map[string]any{"org_id": org}
+		for name, value := range extra {
+			fields[name] = value
+		}
+		return string(loginFileJSON(t, "st_"+org+"_access_00000000001", "rt_"+org+"_refresh_0000000001", expires, fields))
+	}
+	fx := newManagementFixture(t, map[string]string{
+		"opencode-go-oauth-" + dueOrg + ".json":      login(dueOrg, now.Add(14*24*time.Hour), nil),
+		"opencode-go-oauth-" + laterOrg + ".json":    login(laterOrg, now.Add(16*24*time.Hour), nil),
+		"opencode-go-oauth-" + disabledOrg + ".json": login(disabledOrg, now.Add(time.Hour), map[string]any{"disabled": true}),
+	})
+	store := useLoginStore(t, now)
+	console := newFakeConsole()
+	console.token = func(form url.Values) gatewayReply {
+		org := strings.TrimSuffix(strings.TrimPrefix(form.Get("refresh_token"), "rt_"), "_refresh_0000000001")
+		return tokenJSON("st_"+org+"_access_00000000002", "rt_"+org+"_refresh_0000000002", "")
+	}
+	fx.serveConsole(console)
+
+	refreshDueLogins(context.Background(), newHost(""))
+	calls := console.tokenCalls()
+	if len(calls) != 1 || calls[0].Get("refresh_token") != "rt_"+dueOrg+"_refresh_0000000001" {
+		t.Fatalf("token calls = %v", calls)
+	}
+	due, _ := parseLoginFile([]byte(fx.files["opencode-go-oauth-"+dueOrg+".json"]))
+	if due.RefreshToken != "rt_"+dueOrg+"_refresh_0000000002" || !due.ExpiresAt.Equal(now.Add(2591999*time.Second)) || fx.saves() != 1 {
+		t.Fatalf("due login = %+v after %d saves", due, fx.saves())
+	}
+	refreshDueLogins(context.Background(), newHost(""))
+	if len(console.tokenCalls()) != 1 || fx.saves() != 1 {
+		t.Fatalf("a fresh login was refreshed again: %d calls, %d saves", len(console.tokenCalls()), fx.saves())
+	}
+
+	// A refresh CPA asked for whose file was not saved is saved on the next
+	// check, without another refresh.
+	later, _ := parseLoginFile([]byte(fx.files["opencode-go-oauth-"+laterOrg+".json"]))
+	next := later
+	next.RefreshToken = "rt_" + laterOrg + "_refresh_0000000002"
+	store.rotated(later, next)
+	refreshDueLogins(context.Background(), newHost(""))
+	if saved, _ := parseLoginFile([]byte(fx.files["opencode-go-oauth-"+laterOrg+".json"])); saved.RefreshToken != next.RefreshToken || len(console.tokenCalls()) != 1 {
+		t.Fatalf("later login = %+v after %d calls", saved, len(console.tokenCalls()))
+	}
+}
+
 func TestLoginIdentitySurvivesRotation(t *testing.T) {
 	before, _ := resolveCredential(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil), nil, nil)
 	after, _ := resolveCredential(loginFileJSON(t, testAccessToken2, testRefreshToken2, testLoginExpiry.Add(time.Hour), nil), nil, nil)
@@ -393,11 +516,15 @@ func TestAuthDataNeverClassifiesAsAPIKey(t *testing.T) {
 
 	login := loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil)
 	auths := map[string]pluginapi.AuthData{}
-	for index, auth := range parseAuths(pluginapi.AuthParseRequest{FileName: "opencode-go.json", RawJSON: multiKeyFile(t)}).Auths {
+	for index, auth := range parsedAuths("opencode-go.json", strings.Replace(string(multiKeyFile(t)), `"label": "Work",`, `"label": "Work", "zen": true,`, 1)) {
 		auths["key "+strconv.Itoa(index)] = auth
 	}
-	auths["single key"] = parseAuths(pluginapi.AuthParseRequest{FileName: "k.json", RawJSON: []byte(`{"type":"opencode-go","api_key":"` + testKeyC + `"}`)}).Auth
-	auths["login parse"] = parseAuths(pluginapi.AuthParseRequest{FileName: "l.json", RawJSON: login}).Auth
+	for index, auth := range parsedAuths("k.json", `{"type":"opencode-go","api_key":"`+testKeyC+`","zen":true}`) {
+		auths["single key "+strconv.Itoa(index)] = auth
+	}
+	for index, auth := range parsedAuths("l.json", string(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"zen": true}))) {
+		auths["login parse "+strconv.Itoa(index)] = auth
+	}
 	parsed, _ := parseLoginFile(login)
 	auths["login poll"], _ = parsed.loginAuthData()
 	raw, _ := handleMethod(pluginabi.MethodAuthRefresh, refreshRequest(t, testAccessToken, testRefreshToken))
@@ -412,12 +539,12 @@ func TestAuthDataNeverClassifiesAsAPIKey(t *testing.T) {
 			t.Fatalf("%s is classified as an API key: %v %v", name, auth.Attributes, auth.Metadata)
 		}
 	}
-	for _, name := range []string{"key 0", "key 1", "single key"} {
+	for _, name := range []string{"key 0", "key 1", "key 2", "key 3", "single key 0", "single key 1"} {
 		if _, ok := auths[name].Attributes["auth_kind"]; ok {
 			t.Fatalf("%s sets auth_kind: %v", name, auths[name].Attributes)
 		}
 	}
-	for _, name := range []string{"login parse", "login poll", "login refresh"} {
+	for _, name := range []string{"login parse 0", "login parse 1", "login poll", "login refresh"} {
 		if auths[name].Attributes["auth_kind"] != "oauth" {
 			t.Fatalf("%s kind = %v", name, auths[name].Attributes)
 		}

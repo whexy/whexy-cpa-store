@@ -105,7 +105,7 @@ func TestZenRoutes(t *testing.T) {
 		{"opencode/claude-haiku-5-5", "claude-haiku-5-5", "https://opencode.ai/inference/anthropic/v1/messages"},
 	}
 	for _, tt := range tests {
-		model, ok := cat.find(cfg, tt.model)
+		model, ok := cat.find(cfg, tt.model, familyZen)
 		if !ok || model.Family != familyZen {
 			t.Fatalf("%s -> %+v %v", tt.model, model, ok)
 		}
@@ -115,17 +115,31 @@ func TestZenRoutes(t *testing.T) {
 		}
 	}
 	// The same upstream ID still routes to the Go gateway under its own prefix.
-	if route, ok := cat.find(cfg, "opencode-go/kimi-k3"); !ok || route.Family != familyGo {
+	if route, ok := cat.find(cfg, "opencode-go/kimi-k3", familyGo); !ok || route.Family != familyGo {
 		t.Fatalf("go model = %+v %v", route, ok)
 	}
+	// Each family's auth resolves only its own models, so a shared bare ID
+	// reaches the gateway of the auth CPA picked.
+	if model, ok := cat.find(cfg, "kimi-k3", familyZen); !ok || model.Family != familyZen {
+		t.Fatalf("bare kimi-k3 on the Zen auth = %+v %v", model, ok)
+	}
+	if model, ok := cat.find(cfg, "kimi-k3(high)", familyGo); !ok || model.Family != familyGo {
+		t.Fatalf("bare kimi-k3 on the Go auth = %+v %v", model, ok)
+	}
+	if _, ok := cat.find(cfg, "opencode-go/kimi-k3", familyZen); ok {
+		t.Fatal("the Zen auth resolved a Go model")
+	}
+	if _, ok := cat.find(cfg, "opencode/kimi-k3", familyGo); ok {
+		t.Fatal("the Go auth resolved a Zen model")
+	}
 	// A Zen model the page has not turned on does not resolve.
-	if _, ok := cat.find(cfg, "opencode/cat-jam-free"); ok {
+	if _, ok := cat.find(cfg, "opencode/cat-jam-free", familyZen); ok {
 		t.Fatal("a Zen model that is not enabled resolved")
 	}
 	// A mirror moves both gateways, since the Zen base is the Go base without
 	// its Go path.
 	mirror := settings{BaseURL: "https://mirror.test/x/go", ModelPrefix: defaultModelPrefix, ZenModels: []string{"kimi-k3"}}
-	model, ok := cat.find(mirror, "opencode/kimi-k3")
+	model, ok := cat.find(mirror, "opencode/kimi-k3", familyZen)
 	if !ok || model.route(mirror).Endpoint != "https://mirror.test/x/openai/v1/chat/completions" {
 		t.Fatalf("mirrored route = %+v %v", model, ok)
 	}
@@ -163,53 +177,61 @@ func TestZenEndpointRebasing(t *testing.T) {
 	}
 }
 
-// Only the Zen models the page turned on are registered with CPA, and every
-// model's route stays inside its own gateway.
+// Only the Zen models the page turned on are registered with CPA, each
+// family's with its own auths, and every model's route stays inside its own
+// gateway.
 func TestZenServingIsOptIn(t *testing.T) {
 	cat, _ := parseCatalog(readFixture(t, "config.json"))
-	ids := func(cfg settings) string {
+	ids := func(cfg settings, family modelFamily) string {
 		var out []string
-		for _, info := range cat.modelInfos(cfg) {
+		for _, info := range cat.modelInfos(cfg, family) {
 			out = append(out, info.ID)
 		}
 		return strings.Join(out, ",")
 	}
 	const goIDs = "opencode-go/claude-haiku-5-5,opencode-go/deepseek-v4-flash,opencode-go/elsewhere,opencode-go/gpt-6-luna,opencode-go/kimi-k3,opencode-go/longcat-2.5-preview-free,opencode-go/qwen3.8-max"
-	if got := ids(defaultSettings()); got != goIDs {
-		t.Fatalf("without Zen models = %s", got)
+	if got := ids(defaultSettings(), familyGo); got != goIDs {
+		t.Fatalf("Go models = %s", got)
+	}
+	if got := ids(defaultSettings(), familyZen); got != "" {
+		t.Fatalf("Zen models without any enabled = %s", got)
 	}
 	cfg := defaultSettings()
 	cfg.ZenModels = []string{"KIMI-K3", "gpt-6-luna"}
-	want := goIDs + ",opencode/gpt-6-luna,opencode/kimi-k3"
-	if got := ids(cfg); got != want {
-		t.Fatalf("with Zen models = %s\nwant %s", got, want)
+	const zenIDs = "opencode/gpt-6-luna,opencode/kimi-k3"
+	if got := ids(cfg, familyGo); got != goIDs {
+		t.Fatalf("Go models with Zen enabled = %s", got)
 	}
-	if got := strings.Join(cat.exposedIDs(cfg), ","); got != want {
-		t.Fatalf("exposed IDs = %s\nwant %s", got, want)
+	if got := ids(cfg, familyZen); got != zenIDs {
+		t.Fatalf("Zen models = %s\nwant %s", got, zenIDs)
 	}
-	for _, info := range cat.modelInfos(cfg) {
-		model, ok := cat.find(cfg, info.ID)
-		if !ok {
-			t.Fatalf("%s does not resolve", info.ID)
+	if got := strings.Join(cat.exposedIDs(cfg, familyZen), ","); got != zenIDs {
+		t.Fatalf("exposed IDs = %s\nwant %s", got, zenIDs)
+	}
+	for _, family := range families {
+		for _, info := range cat.modelInfos(cfg, family) {
+			model, ok := cat.find(cfg, info.ID, family)
+			if !ok || model.Family != family {
+				t.Fatalf("%s does not resolve for %s: %+v", info.ID, family, model)
+			}
+			root := defaultBaseURL + "/"
+			if model.Family == familyZen {
+				root = defaultZenBaseURL + "/"
+			}
+			if route := model.route(cfg); !strings.HasPrefix(route.Endpoint, root) {
+				t.Fatalf("%s routes outside its gateway: %s", info.ID, route.Endpoint)
+			}
 		}
-		root := defaultBaseURL + "/"
-		if model.Family == familyZen {
-			root = defaultZenBaseURL + "/"
-		}
-		if route := model.route(cfg); !strings.HasPrefix(route.Endpoint, root) {
-			t.Fatalf("%s routes outside its gateway: %s", info.ID, route.Endpoint)
-		}
 	}
-	// A bare upstream ID is the Go model, never the Zen one.
-	if model, ok := cat.find(cfg, "kimi-k3"); !ok || model.Family != familyGo {
-		t.Fatalf("bare kimi-k3 = %+v %v", model, ok)
-	}
-	// Turning a Zen model off changes the fingerprint, so the next refresh
-	// rewrites the auth files and CPA registers the list again.
-	before := cat.fingerprint(cfg)
+	// Turning a Zen model off changes the Zen fingerprint alone, so the next
+	// refresh rewrites the auth files and CPA registers the list again.
+	before, goBefore := cat.fingerprint(cfg, familyZen), cat.fingerprint(cfg, familyGo)
 	cfg.ZenModels = []string{"KIMI-K3"}
-	if after := cat.fingerprint(cfg); after == before {
+	if after := cat.fingerprint(cfg, familyZen); after == before {
 		t.Fatal("fingerprint ignores the Zen model set")
+	}
+	if cat.fingerprint(cfg, familyGo) != goBefore {
+		t.Fatal("the Go fingerprint depends on the Zen model set")
 	}
 }
 
@@ -241,7 +263,7 @@ func TestEmbeddedSnapshotMatchesVerifiedProtocols(t *testing.T) {
 	}
 	cfg := defaultSettings()
 	for id, protocol := range want {
-		model, ok := cat.find(cfg, id)
+		model, ok := cat.find(cfg, id, familyGo)
 		if !ok || model.Protocol != protocol {
 			t.Fatalf("%s = %+v, want %s", id, model, protocol)
 		}
@@ -271,7 +293,7 @@ func TestRoutes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			model, ok := cat.find(tt.cfg, tt.model)
+			model, ok := cat.find(tt.cfg, tt.model, familyGo)
 			if !ok {
 				t.Fatalf("%s not found", tt.model)
 			}
@@ -287,12 +309,12 @@ func TestCatalogFindAcceptsExposedBareAndSuffixedIDs(t *testing.T) {
 	cat, _ := parseCatalog(readFixture(t, "config.json"))
 	cfg := defaultSettings()
 	for _, requested := range []string{"opencode-go/kimi-k3", "kimi-k3", "opencode-go/kimi-k3(high)", " kimi-k3(8192) "} {
-		if model, ok := cat.find(cfg, requested); !ok || model.UpstreamID != "kimi-k3" {
+		if model, ok := cat.find(cfg, requested, familyGo); !ok || model.UpstreamID != "kimi-k3" {
 			t.Fatalf("%q -> %+v %v", requested, model, ok)
 		}
 	}
 	for _, requested := range []string{"other/kimi-k3", "kimi-k9", "retired-model"} {
-		if _, ok := cat.find(cfg, requested); ok {
+		if _, ok := cat.find(cfg, requested, familyGo); ok {
 			t.Fatalf("%q resolved", requested)
 		}
 	}
@@ -305,18 +327,18 @@ func TestCatalogFindWithPrefixDisabled(t *testing.T) {
 	cat, _ := parseCatalog(readFixture(t, "config.json"))
 	cfg := settings{BaseURL: defaultBaseURL, ModelPrefix: "go", DisablePrefix: true}
 	for _, requested := range []string{"kimi-k3", "kimi-k3(high)", "go/kimi-k3"} {
-		if model, ok := cat.find(cfg, requested); !ok || model.UpstreamID != "kimi-k3" {
+		if model, ok := cat.find(cfg, requested, familyGo); !ok || model.UpstreamID != "kimi-k3" {
 			t.Fatalf("%q -> %+v %v", requested, model, ok)
 		}
 	}
-	if _, ok := cat.find(cfg, "opencode-go/kimi-k3"); ok {
+	if _, ok := cat.find(cfg, "opencode-go/kimi-k3", familyGo); ok {
 		t.Fatal("a prefix other than the configured one resolved")
 	}
 }
 
 func TestModelInfos(t *testing.T) {
 	cat, _ := parseCatalog(readFixture(t, "config.json"))
-	infos := cat.modelInfos(defaultSettings())
+	infos := cat.modelInfos(defaultSettings(), familyGo)
 	var haiku, kimi pluginapi.ModelInfo
 	for _, info := range infos {
 		switch info.Name {
@@ -357,13 +379,13 @@ func TestModelInfosAndExposedIDsPerMode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var ids []string
-			for _, info := range cat.modelInfos(tt.cfg) {
+			for _, info := range cat.modelInfos(tt.cfg, familyGo) {
 				ids = append(ids, info.ID)
 			}
 			if strings.Join(ids, ",") != tt.want {
 				t.Fatalf("model infos = %v\nwant %s", ids, tt.want)
 			}
-			if got := strings.Join(cat.exposedIDs(tt.cfg), ","); got != tt.want {
+			if got := strings.Join(cat.exposedIDs(tt.cfg, familyGo), ","); got != tt.want {
 				t.Fatalf("exposed IDs = %s\nwant %s", got, tt.want)
 			}
 		})
@@ -459,13 +481,13 @@ func TestModelsForAuthThroughHost(t *testing.T) {
 		}
 		return pluginapi.HTTPResponse{StatusCode: 200, Body: config}, nil
 	})
-	auths := parseAuths(pluginapi.AuthParseRequest{FileName: "opencode-go.json", RawJSON: multiKeyFile(t)}).Auths
+	keyB := parseAuths(pluginapi.AuthParseRequest{FileName: "opencode-go.json", RawJSON: multiKeyFile(t)}).Auths[1]
 	req := mustJSON(t, rpcAuthModelRequest{
 		AuthModelRequest: pluginapi.AuthModelRequest{
-			AuthID:       auths[1].ID,
+			AuthID:       keyB.ID,
 			AuthProvider: "opencode-go",
-			StorageJSON:  hostStorageJSON(t, auths[1].StorageJSON, nil),
-			Attributes:   auths[1].Attributes,
+			StorageJSON:  hostStorageJSON(t, keyB.StorageJSON, nil),
+			Attributes:   keyB.Attributes,
 		},
 		HostCallbackID: "cb-m",
 	})
@@ -482,7 +504,7 @@ func TestModelsForAuthThroughHost(t *testing.T) {
 			t.Fatalf("unprefixed model %q", model.ID)
 		}
 	}
-	route, ok := lookupModel("opencode-go/gpt-6-luna", keyIDFor(testKeyB))
+	route, ok := lookupModel("opencode-go/gpt-6-luna", keyIDFor(testKeyB), familyGo)
 	if !ok || route.Protocol != sdktranslator.FormatOpenAIResponse || route.UpstreamID != "gpt-6-luna" {
 		t.Fatalf("lookup = %+v %v", route, ok)
 	}
@@ -512,7 +534,7 @@ func TestModelsForAuthDropsDisabledModels(t *testing.T) {
 		for _, model := range decodeResult[pluginapi.ModelResponse](t, raw).Models {
 			ids = append(ids, model.ID)
 		}
-		reg, _ := catalogs.registeredFor(keyIDFor(testKeyA))
+		reg, _ := catalogs.registeredFor(keyIDFor(testKeyA), familyGo)
 		if strings.Join(reg.ids, ",") != strings.Join(ids, ",") {
 			t.Fatalf("recorded %v, registered %v", reg.ids, ids)
 		}
@@ -526,6 +548,85 @@ func TestModelsForAuthDropsDisabledModels(t *testing.T) {
 	off.DisablePrefix = true
 	if got := registered(off); got != "claude-haiku-5-5,deepseek-v4-flash,elsewhere,longcat-2.5-preview-free" {
 		t.Fatalf("prefix off: %s", got)
+	}
+}
+
+// Each family's auth registers its own models: the Go auth every Go model,
+// the Zen auth the Zen models the page turned on.
+func TestModelsForAuthPerFamily(t *testing.T) {
+	useTestCatalog(t)
+	cfg := defaultSettings()
+	cfg.ZenModels = []string{"kimi-k3", "gpt-6-luna"}
+	useSettings(t, cfg)
+	auths := parseAuths(pluginapi.AuthParseRequest{FileName: "k.json", RawJSON: []byte(`{"type":"opencode-go","api_key":"` + testKeyA + `","zen":true}`)}).Auths
+	if len(auths) != 2 {
+		t.Fatalf("auths = %+v", auths)
+	}
+	for _, auth := range auths {
+		raw, errHandle := handleMethod(pluginabi.MethodModelForAuth, mustJSON(t, rpcAuthModelRequest{AuthModelRequest: pluginapi.AuthModelRequest{
+			AuthID: auth.ID, StorageJSON: auth.StorageJSON, Attributes: auth.Attributes,
+		}}))
+		if errHandle != nil {
+			t.Fatal(errHandle)
+		}
+		family := authFamily(auth.Attributes)
+		var ids []string
+		for _, model := range decodeResult[pluginapi.ModelResponse](t, raw).Models {
+			ids = append(ids, model.ID)
+		}
+		want := strings.Join(fixtureCatalog(t).exposedIDs(cfg, family), ",")
+		if strings.Join(ids, ",") != want {
+			t.Fatalf("%s registered %v, want %s", family, ids, want)
+		}
+		if reg, ok := catalogs.registeredFor(keyIDFor(testKeyA), family); !ok || strings.Join(reg.ids, ",") != want {
+			t.Fatalf("%s recorded %+v", family, reg)
+		}
+	}
+	if got, _ := catalogs.registeredFor(keyIDFor(testKeyA), familyZen); strings.Join(got.ids, ",") != "opencode/gpt-6-luna,opencode/kimi-k3" {
+		t.Fatalf("zen registered %v", got.ids)
+	}
+}
+
+func fixtureCatalog(t *testing.T) catalog {
+	t.Helper()
+	parsed, errParse := parseCatalog(readFixture(t, "config.json"))
+	if errParse != nil {
+		t.Fatal(errParse)
+	}
+	return parsed
+}
+
+// An auth CPA loaded with an earlier plugin version has no family; the
+// plugin has CPA parse the files again, once per process.
+func TestModelsForAuthReparsesAuthsOfAnEarlierVersion(t *testing.T) {
+	useTestCatalog(t)
+	useSettings(t, defaultSettings())
+	reparses := 0
+	previous := reparseLater
+	reparseLater = func() { reparses++ }
+	staleReparsed.Store(false)
+	t.Cleanup(func() {
+		reparseLater = previous
+		staleReparsed.Store(false)
+	})
+	ask := func(attributes map[string]string) {
+		t.Helper()
+		if _, errHandle := handleMethod(pluginabi.MethodModelForAuth, mustJSON(t, rpcAuthModelRequest{AuthModelRequest: pluginapi.AuthModelRequest{
+			StorageJSON: []byte(`{"type":"opencode-go","api_key":"` + testKeyA + `"}`),
+			Attributes:  attributes,
+		}})); errHandle != nil {
+			t.Fatal(errHandle)
+		}
+	}
+	ask(map[string]string{"path": "/auths/k.json", "family": "go"})
+	ask(map[string]string{"key_id": keyIDFor(testKeyA)})
+	if reparses != 0 {
+		t.Fatalf("current auths caused %d reparses", reparses)
+	}
+	ask(map[string]string{"path": "/auths/k.json"})
+	ask(map[string]string{"path": "/auths/other.json"})
+	if reparses != 1 {
+		t.Fatalf("%d reparses, want 1", reparses)
 	}
 }
 
@@ -564,7 +665,7 @@ func TestModelsForAuthWithLoginKeysCacheByWorkspace(t *testing.T) {
 	})
 	models := func(login []byte) []pluginapi.ModelInfo {
 		t.Helper()
-		auth := parseLoginAuth("opencode-go-oauth-"+testOrgID+".json", login)
+		auth := parsedAuths("opencode-go-oauth-"+testOrgID+".json", string(login))[0]
 		raw, _ := handleMethod(pluginabi.MethodModelForAuth, mustJSON(t, rpcAuthModelRequest{AuthModelRequest: pluginapi.AuthModelRequest{
 			AuthID:      auth.ID,
 			StorageJSON: hostStorageJSON(t, auth.StorageJSON, auth.Metadata),

@@ -147,8 +147,12 @@ func TestQuotaFetchWithLogin(t *testing.T) {
 		}
 		return pluginapi.HTTPResponse{StatusCode: 200, Body: readFixture(t, "usage.json")}, nil
 	})
-	fetch := func(file []byte) []byte {
-		auth := parseLoginAuth("opencode-go-oauth-"+testOrgID+".json", file)
+	fetch := func(file []byte, family modelFamily) []byte {
+		auths := parsedAuths("opencode-go-oauth-"+testOrgID+".json", string(file))
+		auth := auths[0]
+		if family == familyZen {
+			auth = auths[1]
+		}
 		raw, _ := handleMethod(pluginabi.MethodQuotaFetch, mustJSON(t, rpcQuotaFetchRequest{QuotaFetchRequest: pluginapi.QuotaFetchRequest{
 			AuthID:      auth.ID,
 			Provider:    "opencode-go",
@@ -158,11 +162,16 @@ func TestQuotaFetchWithLogin(t *testing.T) {
 		}}))
 		return raw
 	}
-	resp := decodeResult[pluginapi.QuotaFetchResponse](t, fetch(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil)))
+	resp := decodeResult[pluginapi.QuotaFetchResponse](t, fetch(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil), familyGo))
 	if len(resp.Groups) != 1 || resp.Groups[0].DisplayName != "Acme · dev@example.test" || len(resp.Groups[0].Buckets) != 3 {
 		t.Fatalf("resp = %+v", resp)
 	}
-	raw := fetch(loginFileJSON(t, testAccessToken, testRefreshToken, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), nil))
+	// The Go windows do not apply to the Zen auth, which bills credits.
+	zen := decodeResult[pluginapi.QuotaFetchResponse](t, fetch(loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, map[string]any{"zen": true}), familyZen))
+	if zen.Subscription == nil || zen.Subscription.Plan != "OpenCode Zen" || len(zen.Groups) != 0 {
+		t.Fatalf("zen = %+v", zen)
+	}
+	raw := fetch(loginFileJSON(t, testAccessToken, testRefreshToken, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), nil), familyGo)
 	if env := decodeEnvelope(t, raw); env.OK || env.Error.HTTPStatus != 401 || !strings.Contains(env.Error.Message, "log in again") {
 		t.Fatalf("expired = %s", raw)
 	}
