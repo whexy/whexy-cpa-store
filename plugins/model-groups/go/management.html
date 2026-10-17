@@ -580,6 +580,18 @@
       .btn.primary:hover {
         background: var(--accent-hover);
       }
+      .btn.danger {
+        background: var(--warn);
+        border-color: var(--warn);
+        color: #ffffff;
+        font-weight: 600;
+      }
+      .btn.danger:hover {
+        background: color-mix(in srgb, var(--warn) 85%, #000000);
+      }
+      #delete {
+        color: var(--warn-text);
+      }
       .error {
         color: var(--warn-text);
         font-size: 12px;
@@ -1045,11 +1057,19 @@
         </div>
         <p id="editor-error" class="error" role="alert" hidden></p>
       </div>
-      <div class="dfoot">
-        <span class="note">Save reloads the CPA config.</span
+      <div class="dfoot" id="foot">
+        <button id="delete" type="button" class="btn ghost">Delete</button
+        ><span class="note">Save reloads the CPA config.</span
         ><span class="spacer"></span
         ><button id="cancel" type="button" class="btn">Cancel</button
         ><button id="save" class="btn primary" type="submit">Save</button>
+      </div>
+      <div class="dfoot" id="confirm" hidden>
+        <span id="confirm-text" class="grow"></span
+        ><button id="confirm-cancel" type="button" class="btn">Cancel</button
+        ><button id="confirm-delete" type="button" class="btn danger">
+          Delete
+        </button>
       </div>
     </form>
     <script>
@@ -2096,6 +2116,8 @@
         );
         $("ttl").value = ttl;
         $("search").value = "";
+        $("delete").hidden = slug === null;
+        setConfirm(false);
         showError("editor-error", "");
         showError("catalog-error", catalogErrorText());
         renderEditor();
@@ -2127,6 +2149,82 @@
         draft = null;
         if (returnFocus?.isConnected) returnFocus.focus();
         else $("new").focus();
+      }
+      // The fields stay inert while the delete question is open, so Enter
+      // cannot save the group being deleted.
+      function lockEditor() {
+        const locked = saving || !$("confirm").hidden;
+        $("editor").querySelector(".dhead").inert = locked;
+        $("editor").querySelector(".dbody").inert = locked;
+        for (const id of [
+          "save",
+          "cancel",
+          "delete",
+          "confirm-cancel",
+          "confirm-delete",
+        ])
+          $(id).disabled = saving;
+      }
+      function setConfirm(open) {
+        $("foot").hidden = open;
+        $("confirm").hidden = !open;
+        lockEditor();
+        if (!open) return;
+        const group = state.groups.find((group) => group.slug === originalSlug);
+        const sessions = group?.sessions || 0;
+        $("confirm-text").replaceChildren(
+          "Delete ",
+          h(
+            "span",
+            { class: "mono" },
+            group?.id || state.prefix + "/" + originalSlug,
+          ),
+          "? ",
+          h(
+            "span",
+            { class: "note" },
+            "Requests for it fail" +
+              (sessions
+                ? " · in use by " +
+                  sessions +
+                  (sessions === 1 ? " session" : " sessions")
+                : ""),
+          ),
+        );
+      }
+      // commit writes change(latest, groups, index) back to the config, where
+      // latest is a fresh read and index is the edited group's position in
+      // groups. PATCH replaces lists, so the other groups come from that read.
+      async function commit(change) {
+        if (saving) return;
+        saving = true;
+        lockEditor();
+        try {
+          const latest = await request(CONFIG, "GET", undefined, null);
+          const groups = [...(latest?.groups || [])];
+          const index =
+            originalSlug === null
+              ? -1
+              : groups.findIndex((group) => group.slug === originalSlug);
+          if (
+            originalSlug !== null &&
+            (index < 0 ||
+              JSON.stringify(groups[index]) !== JSON.stringify(original))
+          )
+            throw new Error("config · " + originalSlug + " · Reload");
+          await request(CONFIG, "PATCH", await change(latest, groups, index));
+          saving = false;
+          closeEditor();
+          await reload();
+        } catch (error) {
+          showError(
+            $("editor").hidden ? "error" : "editor-error",
+            error.message,
+          );
+        } finally {
+          saving = false;
+          lockEditor();
+        }
       }
       function renderEditor() {
         $("policy").replaceChildren(
@@ -2408,17 +2506,22 @@
         if ($("editor").hidden) return;
         if (event.key === "Escape") {
           event.preventDefault();
-          closeEditor();
+          if ($("confirm").hidden) closeEditor();
+          else if (!saving) {
+            setConfirm(false);
+            $("delete").focus();
+          }
         }
         if (event.key === "Tab") {
           const elements = [
             ...$("editor").querySelectorAll(
               "button:not(:disabled),input:not(:disabled),select:not(:disabled)",
             ),
-          ].filter((element) => !element.closest("[hidden]"));
+          ].filter((element) => !element.closest("[hidden],[inert]"));
           const first = elements[0],
             last = elements.at(-1);
-          if (
+          if (!first) event.preventDefault();
+          else if (
             event.shiftKey &&
             [first, $("editor")].includes(document.activeElement)
           ) {
@@ -2439,25 +2542,7 @@
         const error = validation();
         showError("editor-error", error);
         if (error) return;
-        saving = true;
-        $("save").disabled = true;
-        $("cancel").disabled = true;
-        $("editor").querySelector(".dhead").inert = true;
-        $("editor").querySelector(".dbody").inert = true;
-        try {
-          // PATCH replaces lists; preserve other groups from a fresh config read.
-          const latest = await request(CONFIG, "GET", undefined, null);
-          const groups = [...(latest?.groups || [])];
-          const index =
-            originalSlug === null
-              ? -1
-              : groups.findIndex((group) => group.slug === originalSlug);
-          if (
-            originalSlug !== null &&
-            (index < 0 ||
-              JSON.stringify(groups[index]) !== JSON.stringify(original))
-          )
-            throw new Error("config · " + originalSlug + " · Reload");
+        await commit(async (latest, groups, index) => {
           if (
             groups.some((group, i) => i !== index && group.slug === draft.slug)
           )
@@ -2484,27 +2569,32 @@
               throw new Error("routing.session-affinity-ttl");
             affinity.ttl = currentRouting["session-affinity-ttl"];
           }
-          const payload = {
+          return {
             ...latest,
             prefix: latest?.prefix ?? state.prefix,
             affinity,
             groups,
           };
-          await request(CONFIG, "PATCH", payload);
-          saving = false;
-          closeEditor();
-          await reload();
-        } catch (error) {
-          showError(
-            $("editor").hidden ? "error" : "editor-error",
-            error.message,
-          );
-        } finally {
-          saving = false;
-          $("save").disabled = false;
-          $("cancel").disabled = false;
-          $("editor").querySelector(".dhead").inert = false;
-          $("editor").querySelector(".dbody").inert = false;
+        });
+      });
+      $("delete").addEventListener("click", () => {
+        setConfirm(true);
+        $("confirm-cancel").focus();
+      });
+      $("confirm-cancel").addEventListener("click", () => {
+        setConfirm(false);
+        $("delete").focus();
+      });
+      // Deleting writes only the group list: the session switches below the
+      // fields belong to Save.
+      $("confirm-delete").addEventListener("click", async () => {
+        await commit((latest, groups, index) => {
+          groups.splice(index, 1);
+          return { ...latest, groups };
+        });
+        if (!$("editor").hidden) {
+          setConfirm(false);
+          $("delete").focus();
         }
       });
       $("auth").addEventListener("submit", async (event) => {
