@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.1.4...model-groups-v0.1.5) (2026-10-17)
+
+
+### Bug Fixes
+
+* **model-groups:** delete a group from its editor
+
 ## [0.1.4](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.1.3...model-groups-v0.1.4) (2026-10-17)
 
 
