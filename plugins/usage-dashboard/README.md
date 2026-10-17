@@ -36,11 +36,15 @@ smallest fold into Other.
 
 Usage is kept as hourly totals per account and model, one file per UTC day
 (`usage-<YYYY-MM-DD>.json`), written every 10 seconds and on shutdown. By
-default the files go to `data/usage-dashboard` beside the `plugins` directory
-the plugin was installed into, so they land on the same volume; in a
-container that mounts `/data/plugins`, that is `/data/data/usage-dashboard`.
-Days past `retention_days` are deleted. Prompts, responses and client API
-keys are never stored, and session IDs only as hashes.
+default the files go to `data/usage-dashboard` beside the plugins directory:
+`plugins.dir` of the config file CLIProxyAPI was started with (`--config`,
+else `config.yaml` in its working directory). With `dir: /data/plugins`, that
+is `/data/data/usage-dashboard`. Set `data_dir` when CLIProxyAPI takes its
+config from elsewhere (`-home-jwt`, a Postgres, git or object store), or when
+only the plugins directory itself is a volume, as in CLIProxyAPI's
+`docker-compose.yml`. Days past `retention_days` are deleted. Prompts,
+responses and client API keys are never stored, and session IDs only as
+hashes.
 
 Cost is estimated at the time of viewing from the
 [models.dev](https://models.dev) price list, fetched daily and cached as
