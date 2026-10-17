@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.1.3...model-groups-v0.1.4) (2026-10-17)
+
+
+### Bug Fixes
+
+* **model-groups:** find the data directory from the host's plugins.dir
+
 ## [0.1.3](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.1.2...model-groups-v0.1.3) (2026-10-13)
 
 
