@@ -75,7 +75,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.3.0"
+	pluginVersion = "0.3.1"
 
 	pluginID    = "usage-dashboard"
 	displayName = "Usage Dashboard"
