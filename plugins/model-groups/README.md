@@ -70,7 +70,9 @@ per request. The plugin's own session lifetime is `affinity.ttl` (default 1h).
   carries all of them as that member's providers, and a session stays on the
   one it started with.
 - Sessions are kept in `state.json` under `data/model-groups/` next to the
-  plugin directory, and are re-read after a reload or a restart.
+  plugins directory, `plugins.dir` of the config file CLIProxyAPI was started
+  with (`--config`, else `config.yaml` in its working directory), and are
+  re-read after a reload or a restart.
 - Keep a group's slug clear of model IDs CLIProxyAPI already serves: the group
   answers that ID while it is enabled.
 

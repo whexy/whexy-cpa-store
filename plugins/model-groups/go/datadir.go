@@ -1,59 +1,85 @@
 package main
 
-/*
-#cgo linux LDFLAGS: -ldl
-#define _GNU_SOURCE
-#include <dlfcn.h>
-
-static const char* model_groups_library_path(void) {
-	Dl_info info;
-	if (dladdr((void*)&model_groups_library_path, &info) == 0 || info.dli_fname == NULL) {
-		return NULL;
-	}
-	return info.dli_fname;
-}
-*/
-import "C"
-
 import (
+	"os"
 	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
-// defaultDataDir places the session bindings beside the plugins directory this
-// library was loaded from. A store install needs that directory writable and
-// persistent, while CLIProxyAPI's working directory often is neither.
+// defaultDataDir places the session bindings beside the plugins directory. A
+// store install needs that directory writable and persistent, while
+// CLIProxyAPI's working directory often is neither. The host passes a plugin
+// only its own config and, since v8.0.31, loads a copy of the library from the
+// temporary directory, so the plugins directory is read from the host's config
+// file, as the host does to bootstrap its plugins.
 func defaultDataDir() string {
-	library := ""
-	if path := C.model_groups_library_path(); path != nil {
-		library = C.GoString(path)
+	wd, errWd := os.Getwd()
+	if errWd != nil {
+		wd = string(filepath.Separator)
 	}
-	return dataDirForLibrary(library)
+	return dataDirForPlugins(hostPluginsDir(os.Args[1:], wd, os.ReadFile))
 }
 
-func dataDirForLibrary(library string) string {
-	library = strings.TrimSpace(library)
-	if library == "" {
-		abs, errAbs := filepath.Abs(filepath.Join("data", pluginID))
-		if errAbs != nil {
-			return filepath.Join("data", pluginID)
-		}
-		return abs
+func dataDirForPlugins(plugins string) string {
+	return filepath.Join(filepath.Dir(plugins), "data", pluginID)
+}
+
+// hostPluginsDir resolves plugins.dir the way CLIProxyAPI's
+// pluginBootstrapConfigPath and config.ResolvePluginsDir do: the config file
+// is the -config or --config argument, else config.yaml in the working
+// directory; plugins.dir defaults to plugins, and a relative one is relative
+// to the working directory.
+func hostPluginsDir(args []string, wd string, readFile func(string) ([]byte, error)) string {
+	path := hostConfigPath(args)
+	if path == "" {
+		path = "config.yaml"
 	}
-	if !filepath.IsAbs(library) {
-		if abs, errAbs := filepath.Abs(library); errAbs == nil {
-			library = abs
+	dir := ""
+	if raw, errRead := readFile(absUnder(wd, path)); errRead == nil {
+		var cfg struct {
+			Plugins struct {
+				Dir string `yaml:"dir"`
+			} `yaml:"plugins"`
+		}
+		if yaml.Unmarshal(raw, &cfg) == nil {
+			dir = strings.TrimSpace(cfg.Plugins.Dir)
 		}
 	}
-	dir := filepath.Dir(filepath.Clean(library))
-	// The store installs into <plugins>/<goos>/<goarch>/; a manual install may
-	// use <plugins>/ or <plugins>/<goos>/.
-	candidate := dir
-	for range 3 {
-		if filepath.Base(candidate) == "plugins" && filepath.Dir(candidate) != candidate {
-			return filepath.Join(filepath.Dir(candidate), "data", pluginID)
-		}
-		candidate = filepath.Dir(candidate)
+	if dir == "" {
+		dir = "plugins"
 	}
-	return filepath.Join(dir, pluginID+"-data")
+	if rest, ok := strings.CutPrefix(dir, "~"); ok {
+		if home, errHome := os.UserHomeDir(); errHome == nil {
+			dir = filepath.Join(home, strings.TrimLeft(rest, `/\`))
+		}
+	}
+	return absUnder(wd, dir)
+}
+
+func hostConfigPath(args []string) string {
+	for i, arg := range args {
+		switch {
+		case arg == "--":
+			return ""
+		case arg == "-config" || arg == "--config":
+			if i+1 < len(args) {
+				return args[i+1]
+			}
+			return ""
+		case strings.HasPrefix(arg, "-config="):
+			return strings.TrimPrefix(arg, "-config=")
+		case strings.HasPrefix(arg, "--config="):
+			return strings.TrimPrefix(arg, "--config=")
+		}
+	}
+	return ""
+}
+
+func absUnder(wd, path string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Join(wd, path)
 }
