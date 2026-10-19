@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.6.0...opencode-go-v0.7.0) (2026-10-19)
+
+
+### Features
+
+* **opencode-go:** keep the free tier's gate invisible to the caller
+
 ## [0.6.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.5.0...opencode-go-v0.6.0) (2026-10-16)
 
 
