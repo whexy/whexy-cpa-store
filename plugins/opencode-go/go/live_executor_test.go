@@ -253,7 +253,8 @@ func TestLiveExecutorFreeModelWithHarnessTools(t *testing.T) {
 	}
 	t.Logf("pi answered: %s", decodeResult[pluginapi.ExecutorResponse](t, raw).Payload)
 
-	// Codex: shell and apply_patch, and no read tool at all.
+	// Codex: shell and apply_patch, and neither of OpenCode's tools, so both
+	// go up as placeholders beside its own.
 	codexTools := `[{"type":"function","name":"shell","description":"Runs a command","parameters":{"type":"object","properties":{"command":{"type":"array","items":{"type":"string"}}},"required":["command"]}},{"type":"function","name":"apply_patch","description":"Edits a file","parameters":{"type":"object","properties":{"patch":{"type":"string"}},"required":["patch"]}}]`
 	codexPayload := `{"model":"` + ref + `","instructions":"Be brief.","input":` + strconv.Quote(prompt) + `,"tools":` + codexTools + `,"stream":false}`
 	raw, _ = executorExecute(testCall{Source: "openai-response", Model: ref, Payload: codexPayload, APIKey: key}.raw(t))
@@ -262,19 +263,25 @@ func TestLiveExecutorFreeModelWithHarnessTools(t *testing.T) {
 	}
 	codexSent := gateway.inferenceRequests()[1]
 	codexUpstream := gjson.GetBytes(codexSent.Body, "tools").Array()
-	if len(codexUpstream) != 3 {
+	if len(codexUpstream) != 4 {
 		t.Fatalf("codex tools = %s", gjson.GetBytes(codexSent.Body, "tools").Raw)
 	}
-	if got := codexUpstream[2].Get("function.name").String(); got != cloakToolName {
-		t.Fatalf("the placeholder is missing: %s", gjson.GetBytes(codexSent.Body, "tools").Raw)
-	}
-	if got := codexUpstream[2].Get("function.description").String(); got != cloakToolDescription {
-		t.Fatalf("placeholder description = %q", got)
+	for index, want := range []string{cloakBashName, cloakToolName} {
+		placeholder := codexUpstream[index+2]
+		if got := placeholder.Get("function.name").String(); got != want {
+			t.Fatalf("the %s placeholder is missing: %s", want, gjson.GetBytes(codexSent.Body, "tools").Raw)
+		}
+		if got := placeholder.Get("function.description").String(); got != cloakToolDescription {
+			t.Fatalf("placeholder description = %q", got)
+		}
 	}
 	codexAnswer := decodeResult[pluginapi.ExecutorResponse](t, raw).Payload
 	for _, item := range gjson.GetBytes(codexAnswer, "output").Array() {
-		if item.Get("type").String() == "function_call" && item.Get("name").String() == cloakToolName {
-			t.Fatalf("the model called the placeholder: %s", codexAnswer)
+		if item.Get("type").String() == "function_call" {
+			switch item.Get("name").String() {
+			case cloakToolName, cloakBashName:
+				t.Fatalf("a call of a placeholder reached the caller: %s", codexAnswer)
+			}
 		}
 	}
 	t.Logf("codex answered: %s", codexAnswer)

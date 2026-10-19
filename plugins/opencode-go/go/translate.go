@@ -299,6 +299,11 @@ type streamConverter struct {
 	original []byte
 	request  []byte
 	param    any
+	// filter undoes, in the model's own protocol, what the cloak did to the
+	// request's tool list; inert unless the request was cloaked. stream is
+	// its per-stream state, once a filtered converter sees an event.
+	filter cloakFilter
+	stream *cloakStream
 	// done is set once the upstream sent its terminal event.
 	done bool
 	// stopReason is the upstream's finish_reason or stop_reason.
@@ -331,19 +336,60 @@ func (c *streamConverter) convert(frame sseFrame) ([][]byte, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
+	// The cloak filter runs ahead of everything, in the model's own
+	// protocol: what it drops is not observed either, so a call of the
+	// placeholder leaves no trace in the reply's stop reason, and one event
+	// may come back as several, or as none.
+	if c.filter.active() {
+		if c.stream == nil {
+			c.stream = c.filter.streams()
+		}
+		var out [][]byte
+		for _, event := range c.stream.event(data) {
+			if errObserve := c.observe(event); errObserve != nil {
+				return nil, errObserve
+			}
+			out = append(out, c.render(event, frame.Raw)...)
+		}
+		return out, nil
+	}
 	if errObserve := c.observe(data); errObserve != nil {
 		return nil, errObserve
 	}
+	return c.render(data, frame.Raw), nil
+}
+
+// render turns one upstream event into the chunks the caller gets: whole SSE
+// frames and bare JSON in the model's own protocol where the caller speaks
+// it, a translation where it does not. raw is the frame the event arrived
+// in, which is handed on byte for byte when nothing about the event changed.
+func (c *streamConverter) render(data, raw []byte) [][]byte {
 	if c.plan.ResponseFrom == "" {
 		if c.plan.Upstream != sdktranslator.FormatOpenAI {
-			return [][]byte{frame.Raw}, nil
+			return [][]byte{rawFrame(data, raw)}
 		}
 		if bytes.Equal(data, []byte("[DONE]")) {
-			return nil, nil
+			return nil
 		}
-		return [][]byte{data}, nil
+		return [][]byte{data}
 	}
-	return c.translate(data), nil
+	return c.translate(data)
+}
+
+// rawFrame is one event as an SSE frame: the frame it arrived in when the
+// event is still in it, since a caller speaking the model's protocol gets
+// the upstream's own framing, and one built for it otherwise, which is what
+// a rewritten or synthesized event needs.
+func rawFrame(data, raw []byte) []byte {
+	if bytes.Contains(raw, data) {
+		return raw
+	}
+	event := gjson.GetBytes(data, "type").String()
+	frame := []byte("data: ")
+	if event != "" {
+		frame = []byte("event: " + event + "\ndata: ")
+	}
+	return append(append(frame, data...), '\n', '\n')
 }
 
 func (c *streamConverter) translate(data []byte) [][]byte {

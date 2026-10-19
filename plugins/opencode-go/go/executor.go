@@ -46,6 +46,9 @@ type executorCall struct {
 	// cloaked says the request is presented as the OpenCode client because the
 	// model is a free one of the pay-as-you-go gateway.
 	cloaked bool
+	// filter undoes whatever the cloak did to the request's tool list in the
+	// reply (cloakFilter); it is inert unless the request was cloaked.
+	filter cloakFilter
 	// payload is the client's request in plan.Source; response translators
 	// read tool names and options from it.
 	payload []byte
@@ -130,15 +133,18 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	session := sessionID(req.Metadata, req.Headers, source, payload)
 	// A free pay-as-you-go model is served only to the OpenCode client: the
 	// request gets that identity, the streaming body its gate expects and a
-	// session identifier it decodes. A caller that already is OpenCode keeps
-	// its own identity and session.
+	// session identifier of the shape it accepts. A caller that already is
+	// OpenCode keeps its own identity and session.
+	filter := newCloakFilter(route.Protocol, cloakTools{})
 	cloaked := cfg.CloakFreeModels && route.Family != familyGo && route.Free
 	impersonate := false
 	if cloaked {
-		body, errBody = ensureReadTool(route.Protocol, body)
+		var tools cloakTools
+		body, tools, errBody = cloakBody(route.Protocol, body)
 		if errBody != nil {
 			return nil, errorEnvelope("invalid_request", fmt.Sprintf("prepare the free %s request for %s: %v", route.Protocol, route.UpstreamID, errBody), http.StatusBadRequest)
 		}
+		filter = newCloakFilter(route.Protocol, tools)
 		if nativeSession, native := nativeOpenCodeSession(req.Headers); native {
 			session = nativeSession
 		} else {
@@ -154,6 +160,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 		route:   route,
 		plan:    plan,
 		cloaked: cloaked,
+		filter:  filter,
 		payload: payload,
 		body:    body,
 		headers: inferenceHeaders(cfg, cred.Bearer, route.Protocol, req.Headers, stream, session, impersonate),
@@ -188,13 +195,18 @@ func (c *executorCall) execute(ctx context.Context) []byte {
 	}
 	body := resp.Body
 	// A cloaked request is answered with SSE even though the client asked for
-	// JSON, so the stream is folded back into one response.
+	// JSON, so the stream is folded back into one response; and what the cloak
+	// did to the request's tool list is undone in it before it is translated,
+	// so no translator meets a call of a tool that is in no list it saw.
 	if c.cloaked && isStreamBody(body) {
 		assembled, errAssemble := assembleStream(c.route.Protocol, body)
 		if errAssemble != nil {
 			return errorEnvelope("translation_failed", errAssemble.Error(), http.StatusBadGateway)
 		}
 		body = assembled
+	}
+	if c.filter.active() {
+		body = c.filter.buffered(body)
 	}
 	out, errConvert := convertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, body)
 	if errConvert != nil {
@@ -221,6 +233,9 @@ func (c *executorCall) executeStream(ctx context.Context) []byte {
 		return c.upstreamFailure(ctx, upstream.StatusCode, upstream.Headers, body)
 	}
 	converter := newStreamConverter(ctx, c.plan, c.req.Model, c.payload, c.body)
+	// What the cloak did to the request's tool list is undone in the model's
+	// own protocol, before the converter translates anything out of it.
+	converter.filter = c.filter
 	streamID := c.req.StreamID
 	startBackground(func(context.Context) { pumpStream(upstream, converter, streamID) })
 	raw, errEnvelope := okEnvelope(rpcExecutorStreamResponse{Headers: diagnosticHeaders(upstream.Headers)})

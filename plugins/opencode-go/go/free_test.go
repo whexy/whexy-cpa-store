@@ -190,7 +190,7 @@ func TestExecutorServesFreeWithoutKey(t *testing.T) {
 		req.Headers.Get("User-Agent") != cloakUserAgent || !validOpenCodeSession(req.Headers.Get("x-opencode-session")) {
 		t.Fatalf("request = %s %v", req.URL, req.Headers)
 	}
-	if gjson.GetBytes(req.Body, "model").String() != "free-chat" || gjson.GetBytes(req.Body, "tools.0.function.name").String() != cloakToolName {
+	if gjson.GetBytes(req.Body, "model").String() != "free-chat" || toolsOf(t, req.Body) != "bash,read" {
 		t.Fatalf("body = %s", req.Body)
 	}
 

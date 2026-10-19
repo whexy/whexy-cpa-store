@@ -157,30 +157,49 @@ reproduced against the live endpoint one factor at a time:
 
 - the `User-Agent` names OpenCode with a version of at least 1.18.0, in any of
   the shapes the client uses;
-- a session header carries a well-formed OpenCode session id, which the gate
-  decodes;
+- a session header carries a session id of OpenCode's shape — `ses_`, twelve
+  hex digits, fourteen letters and digits — and nothing inside it is
+  decoded: one that is all zeros is accepted, and a hash cut to the same
+  length is not;
 - the body asks for streaming, and the gateway answers with SSE even for a
   request that asks for JSON;
-- the body's tool list contains a tool **named** `read`.
+- the body's tool list contains a tool named exactly `read` — lowercase, which
+  `Read` is not. It is the only name that opens the gate: every other tool
+  OpenCode ships was refused on its own, `bash` included.
 
-That last check reads the name and nothing else, which is what keeps it
-harmless. The plugin appends a placeholder whose description says it is
-reserved by the transport and must not be called, and models leave it alone: in
-live runs, a model given the placeholder beside Codex's tools reasoned that
-"the read tool is explicitly unavailable" and ran `shell` with `cat` instead,
-and one given it beside Pi's tools called Pi's own `read`. A caller that
-already declares `read`, as Pi does, keeps its tool untouched and gets nothing
-added.
+That last check reads the name and nothing else — not the description, not the
+schema. But passing the gate is not the whole of it: the gate is a fingerprint,
+and a fingerprint is read as easily from what a request leaves out as from what
+it puts in. So the plugin sends what the client itself sends — the whole
+`User-Agent`, the session in both of the headers it names one in, a fresh
+request identifier for the turn, its `x-opencode-client` and
+`x-opencode-project`, and none of the session headers it does not use — and
+its tool list offers `bash` as well as `read`, each with OpenCode's own
+parameters, because that is the pair its client reaches a model with. A request
+that carries only the least that is answered names the check it is answering.
+
+What keeps the tools harmless is that only the names are compared. A caller
+that already declares both, as Pi does, keeps its tools untouched and gets
+nothing added. One that declares them in another case, as Claude Code's `Bash`
+and `Read` are, has each offered under OpenCode's name, and the model's calls
+of them come back under the caller's own, so the tools go on working as they
+did. Only what a caller declares neither of — Codex, say, whose `shell` and
+`apply_patch` are neither — goes up as a placeholder, whose description says it
+is reserved by the transport and must not be called. In live runs, a model
+beside it reasoned that "the read tool is explicitly unavailable" and ran
+`shell` with `cat` instead. And when one calls a placeholder anyway, the call
+never reaches the client: it is taken out of the reply, and a turn that called
+nothing else ends as a plain stop on whatever the model said alongside it. The
+placeholder exists for the gate alone, and a client never has to know about it.
 
 A caller that is OpenCode itself is left alone entirely: its own user agent and
 session are what the gate wants, so they pass through rather than being
 replaced, which keeps the gateway's per-session metering and cache affinity.
 
-Two consequences are worth knowing. The placeholder still reaches the model, so
-one that ignores the description would emit a call no client can run; and
-OpenCode meters the free tier on its side, so a request can be refused even
-when everything above holds. Turn `cloak_free_models` off to send free models
-as the plugin itself, which is what any other client gets.
+One consequence is still worth knowing: OpenCode meters the free tier on its
+side, so a request can be refused even when everything above holds. Turn
+`cloak_free_models` off to send free models as the plugin itself, which is what
+any other client gets.
 
 The plugin reads the catalog again every three hours and on **Refresh
 models**, and CLIProxyAPI then lists the models OpenCode added and drops those

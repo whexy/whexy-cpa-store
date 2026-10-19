@@ -87,6 +87,31 @@ func TestConversationSessionIDIsStableAcrossTurns(t *testing.T) {
 	}
 }
 
+// Two threads of one client in one folder open on the same system prompt and
+// the same first user message — Codex's environment block is both — and the
+// hash alone would make them one session. The thread a request names with
+// its prompt_cache_key is what separates them, and it holds across turns.
+func TestConversationSessionIDNamesAThreadByItsPromptCacheKey(t *testing.T) {
+	opening := `"instructions":"You are Codex.","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context><cwd>/work</cwd></environment_context>"}]}]`
+	first := []byte(`{"prompt_cache_key":"thread-a",` + opening + `}`)
+	later := []byte(`{"prompt_cache_key":"thread-a",` + opening + `,"max_output_tokens":32}`)
+	other := []byte(`{"prompt_cache_key":"thread-b",` + opening + `}`)
+
+	session := conversationSessionID(sdktranslator.FormatOpenAIResponse, first)
+	if got := conversationSessionID(sdktranslator.FormatOpenAIResponse, later); got != session {
+		t.Fatalf("one thread got two sessions: %q then %q", session, got)
+	}
+	if got := conversationSessionID(sdktranslator.FormatOpenAIResponse, other); got == session {
+		t.Fatalf("two threads share one session: %q", session)
+	}
+	// A blank key names no thread, so the conversation's own words do.
+	blank := []byte(`{"prompt_cache_key":"  ",` + opening + `}`)
+	keyless := []byte(`{` + opening + `}`)
+	if got := conversationSessionID(sdktranslator.FormatOpenAIResponse, blank); got == session || got != conversationSessionID(sdktranslator.FormatOpenAIResponse, keyless) {
+		t.Fatalf("a blank prompt_cache_key seeded %q", got)
+	}
+}
+
 func TestInferenceHeaders(t *testing.T) {
 	client := http.Header{
 		"Authorization":     {"Bearer sk-client-cpa-key"},
@@ -130,6 +155,80 @@ func TestInferenceHeaders(t *testing.T) {
 	if got := inferenceHeaders(settings{UserAgent: "my-proxy/1"}, testKeyA, sdktranslator.FormatOpenAI, nil, false, "s", false).Get("User-Agent"); got != "my-proxy/1" {
 		t.Errorf("configured user agent = %q", got)
 	}
+	// A caller asking as itself never gains OpenCode's identity headers: the
+	// client header it did send is read, and nothing is copied.
+	if headers.Get("X-Opencode-Session-Id") != "" || headers.Get("X-Opencode-Request") != "" || headers.Get("X-Opencode-Client") != "" {
+		t.Errorf("an uncloaked request carries OpenCode's identity: %v", headers)
+	}
+}
+
+// An impersonated request carries the client's identity whole, not the least
+// of it the gate reads: the full User-Agent, the session in both headers it
+// names one in, an identifier for this turn, and its client and project —
+// and nothing the client does not send, the client's own User-Agent and
+// keys first.
+func TestInferenceHeadersImpersonate(t *testing.T) {
+	client := http.Header{
+		"Authorization": {"Bearer sk-client-cpa-key"},
+		"Cookie":        {"a=b"},
+		"Referer":       {"https://example.test/"},
+		"User-Agent":    {"curl/8.0"},
+	}
+	headers := inferenceHeaders(defaultSettings(), testKeyA, sdktranslator.FormatOpenAI, client, true, "ses-test", true)
+	want := map[string]string{
+		"Authorization":         "Bearer " + testKeyA,
+		"Content-Type":          "application/json",
+		"Accept":                "text/event-stream",
+		"User-Agent":            cloakUserAgent,
+		"X-Opencode-Session":    "ses-test",
+		"X-Opencode-Session-Id": "ses-test",
+		"X-Opencode-Client":     "cli",
+		"X-Opencode-Project":    "global",
+	}
+	if len(headers) != len(want)+1 {
+		t.Fatalf("headers = %v", headers)
+	}
+	for name, value := range want {
+		if headers.Get(name) != value {
+			t.Errorf("%s = %q, want %q", name, headers.Get(name), value)
+		}
+	}
+	request := headers.Get("X-Opencode-Request")
+	if !strings.HasPrefix(request, "msg_") || len(request) != len("msg_")+26 {
+		t.Errorf("request id = %q", request)
+	}
+	if headers.Get("Referer") != "" || headers.Get("Cookie") != "" {
+		t.Errorf("a client header was forwarded: %v", headers)
+	}
+	// Every turn carries a turn of its own: two impersonated requests on the
+	// same session do not share a request identifier, and their identifiers
+	// count up rather than down, which is how the client mints a message's.
+	again := inferenceHeaders(defaultSettings(), testKeyA, sdktranslator.FormatOpenAI, client, true, "ses-test", true).Get("X-Opencode-Request")
+	if again == request {
+		t.Errorf("two turns share one request id %q", request)
+	}
+	first, second := messageIDValue(t, request), messageIDValue(t, again)
+	if second != first+1 {
+		t.Errorf("request ids count %d then %d, want consecutive", first, second)
+	}
+}
+
+// messageIDValue reads the leading twelve hex digits of a msg_ identifier,
+// which a message's are not inverted.
+func messageIDValue(t *testing.T, id string) uint64 {
+	t.Helper()
+	if !strings.HasPrefix(id, "msg_") || len(id) != len("msg_")+26 {
+		t.Fatalf("id %q is not a message id", id)
+	}
+	value := uint64(0)
+	for _, char := range id[len("msg_") : len("msg_")+12] {
+		digit := strings.IndexRune("0123456789abcdef", char)
+		if digit < 0 {
+			t.Fatalf("id %q has a non-hex leading byte %q", id, char)
+		}
+		value = value<<4 | uint64(digit)
+	}
+	return value
 }
 
 // The executor sends the canonical session and the client's User-Agent, and

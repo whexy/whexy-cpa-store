@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strings"
+	"time"
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
@@ -69,8 +70,17 @@ func shortHash(text string) string {
 // conversationSessionID hashes the system prompt and the first user turn.
 // Only their text is used: clients such as Claude Code move cache_control
 // markers between turns, which changes the raw JSON but not the text.
+//
+// A request that carries a prompt_cache_key, as Codex's do, names its thread
+// with it, and that name wins: two of its conversations in one folder open
+// on the same system prompt and the same environment message, and the hash
+// below would make them one session, so the gateway would route and cache
+// and meter them as one conversation.
 func conversationSessionID(format sdktranslator.Format, payload []byte) string {
 	root := gjson.ParseBytes(payload)
+	if key := strings.TrimSpace(root.Get("prompt_cache_key").String()); key != "" {
+		return "cpa-" + shortHash("prompt_cache_key\x00"+key)
+	}
 	var system, firstUser []string
 	switch format {
 	case sdktranslator.FormatClaude:
@@ -190,8 +200,21 @@ func inferenceHeaders(cfg settings, apiKey string, protocol sdktranslator.Format
 	headers.Set("x-opencode-session", session)
 	userAgent := headerValue(client, "User-Agent")
 	if impersonate {
-		// The free tier answers only the OpenCode client, by name.
+		// The free tier answers only the OpenCode client, so the request
+		// carries what that client carries, and not only the User-Agent the
+		// gate reads the version out of: the session named a second time, a
+		// fresh identifier for this turn, and the client and project it runs
+		// as. A request carrying just enough to be answered names the check
+		// it is answering; this one is what the client's own turns look like,
+		// which is what the gate's logs are full of.
 		userAgent = cloakUserAgent
+		headers.Set("x-opencode-session-id", session)
+		if request, errRequest := mintPrefixedID("msg", false, time.Now()); errRequest == nil {
+			headers.Set("x-opencode-request", request)
+		}
+		headers.Set("x-opencode-client", "cli")
+		// The project OpenCode names outside a git repository.
+		headers.Set("x-opencode-project", "global")
 	} else if userAgent == "" {
 		userAgent = cfg.userAgent()
 	}
