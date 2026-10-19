@@ -449,6 +449,26 @@
         font-size: 11.5px;
         padding: 4px 6px;
       }
+      .mrow .limits {
+        display: block;
+        color: var(--amber-text);
+      }
+      .caps {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 4px 12px;
+        margin: 0;
+        font-size: 12px;
+      }
+      .caps dt {
+        color: var(--fg-3);
+      }
+      .caps dd {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        overflow-wrap: anywhere;
+      }
       .pick {
         border: 1px solid var(--line);
         border-radius: 6px;
@@ -1025,6 +1045,10 @@
             Weight for weighted round robin.
           </p>
         </div>
+        <div id="shared" hidden>
+          <div class="note section-label">Every member supports</div>
+          <dl id="capabilities" class="caps"></dl>
+        </div>
         <div>
           <div class="note section-label">Add models CPA serves now</div>
           <div class="pick">
@@ -1198,14 +1222,19 @@
         const results = await Promise.allSettled(
           (keys.length ? keys : [""]).map(list),
         );
-        const served = new Set();
+        const served = new Map();
         for (const result of results) {
           if (result.status === "rejected") {
             errors.push(result.reason.message);
             continue;
           }
           for (const model of result.value)
-            if (model.id && model.owned_by !== PLUGIN_ID) served.add(model.id);
+            if (
+              model.id &&
+              model.owned_by !== PLUGIN_ID &&
+              !served.has(model.id)
+            )
+              served.set(model.id, model);
         }
         if (!results.some((result) => result.status === "fulfilled"))
           throw results[0].reason;
@@ -1330,11 +1359,13 @@
           configuredModels(get, errors),
         ]);
         const catalog = new Map();
-        for (const id of served) {
+        for (const [id, listed] of served) {
           const entry = {
             model: id,
             display_name: undefined,
             providers: new Map(),
+            listed: capabilitiesOf(listed),
+            capabilities: new Map(),
           };
           for (const source of sources) {
             const found = source.get(id);
@@ -1350,6 +1381,167 @@
           catalog.set(id, entry);
         }
         return catalog;
+      }
+      // A group announces only what every member supports, because a request
+      // may land on any of them: the smallest limit, the common modalities,
+      // parameters and reasoning levels. A field a member does not report is
+      // one it is not known to support, so the group leaves it out.
+      const LIMITS = {
+        context_length: "context_length",
+        max_completion_tokens: "max_completion_tokens",
+        input_token_limit: "inputTokenLimit",
+        output_token_limit: "outputTokenLimit",
+      };
+      const LISTS = {
+        input_modalities: "supportedInputModalities",
+        output_modalities: "supportedOutputModalities",
+        supported_parameters: "supported_parameters",
+        generation_methods: "supportedGenerationMethods",
+      };
+      // Providers disagree on the casing of modality and level names.
+      function names(values) {
+        return [
+          ...new Set(
+            (Array.isArray(values) ? values : [])
+              .map((value) => text(value).toLowerCase())
+              .filter(Boolean),
+          ),
+        ];
+      }
+      function thinkingOf(raw) {
+        if (!raw || typeof raw !== "object") return undefined;
+        const thinking = {};
+        const levels = names(raw.levels);
+        if (levels.length) thinking.levels = levels;
+        const min = Number(raw.min) || 0,
+          max = Number(raw.max) || 0;
+        if (max > 0 && min >= 0 && min <= max) {
+          thinking.min = min;
+          thinking.max = max;
+        }
+        if (!thinking.levels && !thinking.max) return undefined;
+        if (raw.zero_allowed) thinking.zero_allowed = true;
+        if (raw.dynamic_allowed) thinking.dynamic_allowed = true;
+        return thinking;
+      }
+      // capabilitiesOf reads a model as CPA lists it (a model definition or a
+      // /v1/models entry) into the group config's capability fields.
+      function capabilitiesOf(model) {
+        const out = {};
+        if (!model || typeof model !== "object") return out;
+        for (const [field, source] of Object.entries(LIMITS)) {
+          const value = Number(model[source]);
+          if (Number.isInteger(value) && value > 0) out[field] = value;
+        }
+        for (const [field, source] of Object.entries(LISTS)) {
+          const values = names(model[source]);
+          if (values.length) out[field] = values;
+        }
+        const thinking = thinkingOf(model.thinking);
+        if (thinking) out.thinking = thinking;
+        return out;
+      }
+      function intersectCapabilities(sets) {
+        const out = {};
+        if (!sets.length) return out;
+        for (const field of Object.keys(LIMITS))
+          if (sets.every((set) => set[field] > 0))
+            out[field] = Math.min(...sets.map((set) => set[field]));
+        for (const field of Object.keys(LISTS)) {
+          if (!sets.every((set) => set[field]?.length)) continue;
+          const common = sets[0][field].filter((value) =>
+            sets.every((set) => set[field].includes(value)),
+          );
+          if (common.length) out[field] = common;
+        }
+        if (sets.every((set) => set.thinking)) {
+          const all = sets.map((set) => set.thinking);
+          const thinking = thinkingOf({
+            levels: all.every((each) => each.levels)
+              ? all[0].levels.filter((level) =>
+                  all.every((each) => each.levels.includes(level)),
+                )
+              : [],
+            min: all.every((each) => each.max)
+              ? Math.max(...all.map((each) => each.min))
+              : 0,
+            max: all.every((each) => each.max)
+              ? Math.min(...all.map((each) => each.max))
+              : 0,
+            zero_allowed: all.every((each) => each.zero_allowed),
+            dynamic_allowed: all.every((each) => each.dynamic_allowed),
+          });
+          if (thinking) out.thinking = thinking;
+        }
+        return out;
+      }
+      // loadCapabilities gives every catalog entry what each of its providers
+      // supports. That comes from CPA's model definitions for the provider's
+      // channel; a provider without them (an OpenAI-compatible one, say) gets
+      // what /v1/models lists for the model.
+      async function loadCapabilities({ get, catalog, errors }) {
+        const providers = new Set();
+        for (const entry of catalog.values())
+          for (const provider of entry.providers.keys())
+            providers.add(provider);
+        const definitions = new Map();
+        await Promise.all(
+          [...providers].map(async (provider) => {
+            let data;
+            try {
+              data = await get("/routing/model-definitions/" + provider);
+            } catch (error) {
+              if (error.message !== "unknown channel")
+                errors.push(provider + " · " + error.message);
+              return;
+            }
+            const byID = new Map();
+            for (const model of data?.models || [])
+              if (model?.id) byID.set(model.id, model);
+            definitions.set(provider, byID);
+          }),
+        );
+        for (const entry of catalog.values())
+          for (const provider of entry.providers.keys()) {
+            const byID = definitions.get(provider);
+            // A key prefix is one segment in front of the definition's ID.
+            const definition =
+              byID?.get(entry.model) ||
+              byID?.get(entry.model.slice(entry.model.indexOf("/") + 1));
+            entry.capabilities.set(
+              provider,
+              definition ? capabilitiesOf(definition) : entry.listed,
+            );
+          }
+      }
+      // memberCapabilities is what a member supports on every provider the
+      // group may send it to.
+      function memberCapabilities(entry, providers) {
+        if (!entry || !providers.length) return {};
+        return intersectCapabilities(
+          providers.map((provider) => entry.capabilities.get(provider) || {}),
+        );
+      }
+      // groupCapabilities also reports, for each member, the fields the group
+      // would announce differently without it.
+      function groupCapabilities(members) {
+        const capabilities = intersectCapabilities(members);
+        const lowers = members.map((_, index) => {
+          if (members.length < 2) return [];
+          const without = intersectCapabilities(
+            members.filter((_, other) => other !== index),
+          );
+          return [
+            ...Object.keys(LIMITS),
+            ...Object.keys(LISTS),
+            "thinking",
+          ].filter(
+            (field) =>
+              JSON.stringify(without[field]) !==
+              JSON.stringify(capabilities[field]),
+          );
+        });
+        return { capabilities, lowers };
       }
     </script>
     <script>
@@ -1607,12 +1799,14 @@
         if (catalogPromise) return catalogPromise;
         catalogPromise = (async () => {
           catalogErrors = [];
+          const get = (path, missing) =>
+            request(CPA + path, "GET", undefined, missing);
           catalog = await loadModelCatalog({
-            get: (path, missing) =>
-              request(CPA + path, "GET", undefined, missing),
+            get,
             list: listModels,
             errors: catalogErrors,
           });
+          await loadCapabilities({ get, catalog, errors: catalogErrors });
           catalogLoaded = true;
         })().catch((error) => {
           catalogErrors = [error.message];
@@ -2226,6 +2420,42 @@
           lockEditor();
         }
       }
+      // The fields the editor shows; the group also announces the rest.
+      const SHOWN = {
+        context_length: "Context",
+        max_completion_tokens: "Max output",
+        input_modalities: "Input",
+        output_modalities: "Output",
+        thinking: "Reasoning",
+      };
+      const count = new Intl.NumberFormat("en");
+      function shownValue(field, value) {
+        if (value === undefined) return "—";
+        if (field === "thinking")
+          return [
+            ...(value.levels || []),
+            ...(value.max
+              ? [count.format(value.min) + "–" + count.format(value.max)]
+              : []),
+          ].join(", ");
+        return Array.isArray(value) ? value.join(", ") : count.format(value);
+      }
+      function draftCapabilities() {
+        return groupCapabilities(
+          draft.members.map((member) =>
+            memberCapabilities(catalog.get(member.model), member.providers),
+          ),
+        );
+      }
+      function renderCapabilities(capabilities) {
+        $("shared").hidden = !draft.members.length;
+        $("capabilities").replaceChildren(
+          ...Object.entries(SHOWN).flatMap(([field, label]) => [
+            h("dt", {}, label),
+            h("dd", {}, shownValue(field, capabilities[field])),
+          ]),
+        );
+      }
       function renderEditor() {
         $("policy").replaceChildren(
           ...Object.keys(policies).map((policy) =>
@@ -2246,6 +2476,8 @@
         );
         $("policy-note").textContent = consequences[draft.policy];
         $("members-label").textContent = "Members · " + draft.members.length;
+        const { capabilities, lowers } = draftCapabilities();
+        renderCapabilities(capabilities);
         $("weight-hint").hidden =
           draft.policy === "weighted-round-robin" || !draft.members.length;
         $("members").replaceChildren(
@@ -2254,6 +2486,9 @@
             const choices = [
               ...new Set([...known, ...member.providers, ...member.previous]),
             ];
+            const limits = lowers[index]
+              .filter((field) => field in SHOWN)
+              .map((field) => SHOWN[field].toLowerCase());
             const row = h(
               "div",
               { class: "mrow" },
@@ -2285,6 +2520,13 @@
                           member.providers.join(", "),
                       )
                     : null,
+                limits.length
+                  ? h(
+                      "span",
+                      { class: "note limits" },
+                      "Limits · " + limits.join(", "),
+                    )
+                  : null,
               ),
             );
             if (known.length > 1) {
@@ -2300,6 +2542,8 @@
                     member.previous,
                     member.providers,
                   );
+                  renderEditor();
+                  $(id).focus();
                 },
               });
               select.append(
@@ -2554,7 +2798,9 @@
               providers,
               weight,
             })),
+            capabilities: draftCapabilities().capabilities,
           };
+          if (!Object.keys(next.capabilities).length) delete next.capabilities;
           if (index < 0) groups.push(next);
           else groups[index] = next;
           const affinity = {

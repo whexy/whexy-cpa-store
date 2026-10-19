@@ -60,6 +60,9 @@ type groupConfig struct {
 	Policy  string
 	Enabled bool
 	Members []memberConfig
+	// Capabilities is what every member supports, worked out by the editor
+	// when the group was saved.
+	Capabilities capabilities
 }
 
 // memberConfig is one model inside a group. Providers is the set of provider
@@ -85,11 +88,12 @@ type rawAffinity struct {
 }
 
 type rawGroup struct {
-	Name    string      `yaml:"name"`
-	Slug    string      `yaml:"slug"`
-	Policy  string      `yaml:"policy"`
-	Enabled *bool       `yaml:"enabled"`
-	Members []rawMember `yaml:"members"`
+	Name         string           `yaml:"name"`
+	Slug         string           `yaml:"slug"`
+	Policy       string           `yaml:"policy"`
+	Enabled      *bool            `yaml:"enabled"`
+	Members      []rawMember      `yaml:"members"`
+	Capabilities *rawCapabilities `yaml:"capabilities"`
 }
 
 type rawMember struct {
@@ -196,6 +200,12 @@ func parseGroup(prefix string, raw rawGroup, index int) (groupConfig, error) {
 	if len(raw.Members) > maxGroupMembers {
 		return groupConfig{}, fmt.Errorf("groups[%d] (%s): at most %d members", index, slug, maxGroupMembers)
 	}
+
+	caps, errCaps := parseCapabilities(raw.Capabilities)
+	if errCaps != nil {
+		return groupConfig{}, fmt.Errorf("groups[%d] (%s): %w", index, slug, errCaps)
+	}
+	group.Capabilities = caps
 
 	seenMember := make(map[string]bool, len(raw.Members))
 	for memberIndex, rawMemberEntry := range raw.Members {

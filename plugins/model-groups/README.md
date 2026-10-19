@@ -65,6 +65,15 @@ per request. The plugin's own session lifetime is `affinity.ttl` (default 1h).
   them. After adding a provider for one of a member's models, open the group in
   the editor and save it: every member's providers are resolved again against
   what CLIProxyAPI serves then.
+- A group announces to clients only what every member supports, since a
+  request may land on any of them: the smallest context window and output
+  limit, and the input and output types and reasoning levels all members
+  share. The editor shows this under "Every member supports" and marks the
+  members that narrow it. A member's support comes from CLIProxyAPI's model
+  definitions for its provider, else from what `/v1/models` lists for it; a
+  limit no member reports is not announced. It is worked out when the group is
+  saved, like the providers, so save the group again after its members change
+  upstream.
 - A routed request names one provider, so failover inside a request happens
   between that provider's credentials. A model served by several providers
   carries all of them as that member's providers, and a session stays on the
@@ -103,12 +112,23 @@ plugins:
             - model: opencode-go/kimi-k3
               providers: [opencode-go]
               weight: 1
+          capabilities:
+            context_length: 262144
+            max_completion_tokens: 64000
+            input_modalities: [text]
+            output_modalities: [text]
+            thinking:
+              levels: [low, medium, high]
 ```
 
 `policy` is `round-robin`, `weighted-round-robin` or `fill-first`. A member's
 `providers` is the set of provider keys that serve that model, in preference
 order; `provider` (one key) is accepted as shorthand. A member without
-providers stays in the group but is not routable. A config that does not parse
+providers stays in the group but is not routable. `capabilities` is what the
+group announces, written by the editor on save; it also takes
+`input_token_limit`, `output_token_limit`, `supported_parameters`,
+`generation_methods`, and a `thinking` budget (`min`, `max`, `zero_allowed`,
+`dynamic_allowed`). A group without it announces only its ID. A config that does not parse
 keeps the previous groups running and reports the error on the page.
 
 </details>

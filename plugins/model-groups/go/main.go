@@ -252,7 +252,8 @@ func configure(raw []byte) error {
 	return nil
 }
 
-// registerModels publishes one model ID per enabled group.
+// registerModels publishes one model ID per enabled group, with the
+// capabilities every member of the group shares.
 func registerModels() pluginapi.ModelRegistrationResponse {
 	cfg := pluginStateRef.settingsSnapshot()
 	models := make([]pluginapi.ModelInfo, 0, len(cfg.Groups))
@@ -260,13 +261,15 @@ func registerModels() pluginapi.ModelRegistrationResponse {
 		if !group.Enabled {
 			continue
 		}
-		models = append(models, pluginapi.ModelInfo{
+		model := pluginapi.ModelInfo{
 			ID:          group.ID,
 			Object:      "model",
 			Created:     pluginStart.Unix(),
 			OwnedBy:     pluginID,
 			DisplayName: group.Name,
-		})
+		}
+		group.Capabilities.apply(&model)
+		models = append(models, model)
 	}
 	return pluginapi.ModelRegistrationResponse{Provider: providerKey, Models: models}
 }

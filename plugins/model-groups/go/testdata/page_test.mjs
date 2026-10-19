@@ -13,6 +13,9 @@ const logic = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const page = vm.createContext({});
 vm.runInContext(logic, page);
 const loadModelCatalog = vm.runInContext("loadModelCatalog", page);
+const loadCapabilities = vm.runInContext("loadCapabilities", page);
+const memberCapabilities = vm.runInContext("memberCapabilities", page);
+const groupCapabilities = vm.runInContext("groupCapabilities", page);
 
 // cpa answers get(path, missing) from v8 Management API responses, and
 // records the paths it was asked for.
@@ -268,5 +271,175 @@ test("the catalog fails when no key can read /v1/models", async () => {
       { a: new Error("/v1/models · HTTP 500") },
     ),
     /HTTP 500/,
+  );
+});
+
+// plain copies a value out of the page's realm so deepEqual compares it by
+// value.
+function plain(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+test("a member supports what its definition says, or what /v1/models lists", async () => {
+  const unknownChannel = async () => {
+    throw new Error("unknown channel");
+  };
+  const { catalog } = await load(
+    {
+      "/config/access/api-keys": ["k"],
+      "/config/api-keys": {
+        claude: [
+          {
+            name: "c",
+            prefix: "team",
+            keys: [{ "api-key": "a" }],
+            models: [{ name: "claude-sonnet-9" }],
+          },
+        ],
+        "openai-compatibility": [
+          { name: "router", models: [{ name: "claude-sonnet-9" }] },
+        ],
+      },
+    },
+    {
+      k: [
+        {
+          id: "claude-sonnet-9",
+          owned_by: "anthropic",
+          context_length: 1000000,
+          max_completion_tokens: 128000,
+        },
+        { id: "team/claude-sonnet-9", owned_by: "anthropic" },
+      ],
+    },
+  );
+  const definitions = {
+    "/routing/model-definitions/claude": {
+      models: [
+        {
+          id: "claude-sonnet-9",
+          context_length: 200000,
+          max_completion_tokens: 64000,
+          supportedInputModalities: ["TEXT", "IMAGE"],
+          thinking: { min: 1024, max: 64000, levels: ["low", "high"] },
+        },
+      ],
+    },
+  };
+  const errors = [];
+  await loadCapabilities({
+    get: async (path) =>
+      path in definitions
+        ? structuredClone(definitions[path])
+        : unknownChannel(),
+    catalog,
+    errors,
+  });
+  assert.deepEqual(errors, []);
+  const sonnet = catalog.get("claude-sonnet-9");
+  assert.deepEqual(plain(memberCapabilities(sonnet, ["claude"])), {
+    context_length: 200000,
+    max_completion_tokens: 64000,
+    input_modalities: ["text", "image"],
+    thinking: { levels: ["low", "high"], min: 1024, max: 64000 },
+  });
+  assert.deepEqual(
+    plain(memberCapabilities(sonnet, ["openai-compatible-router"])),
+    { context_length: 1000000, max_completion_tokens: 128000 },
+  );
+  // Either provider may serve it, so the member supports only what both do.
+  assert.deepEqual(
+    plain(memberCapabilities(sonnet, ["claude", "openai-compatible-router"])),
+    { context_length: 200000, max_completion_tokens: 64000 },
+  );
+  assert.deepEqual(
+    plain(memberCapabilities(catalog.get("team/claude-sonnet-9"), ["claude"]))
+      .context_length,
+    200000,
+  );
+});
+
+test("a group announces what every member supports", () => {
+  const { capabilities, lowers } = groupCapabilities([
+    {
+      context_length: 1000000,
+      max_completion_tokens: 64000,
+      input_modalities: ["text", "image"],
+      output_modalities: ["text"],
+      thinking: {
+        levels: ["low", "medium", "high"],
+        min: 1024,
+        max: 32000,
+        zero_allowed: true,
+      },
+    },
+    {
+      context_length: 200000,
+      max_completion_tokens: 64000,
+      input_modalities: ["text"],
+      output_modalities: ["text"],
+      thinking: { levels: ["medium", "high"], min: 2048, max: 64000 },
+    },
+    {
+      context_length: 400000,
+      max_completion_tokens: 128000,
+      input_modalities: ["text", "image"],
+      output_modalities: ["text"],
+      thinking: { levels: ["low", "medium", "high"] },
+    },
+  ]);
+  assert.deepEqual(plain(capabilities), {
+    context_length: 200000,
+    max_completion_tokens: 64000,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+    thinking: { levels: ["medium", "high"] },
+  });
+  assert.deepEqual(plain(lowers), [
+    [],
+    ["context_length", "input_modalities", "thinking"],
+    ["thinking"],
+  ]);
+});
+
+test("a field one member does not report is left out", () => {
+  const { capabilities, lowers } = groupCapabilities([
+    { context_length: 200000, thinking: { min: 0, max: 8000 } },
+    { input_modalities: ["text"] },
+  ]);
+  assert.deepEqual(plain(capabilities), {});
+  assert.deepEqual(plain(lowers), [
+    ["input_modalities"],
+    ["context_length", "thinking"],
+  ]);
+});
+
+test("reasoning budgets keep their overlap, and a group of one has no limiter", () => {
+  assert.deepEqual(
+    plain(
+      groupCapabilities([
+        { thinking: { min: 1024, max: 32000, dynamic_allowed: true } },
+        { thinking: { min: 4096, max: 64000, dynamic_allowed: true } },
+      ]),
+    ),
+    {
+      capabilities: {
+        thinking: { min: 4096, max: 32000, dynamic_allowed: true },
+      },
+      lowers: [["thinking"], ["thinking"]],
+    },
+  );
+  assert.deepEqual(
+    plain(
+      groupCapabilities([
+        { thinking: { min: 1024, max: 2048 } },
+        { thinking: { min: 4096, max: 8192 } },
+      ]).capabilities,
+    ),
+    {},
+  );
+  assert.deepEqual(
+    plain(groupCapabilities([{ context_length: 200000 }]).lowers),
+    [[]],
   );
 });
