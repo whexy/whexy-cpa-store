@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.1.5...model-groups-v0.2.0) (2026-10-19)
+
+
+### Features
+
+* **model-groups:** announce the capabilities every member shares
+
 ## [0.1.5](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.1.4...model-groups-v0.1.5) (2026-10-17)
 
 
