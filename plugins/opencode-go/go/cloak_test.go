@@ -439,7 +439,7 @@ func TestAssembleStream(t *testing.T) {
 // answer is folded back into the JSON a non-streaming client asked for.
 func TestExecutorCloaksFreeZenModels(t *testing.T) {
 	cfg := defaultSettings()
-	cfg.ZenModels = []string{"cat-jam-free", "kimi-k3"}
+	cfg.ZenModels = []string{"free-chat", "kimi-k3"}
 	useSettings(t, cfg)
 	useTestCatalog(t)
 	stream := readFixture(t, "chat_stream.txt")
@@ -447,7 +447,7 @@ func TestExecutorCloaksFreeZenModels(t *testing.T) {
 		return gatewayReply{Status: 200, Headers: http.Header{"Content-Type": {"text/event-stream"}}, Body: stream}
 	})
 
-	raw, _ := executorExecute(testCall{Source: "openai", Model: "opencode/cat-jam-free", Payload: clientPayload("openai", "opencode/cat-jam-free", false)}.raw(t))
+	raw, _ := executorExecute(testCall{Source: "openai", Model: "opencode/free-chat", Payload: clientPayload("openai", "opencode/free-chat", false)}.raw(t))
 	resp := decodeResult[pluginapi.ExecutorResponse](t, raw)
 	if got := parseClientResponse(t, "openai", resp.Payload); got.Text != "OK" {
 		t.Fatalf("folded response = %+v", got)
@@ -489,7 +489,7 @@ func TestExecutorCloaksFreeZenModels(t *testing.T) {
 	if got := gjson.GetBytes(free.Body, "tools.0.function.description").String(); got != cloakToolDescription {
 		t.Fatalf("the placeholder is described as a capability: %q", got)
 	}
-	if got := gjson.GetBytes(free.Body, "model").String(); got != "cat-jam-free" {
+	if got := gjson.GetBytes(free.Body, "model").String(); got != "free-chat" {
 		t.Fatalf("model = %q", got)
 	}
 
@@ -510,12 +510,12 @@ func TestExecutorCloaksFreeZenModels(t *testing.T) {
 // other client.
 func TestExecutorCloakCanBeTurnedOff(t *testing.T) {
 	cfg := defaultSettings()
-	cfg.ZenModels = []string{"cat-jam-free"}
+	cfg.ZenModels = []string{"free-chat"}
 	cfg.CloakFreeModels = false
 	useSettings(t, cfg)
 	useTestCatalog(t)
 	gateway := installFakeGateway(t, fixtureGateway(t))
-	raw, _ := executorExecute(testCall{Source: "openai", Model: "opencode/cat-jam-free", Payload: clientPayload("openai", "opencode/cat-jam-free", false)}.raw(t))
+	raw, _ := executorExecute(testCall{Source: "openai", Model: "opencode/free-chat", Payload: clientPayload("openai", "opencode/free-chat", false)}.raw(t))
 	decodeResult[pluginapi.ExecutorResponse](t, raw)
 	sent := gateway.inferenceRequests()
 	if len(sent) != 1 || sent[0].Headers.Get("User-Agent") == cloakUserAgent || gjson.GetBytes(sent[0].Body, "tools").Exists() {
@@ -528,15 +528,15 @@ func TestExecutorCloakCanBeTurnedOff(t *testing.T) {
 // keeps that too. Only the name the gate looks for is added.
 func TestExecutorCloakKeepsCallerTools(t *testing.T) {
 	cfg := defaultSettings()
-	cfg.ZenModels = []string{"cat-jam-free"}
+	cfg.ZenModels = []string{"free-chat"}
 	useSettings(t, cfg)
 	useTestCatalog(t)
 	gateway := installFakeGateway(t, func(hostHTTPRequest) gatewayReply {
 		return gatewayReply{Status: 200, Headers: http.Header{"Content-Type": {"application/json"}}, Body: readFixture(t, "chat_response.json")}
 	})
 	caller := `[{"type":"function","name":"shell","description":"Run a command","parameters":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}},{"type":"function","name":"apply_patch","description":"Edit a file","parameters":{"type":"object","properties":{"patch":{"type":"string"}},"required":["patch"]}}]`
-	payload := `{"model":"opencode/cat-jam-free","instructions":"be brief","input":"read /etc/hostname","tools":` + caller + `}`
-	raw, _ := executorExecute(testCall{Source: "openai-response", Model: "opencode/cat-jam-free", Payload: payload}.raw(t))
+	payload := `{"model":"opencode/free-chat","instructions":"be brief","input":"read /etc/hostname","tools":` + caller + `}`
+	raw, _ := executorExecute(testCall{Source: "openai-response", Model: "opencode/free-chat", Payload: payload}.raw(t))
 	if env := decodeEnvelope(t, raw); !env.OK {
 		t.Fatalf("error %d: %s", env.Error.HTTPStatus, env.Error.Message)
 	}
@@ -563,7 +563,7 @@ func TestExecutorCloakKeepsCallerTools(t *testing.T) {
 // client's metering and cache affinity.
 func TestExecutorKeepsNativeOpenCodeIdentity(t *testing.T) {
 	cfg := defaultSettings()
-	cfg.ZenModels = []string{"cat-jam-free"}
+	cfg.ZenModels = []string{"free-chat"}
 	useSettings(t, cfg)
 	useTestCatalog(t)
 	gateway := installFakeGateway(t, fixtureGateway(t))
@@ -576,8 +576,8 @@ func TestExecutorKeepsNativeOpenCodeIdentity(t *testing.T) {
 	headers.Set("x-opencode-session", native)
 	raw, _ := executorExecute(testCall{
 		Source:  "openai",
-		Model:   "opencode/cat-jam-free",
-		Payload: clientPayload("openai", "opencode/cat-jam-free", false),
+		Model:   "opencode/free-chat",
+		Payload: clientPayload("openai", "opencode/free-chat", false),
 		Headers: headers,
 	}.raw(t))
 	decodeResult[pluginapi.ExecutorResponse](t, raw)

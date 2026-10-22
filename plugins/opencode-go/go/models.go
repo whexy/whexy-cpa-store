@@ -16,8 +16,9 @@ import (
 
 // catalogRecheckInterval is how often the plugin re-reads every catalog on
 // its own, because CPA asks for models only when an auth changes. OpenCode
-// adds and retires Go models days apart, and a check costs one free Console
-// request per credential and rewrites files only when a list changed.
+// adds and retires Go models days apart, and a check costs one models.dev
+// read and one free Console request per credential and rewrites files only
+// when a list changed.
 const catalogRecheckInterval = 3 * time.Hour
 
 // registrationWait bounds how long a refresh from the page waits for CPA to
@@ -75,11 +76,13 @@ type refreshOptions struct {
 	wait  time.Duration
 }
 
-// refreshCatalogs fetches every usable credential's catalog, and the free
-// catalog while OpenCode Free is on, and rewrites the files of the auths
-// whose list differs from what CPA registered. Rewriting a file changes
-// catalog_refreshed_at on each of its auths, which makes CPA call
-// model.for_auth for them; that answers from the catalog just cached.
+// refreshCatalogs reads models.dev and every usable credential's workspace
+// config, and the free catalog while OpenCode Free is on, and rewrites the
+// files of the auths whose list differs from what CPA registered. Rewriting
+// a file changes catalog_refreshed_at on each of its auths, which makes CPA
+// call model.for_auth for them; that answers from the catalogs just cached.
+// While models.dev cannot be read, the workspace lists are built from the
+// models.dev catalog read last, and the free catalog keeps its last list.
 func refreshCatalogs(ctx context.Context, doer httpDoer, opts refreshOptions) (refreshReport, error) {
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
@@ -95,8 +98,19 @@ func refreshCatalogs(ctx context.Context, doer httpDoer, opts refreshOptions) (r
 			report.FetchedAt = at
 		}
 	}
-	for _, stored := range usableCredentials(files) {
-		cat, errFetch := catalogs.refresh(ctx, doer, cfg, stored.cred)
+	creds := usableCredentials(files)
+	freeOn := files.Free != nil && !files.Free.File.Disabled
+	var base *modelsDevCatalog
+	var errBase error
+	if len(creds) > 0 || freeOn {
+		base, errBase = modelsDev.refresh(ctx, doer, cfg)
+		if errBase != nil {
+			report.Failures = append(report.Failures, errBase.Error())
+			base, _ = modelsDev.cached()
+		}
+	}
+	for _, stored := range creds {
+		cat, errFetch := catalogs.refresh(ctx, doer, cfg, stored.cred, base)
 		if errFetch != nil {
 			report.Failures = append(report.Failures, stored.cred.Name+": "+errFetch.Error())
 			continue
@@ -117,8 +131,8 @@ func refreshCatalogs(ctx context.Context, doer httpDoer, opts refreshOptions) (r
 		pending[stored.file] = append(pending[stored.file], keys...)
 		kinds[stored.file] = stored.kind
 	}
-	if free := files.Free; free != nil && !free.File.Disabled {
-		cat, errFetch := freeCatalogs.refresh(ctx, doer, cfg)
+	if free := files.Free; freeOn && errBase == nil {
+		cat, errFetch := freeCatalogs.refresh(ctx, doer, cfg, base)
 		if errFetch != nil {
 			report.Failures = append(report.Failures, freeDisplayName+": "+errFetch.Error())
 		} else {
@@ -299,18 +313,18 @@ type modelView struct {
 	Free    bool   `json:"free,omitempty"`
 }
 
-// modelsView is the catalog of the first credential that can read it.
-// Models lists the workspace's OpenCode Go and OpenCode Zen models, disabled
-// and not-yet-enabled ones included; Unregistered and Unlisted leave out the
-// models the settings do not serve.
+// modelsView is the catalog of the first credential that can read its
+// workspace config. Models lists the workspace's OpenCode Go and OpenCode Zen
+// models, disabled and not-yet-enabled ones included; Unregistered and
+// Unlisted leave out the models the settings do not serve.
 type modelsView struct {
 	Credential string `json:"credential,omitempty"`
 	FetchedAt  string `json:"fetched_at,omitempty"`
 	// DisablePrefix says the model IDs of every family are bare because
 	// disable_prefix is on.
 	DisablePrefix bool `json:"disable_prefix"`
-	// Error says why no live catalog could be read; Models then holds the
-	// last list this process read.
+	// Error says why models.dev or every credential's workspace config could
+	// not be read; Models then uses the last one this process read.
 	Error  string      `json:"error,omitempty"`
 	Models []modelView `json:"models"`
 	// Unregistered are catalog models CPA has not registered for the
@@ -350,22 +364,27 @@ func handleListModels(h host, _ pluginapi.ManagementRequest) (int, any, error) {
 	if len(creds) == 0 {
 		return http.StatusOK, view, nil
 	}
+	base, _, errBase := modelsDev.get(context.Background(), h, cfg)
 	var chosen storedCredential
 	var cat catalog
 	var failures []string
 	for _, stored := range creds {
-		got, _, errFetch := catalogs.forKey(context.Background(), h, cfg, stored.cred)
+		got, _, errFetch := catalogs.forKey(context.Background(), h, cfg, stored.cred, base)
 		if errFetch == nil {
 			chosen, cat = stored, got
+			failures = nil
 			break
 		}
 		failures = append(failures, stored.cred.Name+": "+errFetch.Error())
 	}
 	if chosen.cred.ID == "" {
 		chosen = creds[0]
-		cat, _ = catalogs.cached(chosen.cred.ID)
-		view.Error = strings.Join(failures, "; ")
+		cat, _ = catalogs.cachedOver(chosen.cred.ID, base)
 	}
+	if errBase != nil {
+		failures = append([]string{errBase.Error()}, failures...)
+	}
+	view.Error = strings.Join(failures, "; ")
 	view.Credential = chosen.cred.Name
 	if at, ok := catalogs.fetchedAt(chosen.cred.ID); ok {
 		view.FetchedAt = at.UTC().Format(time.RFC3339)

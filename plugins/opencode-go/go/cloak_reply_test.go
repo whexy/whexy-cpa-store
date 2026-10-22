@@ -439,11 +439,11 @@ func TestCloakFilterBashIsUndoneLikeRead(t *testing.T) {
 // own format, with the rest of the reply untouched.
 func TestExecutorUndoesTheCloakInStreams(t *testing.T) {
 	cfg := defaultSettings()
-	cfg.ZenModels = []string{"cat-jam-free"}
+	cfg.ZenModels = []string{"free-chat"}
 	useSettings(t, cfg)
 	useTestCatalog(t)
 
-	payload := `{"model":"opencode/cat-jam-free","max_tokens":100,"stream":true,` +
+	payload := `{"model":"opencode/free-chat","max_tokens":100,"stream":true,` +
 		`"tools":[{"name":"Bash","description":"run","input_schema":{"type":"object","properties":{"command":{"type":"string"}}}},` +
 		`{"name":"Read","description":"read a file","input_schema":{"type":"object","properties":{"file_path":{"type":"string"}}}}],` +
 		`"messages":[{"role":"user","content":"list files"}]}`
@@ -491,10 +491,10 @@ func chatStreamOf(text string, calls ...[2]string) []string {
 	return events
 }
 
-// streamRaw runs one streamed cat-jam-free call from a Messages client.
+// streamRaw runs one streamed free-chat call from a Messages client.
 func streamRaw(t *testing.T, payload string) []byte {
 	t.Helper()
-	raw, _ := executorExecuteStream(testCall{Source: "claude", Model: "opencode/cat-jam-free", Stream: true, Payload: payload}.raw(t))
+	raw, _ := executorExecuteStream(testCall{Source: "claude", Model: "opencode/free-chat", Stream: true, Payload: payload}.raw(t))
 	return raw
 }
 
@@ -503,11 +503,11 @@ func streamRaw(t *testing.T, payload string) []byte {
 // call dropped before the reply reaches the caller, buffered or streamed.
 func TestExecutorDropsPlaceholderCalls(t *testing.T) {
 	cfg := defaultSettings()
-	cfg.ZenModels = []string{"cat-jam-free"}
+	cfg.ZenModels = []string{"free-chat"}
 	useSettings(t, cfg)
 	useTestCatalog(t)
 
-	payload := `{"model":"opencode/cat-jam-free","instructions":"be brief","input":"read /etc/hostname","stream":false,` +
+	payload := `{"model":"opencode/free-chat","instructions":"be brief","input":"read /etc/hostname","stream":false,` +
 		`"tools":[{"type":"function","name":"shell","description":"Run a command","parameters":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}},{"type":"function","name":"apply_patch","description":"Edit a file","parameters":{"type":"object","properties":{"patch":{"type":"string"}},"required":["patch"]}}]}`
 
 	// Buffered: the free tier answers with SSE, which is folded into the JSON
@@ -515,7 +515,7 @@ func TestExecutorDropsPlaceholderCalls(t *testing.T) {
 	// the caller's own call of shell keeps its argument.
 	_, upstream := chatReply("Let me look.", [2]string{"read", `{"filePath":"/etc/hostname"}`}, [2]string{"shell", `{"command":"cat /etc/hostname"}`})
 	gateway := installFakeGateway(t, streamGateway(upstream))
-	raw, _ := executorExecute(testCall{Source: "openai-response", Model: "opencode/cat-jam-free", Payload: payload}.raw(t))
+	raw, _ := executorExecute(testCall{Source: "openai-response", Model: "opencode/free-chat", Payload: payload}.raw(t))
 	if sent := gateway.inferenceRequests(); len(sent) != 1 || toolsOf(t, sent[0].Body) != "shell,apply_patch,bash,read" {
 		t.Fatalf("upstream tools = %s", sent[0].Body)
 	}
@@ -530,13 +530,13 @@ func TestExecutorDropsPlaceholderCalls(t *testing.T) {
 	// A paid Zen model on the same auth is not cloaked, so nothing about its
 	// tools or its reply is rewritten either: a call named read is the
 	// caller's to have, and it keeps it.
-	cfg.ZenModels = []string{"cat-jam-free", "kimi-k3"}
+	cfg.ZenModels = []string{"free-chat", "kimi-k3"}
 	useSettings(t, cfg)
 	paidBody, _ := chatReply("Paid.", [2]string{"read", `{"filePath":"/a"}`})
 	gateway = installFakeGateway(t, func(hostHTTPRequest) gatewayReply {
 		return gatewayReply{Status: 200, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(paidBody)}
 	})
-	raw, _ = executorExecute(testCall{Source: "openai-response", Model: "opencode/kimi-k3", Payload: strings.Replace(payload, "cat-jam-free", "kimi-k3", 1)}.raw(t))
+	raw, _ = executorExecute(testCall{Source: "openai-response", Model: "opencode/kimi-k3", Payload: strings.Replace(payload, "free-chat", "kimi-k3", 1)}.raw(t))
 	resp = decodeResult[pluginapi.ExecutorResponse](t, raw)
 	if got := responseCalls(t, resp.Payload); got != `read {"filePath":"/a"}` {
 		t.Fatalf("a paid reply was rewritten: calls = %q in %s", got, resp.Payload)

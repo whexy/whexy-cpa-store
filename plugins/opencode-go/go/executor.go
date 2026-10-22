@@ -170,14 +170,13 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 // resolveRoute finds the requested model among the auth family's models in
 // the credential's catalog, refreshing a catalog older than its TTL once on
 // a miss so a newly added Go model works before the host next asks for the
-// model list.
+// model list. A refresh that fails in part still counts: models.dev and the
+// workspace config are read separately, and either may have changed.
 func resolveRoute(ctx context.Context, h host, cfg settings, model string, cred credential, family modelFamily) (modelRoute, bool) {
 	if route, ok := lookupModel(model, cred.ID, family); ok {
 		return route, true
 	}
-	if _, _, errFetch := catalogFor(ctx, h, cfg, cred, family); errFetch != nil {
-		return modelRoute{}, false
-	}
+	_, _, _ = catalogFor(ctx, h, cfg, cred, family)
 	return lookupModel(model, cred.ID, family)
 }
 

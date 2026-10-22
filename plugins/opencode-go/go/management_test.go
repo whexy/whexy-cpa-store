@@ -38,6 +38,7 @@ func newManagementFixture(t *testing.T, files map[string]string) *managementFixt
 	t.Helper()
 	useSettings(t, defaultSettings())
 	useCatalogStore(t)
+	useModelsDev(t)
 	fx := &managementFixture{t: t, files: files, runtime: map[string]pluginapi.HostAuthFileEntry{}}
 	fx.fake = keyStoreHost(t, files)
 	fx.fake.mu.Lock()
@@ -66,13 +67,15 @@ func newManagementFixture(t *testing.T, files map[string]string) *managementFixt
 		}
 		return resp, nil
 	})
-	usage, config := readFixture(t, "usage.json"), readFixture(t, "config.json")
+	usage, config, models := readFixture(t, "usage.json"), readFixture(t, "config.json"), readFixture(t, "models_dev.json")
 	fx.upstream = func(req hostHTTPRequest) (any, error) {
 		switch req.URL {
 		case usageURL(defaultSettings()):
 			return pluginapi.HTTPResponse{StatusCode: http.StatusOK, Body: usage}, nil
 		case configURL(defaultSettings()):
 			return pluginapi.HTTPResponse{StatusCode: http.StatusOK, Body: config}, nil
+		case modelsDevURL:
+			return pluginapi.HTTPResponse{StatusCode: http.StatusOK, Body: models}, nil
 		}
 		t.Errorf("unexpected upstream request %s", req.URL)
 		return pluginapi.HTTPResponse{StatusCode: http.StatusNotFound}, nil
@@ -325,11 +328,7 @@ func TestManagementListKeys(t *testing.T) {
 		Unavailable:    true,
 		NextRetryAfter: retry,
 	}
-	cat, errParse := parseCatalog(readFixture(t, "config.json"))
-	if errParse != nil {
-		t.Fatal(errParse)
-	}
-	catalogs.remember(idA, cat)
+	catalogs.remember(idA, fixtureConfig(t))
 
 	resp := fx.call(http.MethodGet, keysPath, nil, nil)
 	if resp.Status != http.StatusOK {
@@ -518,7 +517,7 @@ func TestManagementAddKeyCheckFailures(t *testing.T) {
 			name:   "workspace without Go",
 			config: func() (any, error) { return upstreamJSON(200, `{"providers":{"opencode":{"models":{}}}}`) },
 			status: http.StatusUnprocessableEntity,
-			want:   []string{"lists no OpenCode Go models", "Go subscription"},
+			want:   []string{"no OpenCode Go config", "Go subscription"},
 		},
 	}
 	for _, tc := range cases {

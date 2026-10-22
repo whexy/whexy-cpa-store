@@ -15,11 +15,11 @@ import (
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 )
 
-func TestParseCatalogFixture(t *testing.T) {
-	cat, errParse := parseCatalog(readFixture(t, "config.json"))
-	if errParse != nil {
-		t.Fatal(errParse)
-	}
+// The catalog is models.dev's with the workspace config applied: the config
+// disables retired-model, models.dev deprecates old-model, and the plugin
+// cannot speak Gemini's endpoint.
+func TestFixtureCatalog(t *testing.T) {
+	cat := fixtureCatalog(t)
 	if cat.Workspace != "wrk_TEST000000000000000000000" {
 		t.Fatalf("workspace = %q", cat.Workspace)
 	}
@@ -30,7 +30,7 @@ func TestParseCatalogFixture(t *testing.T) {
 		byID[model.UpstreamID] = model
 	}
 	if strings.Join(ids, ",") != "claude-haiku-5-5,deepseek-v4-flash,elsewhere,gpt-6-luna,kimi-k3,longcat-2.5-preview-free,qwen3.8-max" {
-		t.Fatalf("ids = %v (disabled models must be skipped)", ids)
+		t.Fatalf("ids = %v (disabled, deprecated and Gemini models must be skipped)", ids)
 	}
 	tests := []struct {
 		id       string
@@ -56,32 +56,32 @@ func TestParseCatalogFixture(t *testing.T) {
 	}
 }
 
-// The opencode provider of the same config holds the workspace's
-// pay-as-you-go (OpenCode Zen) models. Disabled models and the API families
+// models.dev's opencode provider holds the pay-as-you-go (OpenCode Zen)
+// models. Models the workspace disabled, deprecated ones and the API families
 // the plugin cannot serve are dropped.
-func TestParseCatalogZenFixture(t *testing.T) {
-	cat, errParse := parseCatalog(readFixture(t, "config.json"))
-	if errParse != nil {
-		t.Fatal(errParse)
-	}
+func TestFixtureZenCatalog(t *testing.T) {
+	cat := fixtureCatalog(t)
 	byID := map[string]catalogModel{}
 	var ids []string
 	for _, model := range cat.Zen {
 		ids = append(ids, model.UpstreamID)
 		byID[model.UpstreamID] = model
 	}
-	if strings.Join(ids, ",") != "cat-jam-free,claude-haiku-5-5,gpt-6-luna,kimi-k3" {
-		t.Fatalf("zen ids = %v (disabled, Gemini and SystemOne models must be skipped)", ids)
+	if strings.Join(ids, ",") != "claude-haiku-5-5,free-chat,free-messages,free-not-live,free-responses,gpt-6-luna,kimi-k3,no-cost,paid,tiered" {
+		t.Fatalf("zen ids = %v (disabled, deprecated, Gemini and Mistral models must be skipped)", ids)
 	}
 	tests := []struct {
 		id       string
 		protocol sdktranslator.Format
 		free     bool
 	}{
-		{"cat-jam-free", sdktranslator.FormatOpenAI, true},
+		{"free-chat", sdktranslator.FormatOpenAI, true},
 		{"claude-haiku-5-5", sdktranslator.FormatClaude, false},
 		{"gpt-6-luna", sdktranslator.FormatOpenAIResponse, false},
 		{"kimi-k3", sdktranslator.FormatOpenAI, false},
+		{"paid", sdktranslator.FormatOpenAI, false},
+		{"tiered", sdktranslator.FormatOpenAI, false},
+		{"no-cost", sdktranslator.FormatOpenAI, false},
 	}
 	for _, tt := range tests {
 		got := byID[tt.id]
@@ -94,7 +94,7 @@ func TestParseCatalogZenFixture(t *testing.T) {
 // A Zen model keeps its own prefix and reaches the pay-as-you-go paths, and
 // only the models the page turned on resolve at all.
 func TestZenRoutes(t *testing.T) {
-	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	cat := fixtureCatalog(t)
 	cfg := settings{BaseURL: defaultBaseURL, ModelPrefix: defaultModelPrefix, ZenModels: []string{"kimi-k3", "gpt-6-luna", "claude-haiku-5-5"}}
 	tests := []struct {
 		model    string
@@ -134,7 +134,7 @@ func TestZenRoutes(t *testing.T) {
 		t.Fatal("the Go auth resolved a Zen model")
 	}
 	// A Zen model the page has not turned on does not resolve.
-	if _, ok := cat.find(cfg, "opencode/cat-jam-free", familyZen); ok {
+	if _, ok := cat.find(cfg, "opencode/free-chat", familyZen); ok {
 		t.Fatal("a Zen model that is not enabled resolved")
 	}
 	// A mirror moves both gateways, since the Zen base is the Go base without
@@ -182,7 +182,7 @@ func TestZenEndpointRebasing(t *testing.T) {
 // family's with its own auths, and every model's route stays inside its own
 // gateway.
 func TestZenServingIsOptIn(t *testing.T) {
-	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	cat := fixtureCatalog(t)
 	ids := func(cfg settings, family modelFamily) string {
 		var out []string
 		for _, info := range cat.modelInfos(cfg, family) {
@@ -273,28 +273,30 @@ func TestDisablePrefixServesEveryFamilyBare(t *testing.T) {
 }
 
 func TestEmbeddedSnapshotMatchesVerifiedProtocols(t *testing.T) {
-	if strings.Contains(string(snapshotJSON), "wrk_") || strings.Contains(string(snapshotJSON), "oc_sk_") {
+	useCatalogStore(t)
+	if strings.Contains(string(modelsDevSnapshotJSON), "wrk_") || strings.Contains(string(modelsDevSnapshotJSON), "oc_sk_") {
 		t.Fatal("snapshot carries workspace IDs or keys")
 	}
-	cat, errParse := parseCatalog(snapshotJSON)
+	snapshot, errParse := parseModelsDev(modelsDevSnapshotJSON)
 	if errParse != nil {
 		t.Fatal(errParse)
 	}
-	if len(cat.Models) < 20 || cat.Workspace != "" {
-		t.Fatalf("snapshot = %d models, workspace %q", len(cat.Models), cat.Workspace)
+	cat := buildCatalog(snapshot, workspaceConfig{})
+	if len(cat.Models) < 20 || len(cat.Zen) < 40 || cat.Workspace != "" {
+		t.Fatalf("snapshot = %d Go and %d Zen models, workspace %q", len(cat.Models), len(cat.Zen), cat.Workspace)
 	}
 	// Protocol table verified live (knowledge: go-gateway-api.md).
 	want := map[string]sdktranslator.Format{
 		"deepseek-v4.1-flash":        sdktranslator.FormatOpenAI,
 		"glm-5.3":                    sdktranslator.FormatOpenAI,
 		"kimi-k3":                    sdktranslator.FormatOpenAI,
-		"space-bunny":                sdktranslator.FormatOpenAI,
+		"step-5-preview":             sdktranslator.FormatOpenAI,
 		"gpt-6-luna":                 sdktranslator.FormatOpenAIResponse,
 		"gpt-5.6-luna":               sdktranslator.FormatOpenAIResponse,
 		"grok-4.7":                   sdktranslator.FormatOpenAIResponse,
 		"muse-spark-1.3-contributor": sdktranslator.FormatOpenAIResponse,
 		"claude-haiku-5-5":           sdktranslator.FormatClaude,
-		"minimax-m2.7":               sdktranslator.FormatClaude,
+		"minimax-m3":                 sdktranslator.FormatClaude,
 		"qwen3.7-plus":               sdktranslator.FormatClaude,
 		"qwen3.8-max":                sdktranslator.FormatClaude,
 	}
@@ -304,15 +306,33 @@ func TestEmbeddedSnapshotMatchesVerifiedProtocols(t *testing.T) {
 		if !ok || model.Protocol != protocol {
 			t.Fatalf("%s = %+v, want %s", id, model, protocol)
 		}
+		if route := model.route(cfg); !strings.HasPrefix(route.Endpoint, defaultBaseURL+"/") {
+			t.Fatalf("%s routes outside the Go gateway: %s", id, route.Endpoint)
+		}
 	}
-	snapshot, source := newCatalogStore().cached("any")
-	if source != catalogSnapshot || len(snapshot.Models) != len(cat.Models) {
-		t.Fatalf("cold store served %s with %d models", source, len(snapshot.Models))
+	// The Go gateway serves Gemini on an endpoint the plugin does not speak,
+	// and models.dev deprecates models OpenCode's client no longer offers.
+	for _, id := range []string{"gemini-4-argon-contributor", "minimax-m2.7", "space-bunny"} {
+		if _, ok := cat.find(cfg, id, familyGo); ok {
+			t.Fatalf("%s is listed", id)
+		}
+	}
+	for _, model := range cat.Zen {
+		if strings.HasPrefix(model.UpstreamID, "gemini-") {
+			t.Fatalf("zen lists %s", model.UpstreamID)
+		}
+	}
+	if _, source := modelsDev.cached(); source != catalogSnapshot {
+		t.Fatalf("cold models.dev cache served %s", source)
+	}
+	cold, source := catalogs.cached("any")
+	if source != catalogDefault || len(cold.Models) != len(cat.Models) || len(cold.Zen) != len(cat.Zen) {
+		t.Fatalf("cold store served %s with %d models", source, len(cold.Models))
 	}
 }
 
 func TestRoutes(t *testing.T) {
-	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	cat := fixtureCatalog(t)
 	tests := []struct {
 		name     string
 		cfg      settings
@@ -343,7 +363,7 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestCatalogFindAcceptsExposedBareAndSuffixedIDs(t *testing.T) {
-	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	cat := fixtureCatalog(t)
 	cfg := defaultSettings()
 	for _, requested := range []string{"opencode-go/kimi-k3", "kimi-k3", "opencode-go/kimi-k3(high)", " kimi-k3(8192) "} {
 		if model, ok := cat.find(cfg, requested, familyGo); !ok || model.UpstreamID != "kimi-k3" {
@@ -360,7 +380,7 @@ func TestCatalogFindAcceptsExposedBareAndSuffixedIDs(t *testing.T) {
 // disable_prefix changes the IDs CPA registers, not the ones the executor
 // resolves: the configured prefix is still recognised, and no other one is.
 func TestCatalogFindWithPrefixDisabled(t *testing.T) {
-	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	cat := fixtureCatalog(t)
 	cfg := settings{BaseURL: defaultBaseURL, ModelPrefix: "go", DisablePrefix: true}
 	for _, requested := range []string{"kimi-k3", "kimi-k3(high)", "go/kimi-k3"} {
 		if model, ok := cat.find(cfg, requested, familyGo); !ok || model.UpstreamID != "kimi-k3" {
@@ -373,7 +393,7 @@ func TestCatalogFindWithPrefixDisabled(t *testing.T) {
 }
 
 func TestModelInfos(t *testing.T) {
-	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	cat := fixtureCatalog(t)
 	infos := cat.modelInfos(defaultSettings(), familyGo)
 	var haiku, kimi pluginapi.ModelInfo
 	for _, info := range infos {
@@ -396,7 +416,7 @@ func TestModelInfos(t *testing.T) {
 }
 
 func TestModelInfosAndExposedIDsPerMode(t *testing.T) {
-	cat, _ := parseCatalog(readFixture(t, "config.json"))
+	cat := fixtureCatalog(t)
 	all := "claude-haiku-5-5,deepseek-v4-flash,elsewhere,gpt-6-luna,kimi-k3,longcat-2.5-preview-free,qwen3.8-max"
 	prefixed := "opencode-go/" + strings.ReplaceAll(all, ",", ",opencode-go/")
 	disabled := []string{"KIMI-K3", "gpt-6-luna", "not-in-catalog"}
@@ -428,13 +448,17 @@ func TestModelInfosAndExposedIDsPerMode(t *testing.T) {
 	}
 }
 
-func TestFetchCatalogRequest(t *testing.T) {
-	doer := &fakeDoer{respond: func(pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+func TestFetchRequests(t *testing.T) {
+	doer := &fakeDoer{respond: func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+		if req.URL == modelsDevURL {
+			return jsonResponse(200, readFixture(t, "models_dev.json")), nil
+		}
 		return jsonResponse(200, readFixture(t, "config.json")), nil
 	}}
 	cfg := settings{BaseURL: "https://opencode.ai/inference/go", UserAgent: "ua/1"}
-	if _, errFetch := fetchCatalog(context.Background(), doer, cfg, testKeyA); errFetch != nil {
-		t.Fatal(errFetch)
+	config, errFetch := fetchWorkspaceConfig(context.Background(), doer, cfg, testKeyA)
+	if errFetch != nil || config.Workspace != "wrk_TEST000000000000000000000" {
+		t.Fatalf("config = %+v, %v", config, errFetch)
 	}
 	req := doer.requests[0]
 	if req.Method != http.MethodGet || req.URL != "https://opencode.ai/console/api/v2/config" {
@@ -446,15 +470,23 @@ func TestFetchCatalogRequest(t *testing.T) {
 	if got := configURL(settings{BaseURL: "http://mirror.test:8080/x/go"}); got != "http://mirror.test:8080/console/api/v2/config" {
 		t.Fatalf("config url = %q", got)
 	}
+	// models.dev is public and the same for every credential.
+	if _, errFetch := fetchModelsDev(context.Background(), doer, cfg); errFetch != nil {
+		t.Fatal(errFetch)
+	}
+	req = doer.requests[1]
+	if req.Method != http.MethodGet || req.URL != "https://models.dev/api.json" || req.Headers.Get("Authorization") != "" || req.Headers.Get("User-Agent") != "ua/1" {
+		t.Fatalf("models.dev request = %s %s %v", req.Method, req.URL, req.Headers)
+	}
 }
 
-func TestFetchCatalogErrors(t *testing.T) {
+func TestFetchWorkspaceConfigErrors(t *testing.T) {
 	doer := &fakeDoer{respond: func(pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		resp := jsonResponse(401, []byte(`{"type":"error","error":{"type":"AuthError","message":"Invalid API key `+testKeyA+`"}}`))
 		resp.Headers.Set("x-opencode-log-id", "log-x")
 		return resp, nil
 	}}
-	_, errFetch := fetchCatalog(context.Background(), doer, defaultSettings(), testKeyA)
+	_, errFetch := fetchWorkspaceConfig(context.Background(), doer, defaultSettings(), testKeyA)
 	var upstream *upstreamError
 	if !errors.As(errFetch, &upstream) || upstream.Status != 401 || upstream.Type != "AuthError" || upstream.LogID != "log-x" {
 		t.Fatalf("err = %#v", errFetch)
@@ -462,8 +494,196 @@ func TestFetchCatalogErrors(t *testing.T) {
 	if strings.Contains(errFetch.Error(), testKeyA) {
 		t.Fatalf("error leaks key: %v", errFetch)
 	}
+	if _, errParse := parseWorkspaceConfig([]byte(`{"providers":{"opencode":{"models":{}}}}`)); errParse == nil {
+		t.Fatal("a config without the Go provider was accepted")
+	}
+	for _, raw := range []string{`{"opencode":{"models":{"kimi-k3":{}}}}`, `{"opencode-go":{"models":{"kimi-k3":{}}}}`, `[]`} {
+		if _, errParse := parseModelsDev([]byte(raw)); errParse == nil {
+			t.Fatalf("models.dev %s was accepted", raw)
+		}
+	}
 }
 
+// A workspace config with no models changes nothing, which is what the
+// Console sends a Go workspace that sets no overrides: every models.dev model
+// the plugin can serve is listed.
+func TestBuildCatalogWithEmptyConfig(t *testing.T) {
+	config, errParse := parseWorkspaceConfig([]byte(`{"providers":{"opencode-go":{"name":"OpenCode Go","headers":{"x-opencode-org-id":"wrk_EMPTY"},"models":{}}}}`))
+	if errParse != nil {
+		t.Fatal(errParse)
+	}
+	cat := buildCatalog(fixtureModelsDev(t), config)
+	ids := func(models []catalogModel) string {
+		var out []string
+		for _, model := range models {
+			out = append(out, model.UpstreamID)
+		}
+		return strings.Join(out, ",")
+	}
+	if cat.Workspace != "wrk_EMPTY" || ids(cat.Models) != "claude-haiku-5-5,deepseek-v4-flash,elsewhere,gpt-6-luna,kimi-k3,longcat-2.5-preview-free,qwen3.8-max,retired-model" {
+		t.Fatalf("go = %s, workspace %q", ids(cat.Models), cat.Workspace)
+	}
+	if ids(cat.Zen) != "claude-haiku-5-5,free-chat,free-messages,free-not-live,free-responses,glm-5.3,gpt-6-luna,kimi-k3,no-cost,paid,tiered" {
+		t.Fatalf("zen = %s", ids(cat.Zen))
+	}
+}
+
+// Each field the workspace config sets for a model replaces models.dev's,
+// limits one by one and the cost whole, and a model only the config lists
+// is served from the config alone.
+func TestBuildCatalogAppliesConfig(t *testing.T) {
+	config, errParse := parseWorkspaceConfig([]byte(`{"providers":{
+		"opencode-go":{"headers":{"x-opencode-org-id":"wrk_TEST"},"models":{
+			"kimi-k3":{"name":"Kimi K3 Workspace","package":"aisdk:@ai-sdk/anthropic","settings":{"baseURL":"https://opencode.ai/inference/go/anthropic/v1"},"limit":{"output":64000},"capabilities":{"input":["text"]}},
+			"gpt-6-luna":{"package":"aisdk:@ai-sdk/openai-compatible"},
+			"deepseek-v4-flash":{"cost":[{"input":0,"output":0,"cache":{"read":0}},{"input":0,"output":0,"tier":{"type":"context","size":200000}}]},
+			"longcat-2.5-preview-free":{"cost":{"input":1,"output":2}},
+			"qwen3.8-max":{"disabled":true},
+			"old-model":{"name":"Old Model"},
+			"console-only":{"name":"Console Only","limit":{"context":1000,"output":100}},
+			"image-only":{"capabilities":{"output":["image"]}}
+		}},
+		"opencode":{"package":"aisdk:@ai-sdk/openai-compatible","models":{"gpt-6-luna":{}}}
+	}}`))
+	if errParse != nil {
+		t.Fatal(errParse)
+	}
+	cat := buildCatalog(fixtureModelsDev(t), config)
+	cfg := defaultSettings()
+	cfg.ZenModels = []string{"gpt-6-luna", "claude-haiku-5-5"}
+	model := func(id string, family modelFamily) catalogModel {
+		t.Helper()
+		found, ok := cat.find(cfg, id, family)
+		if !ok {
+			t.Fatalf("%s %s is not listed", family, id)
+		}
+		return found
+	}
+
+	kimi := model("kimi-k3", familyGo)
+	if kimi.Name != "Kimi K3 Workspace" || kimi.Protocol != sdktranslator.FormatClaude || kimi.ContextLength != 1048576 || kimi.OutputLimit != 64000 ||
+		strings.Join(kimi.InputModalities, ",") != "text" || strings.Join(kimi.OutputModalities, ",") != "text" {
+		t.Fatalf("kimi-k3 = %+v", kimi)
+	}
+	if got := kimi.route(cfg).Endpoint; got != "https://opencode.ai/inference/go/anthropic/v1/messages" {
+		t.Fatalf("kimi-k3 routes to %s", got)
+	}
+	if luna := model("gpt-6-luna", familyGo); luna.Protocol != sdktranslator.FormatOpenAI || luna.route(cfg).Endpoint != "https://opencode.ai/inference/go/openai/v1/chat/completions" {
+		t.Fatalf("gpt-6-luna = %+v", luna)
+	}
+	// A cost tier's size is not a price.
+	if !model("deepseek-v4-flash", familyGo).Free || model("longcat-2.5-preview-free", familyGo).Free {
+		t.Fatal("the config's prices did not replace models.dev's")
+	}
+	if _, ok := cat.find(cfg, "qwen3.8-max", familyGo); ok {
+		t.Fatal("a model the config disables is listed")
+	}
+	// A model only the config lists, or one models.dev deprecates, takes the
+	// provider's package and base.
+	for _, id := range []string{"console-only", "old-model"} {
+		if got := model(id, familyGo); got.Protocol != sdktranslator.FormatOpenAI || got.BaseURL != "https://opencode.ai/inference/go/openai/v1" {
+			t.Fatalf("%s = %+v", id, got)
+		}
+	}
+	if only := model("console-only", familyGo); only.Name != "Console Only" || only.ContextLength != 1000 || only.OutputLimit != 100 {
+		t.Fatalf("console-only = %+v", only)
+	}
+	if _, ok := cat.find(cfg, "image-only", familyGo); ok {
+		t.Fatal("a model without text output is listed")
+	}
+	// A provider package replaces the own package of the models the config
+	// lists, and only theirs.
+	if got := model("gpt-6-luna", familyZen); got.Protocol != sdktranslator.FormatOpenAI {
+		t.Fatalf("zen gpt-6-luna = %+v", got)
+	}
+	if got := model("claude-haiku-5-5", familyZen); got.Protocol != sdktranslator.FormatClaude {
+		t.Fatalf("zen claude-haiku-5-5 = %+v", got)
+	}
+}
+
+// The Go gateway serves Gemini models on an endpoint the plugin does not
+// speak, so they are dropped there as on Zen, whatever the config names.
+func TestGeminiIsDroppedOnGo(t *testing.T) {
+	config, errParse := parseWorkspaceConfig([]byte(`{"providers":{"opencode-go":{"models":{"gemini-4-argon-contributor":{"name":"Argon"}}}}}`))
+	if errParse != nil {
+		t.Fatal(errParse)
+	}
+	cat := buildCatalog(fixtureModelsDev(t), config)
+	for _, family := range []modelFamily{familyGo, familyZen} {
+		for _, id := range []string{"gemini-4-argon-contributor", "gemini-3.5-flash"} {
+			if model, ok := cat.find(defaultSettings(), id, family); ok {
+				t.Fatalf("%s lists %+v", family, model)
+			}
+		}
+	}
+	for pkg, want := range map[string]bool{
+		"aisdk:@ai-sdk/google":       false,
+		"@ai-sdk/google":             false,
+		"@ai-sdk/mistral":            false,
+		"":                           false,
+		"aisdk:@ai-sdk/anthropic":    true,
+		"@ai-sdk/openai":             true,
+		" @ai-sdk/openai-compatible": true,
+	} {
+		if _, ok := protocolForPackage(pkg); ok != want {
+			t.Fatalf("%q served = %v", pkg, ok)
+		}
+	}
+}
+
+// models.dev is read once per TTL for every credential. A failed read keeps
+// the last catalog read, then the embedded snapshot, and so does a read that
+// lists no Go model, which would otherwise empty the Go list.
+func TestModelsDevStoreFallbacks(t *testing.T) {
+	fixture := readFixture(t, "models_dev.json")
+	var answer func() (pluginapi.HTTPResponse, error)
+	doer := &fakeDoer{respond: func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+		if req.URL != modelsDevURL {
+			t.Errorf("unexpected request %s", req.URL)
+		}
+		return answer()
+	}}
+	ok := func() (pluginapi.HTTPResponse, error) { return jsonResponse(200, fixture), nil }
+	now := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	store := newModelsDevStore()
+	store.now = func() time.Time { return now }
+	cfg := defaultSettings()
+
+	answer = func() (pluginapi.HTTPResponse, error) {
+		return pluginapi.HTTPResponse{}, errors.New("connection refused")
+	}
+	doc, source, errFetch := store.get(context.Background(), doer, cfg)
+	if source != catalogSnapshot || errFetch == nil || len(doc.Go.Models) < 20 {
+		t.Fatalf("cold + failing = %s %v", source, errFetch)
+	}
+	answer = ok
+	if doc, source, errFetch := store.get(context.Background(), doer, cfg); source != catalogFresh || errFetch != nil || len(doc.Go.Models) != 10 {
+		t.Fatalf("first = %s %v", source, errFetch)
+	}
+	if _, source, _ := store.get(context.Background(), doer, cfg); source != catalogCached || len(doer.requests) != 2 {
+		t.Fatalf("within ttl = %s after %d requests", source, len(doer.requests))
+	}
+	now = now.Add(catalogTTL)
+	for _, failure := range []func() (pluginapi.HTTPResponse, error){
+		func() (pluginapi.HTTPResponse, error) { return jsonResponse(503, nil), nil },
+		func() (pluginapi.HTTPResponse, error) {
+			return jsonResponse(200, []byte(`{"opencode":{"models":{"kimi-k3":{}}}}`)), nil
+		},
+	} {
+		answer = failure
+		if doc, source, errFetch := store.get(context.Background(), doer, cfg); source != catalogStale || errFetch == nil || len(doc.Go.Models) != 10 {
+			t.Fatalf("expired + failing = %s %v", source, errFetch)
+		}
+	}
+	answer = ok
+	if _, source, _ := store.get(context.Background(), doer, cfg); source != catalogFresh {
+		t.Fatalf("recovered = %s", source)
+	}
+}
+
+// The workspace config is read per credential. A failed read keeps the
+// credential's previous config, then the last config any credential read,
+// then none, each applied to models.dev's current catalog.
 func TestCatalogStoreFallbacks(t *testing.T) {
 	config := readFixture(t, "config.json")
 	failing := false
@@ -477,36 +697,98 @@ func TestCatalogStoreFallbacks(t *testing.T) {
 	store := newCatalogStore()
 	store.now = func() time.Time { return now }
 	cfg := defaultSettings()
+	base := fixtureModelsDev(t)
 	keyA := keyCredential(keyEntry{ID: keyIDFor(testKeyA), APIKey: testKeyA})
 	keyB := keyCredential(keyEntry{ID: keyIDFor(testKeyB), APIKey: testKeyB})
+	listsRetired := func(cat catalog) bool {
+		_, ok := cat.find(cfg, "retired-model", familyGo)
+		return ok
+	}
 
-	if _, source, errFetch := store.forKey(context.Background(), doer, cfg, keyA); source != catalogFresh || errFetch != nil {
+	if _, source, errFetch := store.forKey(context.Background(), doer, cfg, keyA, base); source != catalogFresh || errFetch != nil {
 		t.Fatalf("first = %s %v", source, errFetch)
 	}
-	if _, source, _ := store.forKey(context.Background(), doer, cfg, keyA); source != catalogCached || len(doer.requests) != 1 {
+	if _, source, _ := store.forKey(context.Background(), doer, cfg, keyA, base); source != catalogCached || len(doer.requests) != 1 {
 		t.Fatalf("within ttl = %s after %d requests", source, len(doer.requests))
 	}
 	now = now.Add(catalogTTL)
 	failing = true
-	cat, source, errFetch := store.forKey(context.Background(), doer, cfg, keyA)
-	if source != catalogStale || errFetch == nil || cat.Workspace != "wrk_TEST000000000000000000000" {
+	cat, source, errFetch := store.forKey(context.Background(), doer, cfg, keyA, base)
+	if source != catalogStale || errFetch == nil || cat.Workspace != "wrk_TEST000000000000000000000" || listsRetired(cat) {
 		t.Fatalf("expired + failing = %s %v", source, errFetch)
 	}
-	if _, source, _ := store.forKey(context.Background(), doer, cfg, keyB); source != catalogLastGood {
+	if cat, source, _ := store.forKey(context.Background(), doer, cfg, keyB, base); source != catalogLastGood || listsRetired(cat) {
 		t.Fatalf("new key while failing = %s", source)
 	}
-	if _, source, _ := newCatalogStore().forKey(context.Background(), doer, cfg, keyB); source != catalogSnapshot {
+	if cat, source, _ := newCatalogStore().forKey(context.Background(), doer, cfg, keyB, base); source != catalogDefault || cat.Workspace != "" || !listsRetired(cat) {
 		t.Fatalf("cold store while failing = %s", source)
 	}
 	failing = false
-	if _, source, _ := store.forKey(context.Background(), doer, cfg, keyA); source != catalogFresh {
+	if _, source, _ := store.forKey(context.Background(), doer, cfg, keyA, base); source != catalogFresh {
 		t.Fatalf("recovered = %s", source)
+	}
+}
+
+// Each source falls back on its own: while models.dev fails, the workspace
+// config just read applies to the last models.dev catalog read; while the
+// Console fails, the credential's last config applies to models.dev's new
+// catalog.
+func TestCatalogForKeepsEachSourcesFallback(t *testing.T) {
+	useCatalogStore(t)
+	cfg := defaultSettings()
+	cred := keyCredential(keyEntry{ID: keyIDFor(testKeyA), APIKey: testKeyA})
+	var doc map[string]any
+	if errUnmarshal := json.Unmarshal(readFixture(t, "models_dev.json"), &doc); errUnmarshal != nil {
+		t.Fatal(errUnmarshal)
+	}
+	added := doc["opencode-go"].(map[string]any)["models"].(map[string]any)
+	added["new-model"] = map[string]any{"name": "New", "limit": map[string]any{"context": 1000, "output": 100}}
+	newer := mustJSON(t, doc)
+	failModelsDev, failConfig := true, false
+	modelsDevBody := readFixture(t, "models_dev.json")
+	doer := &fakeDoer{respond: func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+		if req.URL == modelsDevURL {
+			if failModelsDev {
+				return jsonResponse(503, nil), nil
+			}
+			return jsonResponse(200, modelsDevBody), nil
+		}
+		if failConfig {
+			return jsonResponse(503, []byte(`{"type":"error","error":{"type":"Down","message":"down"}}`)), nil
+		}
+		return jsonResponse(200, readFixture(t, "config.json")), nil
+	}}
+	has := func(cat catalog, id string) bool {
+		_, ok := cat.find(cfg, id, familyGo)
+		return ok
+	}
+
+	cat, source, errFetch := catalogFor(context.Background(), doer, cfg, cred, familyGo)
+	if source != catalogSnapshot || errFetch == nil || !strings.Contains(errFetch.Error(), "models.dev") || cat.Workspace != "wrk_TEST000000000000000000000" || len(cat.Models) < 20 {
+		t.Fatalf("models.dev down = %s %v, %d models", source, errFetch, len(cat.Models))
+	}
+
+	failModelsDev = false
+	if cat, source, errFetch := catalogFor(context.Background(), doer, cfg, cred, familyGo); source != catalogCached || errFetch != nil || has(cat, "retired-model") || has(cat, "new-model") || len(cat.Models) != 7 {
+		t.Fatalf("both up = %s %v", source, errFetch)
+	}
+
+	modelsDev.now = func() time.Time { return time.Now().Add(catalogTTL) }
+	catalogs.now = modelsDev.now
+	modelsDevBody, failConfig = newer, true
+	cat, source, errFetch = catalogFor(context.Background(), doer, cfg, cred, familyGo)
+	if source != catalogStale || errFetch == nil || !has(cat, "new-model") || has(cat, "retired-model") || cat.Workspace != "wrk_TEST000000000000000000000" {
+		t.Fatalf("Console down = %s %v", source, errFetch)
+	}
+	if route, ok := lookupModel("opencode-go/new-model", cred.ID, familyGo); !ok || route.Protocol != sdktranslator.FormatOpenAI {
+		t.Fatalf("lookup = %+v %v", route, ok)
 	}
 }
 
 func TestModelsForAuthThroughHost(t *testing.T) {
 	useSettings(t, defaultSettings())
 	useCatalogStore(t)
+	useModelsDev(t)
 	fake := installFakeHost(t)
 	config := readFixture(t, "config.json")
 	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
@@ -623,13 +905,29 @@ func TestModelsForAuthPerFamily(t *testing.T) {
 	}
 }
 
+// fixtureCatalog is testdata/models_dev.json with testdata/config.json
+// applied.
 func fixtureCatalog(t *testing.T) catalog {
 	t.Helper()
-	parsed, errParse := parseCatalog(readFixture(t, "config.json"))
+	return buildCatalog(fixtureModelsDev(t), fixtureConfig(t))
+}
+
+func fixtureModelsDev(t *testing.T) *modelsDevCatalog {
+	t.Helper()
+	doc, errParse := parseModelsDev(readFixture(t, "models_dev.json"))
 	if errParse != nil {
 		t.Fatal(errParse)
 	}
-	return parsed
+	return doc
+}
+
+func fixtureConfig(t *testing.T) workspaceConfig {
+	t.Helper()
+	config, errParse := parseWorkspaceConfig(readFixture(t, "config.json"))
+	if errParse != nil {
+		t.Fatal(errParse)
+	}
+	return config
 }
 
 // An auth CPA loaded with an earlier plugin version, one without a family
@@ -698,6 +996,7 @@ func TestModelsForAuthFallsBackAndLogs(t *testing.T) {
 func TestModelsForAuthWithLoginKeysCacheByWorkspace(t *testing.T) {
 	useSettings(t, defaultSettings())
 	store := useCatalogStore(t)
+	useModelsDev(t)
 	fake := installFakeHost(t)
 	config := readFixture(t, "config.json")
 	var bearers []string

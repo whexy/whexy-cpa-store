@@ -139,7 +139,7 @@ var fixtureContentNonStream = map[string]struct {
 	"openai-response": {Text: "OK", Reasoning: ""},
 }
 
-// Models of testdata/config.json, one per native protocol.
+// Models of the fixture catalog, one per native protocol.
 var protocolModels = map[string]string{
 	"openai":          "deepseek-v4-flash",
 	"claude":          "qwen3.8-max",
@@ -365,8 +365,7 @@ func TestExecutorUnknownModel(t *testing.T) {
 func TestExecutorUsesLoginToken(t *testing.T) {
 	useSettings(t, defaultSettings())
 	useTestCatalog(t)
-	cat, _ := parseCatalog(readFixture(t, "config.json"))
-	catalogs.byKey["login:"+testOrgID] = catalogEntry{catalog: cat, fetchedAt: time.Now()}
+	catalogs.remember("login:"+testOrgID, fixtureConfig(t))
 	gateway := installFakeGateway(t, fixtureGateway(t))
 	login := loginFileJSON(t, testAccessToken, testRefreshToken, testLoginExpiry, nil)
 	raw, _ := executorExecute(testCall{Source: "openai", Model: "opencode-go/deepseek-v4-flash", Payload: clientPayload("openai", "x", false), Login: login}.raw(t))
@@ -435,7 +434,7 @@ func TestExecutorServesZenModels(t *testing.T) {
 	}
 
 	// A Zen model the page has not turned on does not resolve.
-	raw, _ = executorExecute(testCall{Source: "openai", Model: "opencode/cat-jam-free", Payload: clientPayload("openai", "opencode/cat-jam-free", false)}.raw(t))
+	raw, _ = executorExecute(testCall{Source: "openai", Model: "opencode/free-chat", Payload: clientPayload("openai", "opencode/free-chat", false)}.raw(t))
 	if env := decodeEnvelope(t, raw); env.OK || env.Error.HTTPStatus != http.StatusNotFound {
 		t.Fatalf("disabled Zen model = %+v", env.Error)
 	}

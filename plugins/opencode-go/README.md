@@ -61,7 +61,8 @@ key or a token. Failures answer `{"error": "<message>"}`.
 - `GET /keys`: every key with its label, masked key, enabled state,
   CLIProxyAPI routing state and workspace.
 - `POST /keys` with `{"label": "…", "api_key": "oc_sk_…"}`: checks the key
-  against the gateway's usage and workspace catalog, then adds it.
+  against the gateway's usage and its workspace's Console config, then adds
+  it.
 - `PATCH /keys` with `{"id": "…", "zen": true}`: renames (`label`), disables or
   enables (`disabled`), and turns OpenCode Go or Zen on or off (`go`, `zen`);
   send any of the fields.
@@ -76,9 +77,9 @@ key or a token. Failures answer `{"error": "<message>"}`.
   (`disabled`), and turns OpenCode Go or Zen on or off (`go`, `zen`); send any
   of the fields.
 - `GET /logins/usage?id=…`: the login's usage, as for a key.
-- `GET /models`: the catalog of the first login or key that can read it —
-  both the OpenCode Go and the OpenCode Zen lists — and the models
-  CLIProxyAPI has not registered yet or still lists.
+- `GET /models`: the OpenCode Go and OpenCode Zen lists of the first login or
+  key that can read its workspace config, and the models CLIProxyAPI has not
+  registered yet or still lists.
 - `POST /models/refresh`: reads every catalog again, makes CLIProxyAPI
   register the lists, and answers the models added and removed.
 - `GET /routing`: the OpenCode Go, Zen and Free priority and weight of every
@@ -102,8 +103,13 @@ because such an entry lists the model under both IDs.
 
 ## Models
 
-The plugin reads the workspace's OpenCode catalog, which holds two lists, and
-the OpenCode Go page shows both.
+The plugin builds two lists the way OpenCode's own client does: it takes the
+OpenCode Go and OpenCode models from [models.dev](https://models.dev) and
+applies the workspace's Console config over them. A model the workspace
+disabled there is left out, and what the config sets for a model, such as its
+name, limits or price, replaces models.dev's. Models that models.dev marks
+deprecated are left out too, and so are the API families the plugin does not
+speak, such as Gemini. The OpenCode Go page shows both lists.
 
 **OpenCode Go models** are the subscription models. By default every ID
 carries the `opencode-go/` prefix, so Go never takes requests meant for
@@ -116,14 +122,14 @@ The page also lists the wildcard rules of Management Center's OAuth Model
 Disablement page that match Go models; a rule written with the prefix, such
 as `opencode-go/claude-*`, matches nothing while `disable_prefix` is on.
 
-**OpenCode Zen models** are the workspace's pay-as-you-go models, served as
-`opencode/<model>` by every login and key with OpenCode Zen on. They are off by
+**OpenCode Zen models** are the pay-as-you-go models the workspace has not
+disabled in its Console, served as `opencode/<model>` by every login and key
+with OpenCode Zen on. They are off by
 default: turn on **Enabled** for one, or use **Enable all**, and the plugin
 registers it and sends its requests to the OpenCode Zen gateway, which bills
 Console credits. The enabled IDs are stored
 in the plugin setting `zen_models`. The two lists share upstream IDs: `kimi-k3`
-is both `opencode-go/kimi-k3` and `opencode/kimi-k3`. Only the API families the
-plugin speaks are listed; Gemini and SystemOne models are left out.
+is both `opencode-go/kimi-k3` and `opencode/kimi-k3`.
 
 A Zen model the catalog prices at zero is free, but OpenCode's free tier
 answers only its own client. The plugin therefore presents those requests as
@@ -201,9 +207,11 @@ side, so a request can be refused even when everything above holds. Turn
 `cloak_free_models` off to send free models as the plugin itself, which is what
 any other client gets.
 
-The plugin reads the catalog again every three hours and on **Refresh
-models**, and CLIProxyAPI then lists the models OpenCode added and drops those
-it removed. If the catalog cannot be read, the last list read stays in use.
+The plugin reads models.dev and every workspace config again every three hours
+and on **Refresh models**, and CLIProxyAPI then lists the models OpenCode added
+and drops those it removed. If models.dev cannot be read, the last copy read
+stays in use, or until then the copy built into the plugin. If a workspace's
+config cannot be read, the last config read stays in use.
 
 Models the catalog prices at zero keep working after a login or key reaches
 its usage limit.
@@ -248,7 +256,7 @@ configuration form in Management Center:
 - `base_url`: Go gateway base URL. Default `https://opencode.ai/inference/go`.
   The OpenCode Zen gateway is the same base without its `/go` path.
 - `console_url`: OpenCode Console base URL, for login, token refresh and the
-  model catalog. Default: the `base_url` host followed by `/console`.
+  workspace config. Default: the `base_url` host followed by `/console`.
 - `model_prefix`: prefix of every OpenCode Go model ID. Default `opencode-go`.
 - `zen_model_prefix`: prefix of every OpenCode Zen model ID, as in
   `opencode/gpt-5.5`. Default `opencode`.

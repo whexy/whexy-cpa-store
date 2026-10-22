@@ -14,8 +14,8 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
 
-// Live tests read OPENCODE_API_KEY and call only free endpoints of the Go
-// gateway: the workspace catalog and /v1/usage.
+// Live tests read OPENCODE_API_KEY and call only free endpoints: models.dev,
+// the workspace config and the Go gateway's /v1/usage.
 //
 //	set -a; . /path/to/.env; set +a; go test -tags live -run Live ./...
 
@@ -45,16 +45,31 @@ func liveKey(t *testing.T) string {
 	return key
 }
 
+// liveCatalog reads models.dev and the key's workspace config.
+func liveCatalog(t *testing.T, key string) (catalog, *modelsDevCatalog, workspaceConfig) {
+	t.Helper()
+	doc, errDoc := fetchModelsDev(context.Background(), netHTTPDoer{}, defaultSettings())
+	if errDoc != nil {
+		t.Fatal(errDoc)
+	}
+	config, errConfig := fetchWorkspaceConfig(context.Background(), netHTTPDoer{}, defaultSettings(), key)
+	if errConfig != nil {
+		t.Fatal(redactSecrets(errConfig.Error()))
+	}
+	return buildCatalog(doc, config), doc, config
+}
+
 func TestLiveCatalog(t *testing.T) {
 	key := liveKey(t)
-	cat, errFetch := fetchCatalog(context.Background(), netHTTPDoer{}, defaultSettings(), key)
-	if errFetch != nil {
-		t.Fatal(redactSecrets(errFetch.Error()))
-	}
+	cat, _, _ := liveCatalog(t, key)
 	if len(cat.Models) == 0 || cat.Workspace == "" {
 		t.Fatalf("catalog has %d models, workspace set: %v", len(cat.Models), cat.Workspace != "")
 	}
-	snapshot, _ := parseCatalog(snapshotJSON)
+	snapshotDoc, errSnapshot := parseModelsDev(modelsDevSnapshotJSON)
+	if errSnapshot != nil {
+		t.Fatal(errSnapshot)
+	}
+	snapshot := buildCatalog(snapshotDoc, workspaceConfig{})
 	cfg := defaultSettings()
 	for _, model := range cat.Models {
 		route := model.route(cfg)
@@ -65,9 +80,8 @@ func TestLiveCatalog(t *testing.T) {
 			t.Errorf("%s protocol changed: snapshot %s, live %s", model.UpstreamID, known.Protocol, model.Protocol)
 		}
 	}
-	// The same config carries the workspace's OpenCode Zen models; none of
-	// them may be aimed at the Go gateway, which would draw on the
-	// subscription instead of Console credits.
+	// No OpenCode Zen model may be aimed at the Go gateway, which would draw
+	// on the subscription instead of Console credits.
 	for _, model := range cat.Zen {
 		route := model.route(cfg)
 		if !strings.HasPrefix(route.Endpoint, defaultZenBaseURL+"/") || strings.HasPrefix(route.Endpoint, defaultBaseURL+"/") {

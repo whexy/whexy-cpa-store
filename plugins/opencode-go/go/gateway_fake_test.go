@@ -176,16 +176,15 @@ func fixtureGateway(t *testing.T) func(req hostHTTPRequest) gatewayReply {
 	}
 }
 
-// useTestCatalog serves testdata/config.json as the catalog of every test key.
+// useTestCatalog serves testdata/models_dev.json with testdata/config.json
+// applied as the catalog of every test key.
 func useTestCatalog(t *testing.T) {
 	t.Helper()
 	store := useCatalogStore(t)
-	cat, errParse := parseCatalog(readFixture(t, "config.json"))
-	if errParse != nil {
-		t.Fatal(errParse)
-	}
+	useModelsDev(t)
+	config := fixtureConfig(t)
 	for _, key := range []string{testKeyA, testKeyB, testKeyC} {
-		store.byKey[keyIDFor(key)] = catalogEntry{catalog: cat, fetchedAt: time.Now()}
+		store.remember(keyIDFor(key), config)
 	}
 }
 

@@ -1,9 +1,9 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
-	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,12 +19,6 @@ import (
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 )
 
-// snapshotJSON is the opencode-go provider of /console/api/v2/config,
-// served until a key has fetched the live catalog.
-//
-//go:embed catalog_snapshot.json
-var snapshotJSON []byte
-
 const catalogTTL = 10 * time.Minute
 
 // modelFamily is which OpenCode catalog a model belongs to: the Go
@@ -39,14 +33,16 @@ const (
 )
 
 // catalog is the model list of one workspace: the Go subscription models and
-// the pay-as-you-go (OpenCode Zen) models of the same Console config.
+// the pay-as-you-go (OpenCode Zen) models, as models.dev describes them with
+// the workspace's Console config applied.
 type catalog struct {
-	// Workspace is the workspace ID the key belongs to, empty for the snapshot.
+	// Workspace is the workspace ID the key belongs to, empty before any
+	// workspace config has been read.
 	Workspace string
 	Models    []catalogModel
-	// Zen holds the workspace's OpenCode Zen models, which the workspace's
-	// Console has enabled. The plugin serves one only once the page turns it
-	// on, because those calls bill Console credits.
+	// Zen holds the OpenCode Zen models the workspace's Console has not
+	// disabled. The plugin serves one only once the page turns it on,
+	// because those calls bill Console credits.
 	Zen []catalogModel
 	// Free holds the models OpenCode serves without a key; it is read from
 	// public catalogs, not a workspace's.
@@ -99,6 +95,9 @@ type configDocument struct {
 	Providers map[string]configProvider `json:"providers"`
 }
 
+// configProvider is one provider of a workspace's Console config. What it
+// sets overrides models.dev; a model it does not list is served as
+// models.dev describes it.
 type configProvider struct {
 	Package  string                 `json:"package"`
 	Settings configSettings         `json:"settings"`
@@ -119,115 +118,169 @@ type configModel struct {
 		Input  []string `json:"input"`
 		Output []string `json:"output"`
 	} `json:"capabilities"`
-	Cost []struct {
-		Input  float64 `json:"input"`
-		Output float64 `json:"output"`
-		Cache  struct {
-			Read  float64 `json:"read"`
-			Write float64 `json:"write"`
-		} `json:"cache"`
-	} `json:"cost"`
+	// Cost replaces models.dev's prices whole: one tier or a list of them.
+	Cost json.RawMessage `json:"cost"`
+	// Limit replaces only the limits it names.
 	Limit struct {
-		Context int64 `json:"context"`
-		Input   int64 `json:"input"`
-		Output  int64 `json:"output"`
+		Context *int64 `json:"context"`
+		Input   *int64 `json:"input"`
+		Output  *int64 `json:"output"`
 	} `json:"limit"`
 }
 
-// parseCatalog reads providers["opencode-go"] and providers["opencode"] of
-// the workspace config. The Go provider decides the workspace: only it
-// carries the org header. A workspace without the Zen provider has no
-// pay-as-you-go models.
-func parseCatalog(raw []byte) (catalog, error) {
+// workspaceConfig is the part of a workspace's Console config the plugin
+// applies over models.dev.
+type workspaceConfig struct {
+	Workspace string
+	Go        configProvider
+	Zen       configProvider
+}
+
+// parseWorkspaceConfig reads providers["opencode-go"] and providers["opencode"]
+// of the workspace config. The Go provider must be there, and its org header
+// names the workspace; a config without the Zen provider changes nothing of
+// models.dev's Zen models.
+func parseWorkspaceConfig(raw []byte) (workspaceConfig, error) {
 	var doc configDocument
 	if errUnmarshal := json.Unmarshal(raw, &doc); errUnmarshal != nil {
-		return catalog{}, fmt.Errorf("decode workspace config: %w", errUnmarshal)
+		return workspaceConfig{}, fmt.Errorf("decode workspace config: %w", errUnmarshal)
 	}
 	provider, ok := doc.Providers[providerKey]
 	if !ok {
-		return catalog{}, fmt.Errorf("workspace config has no %s provider", providerKey)
+		return workspaceConfig{}, fmt.Errorf("workspace config has no %s provider", providerKey)
 	}
-	out := catalog{
+	return workspaceConfig{
 		Workspace: strings.TrimSpace(provider.Headers["x-opencode-org-id"]),
-		Models:    parseProviderModels(familyGo, provider),
-	}
-	if len(out.Models) == 0 {
-		return catalog{}, fmt.Errorf("workspace config lists no enabled %s model", providerKey)
-	}
-	if zen, ok := doc.Providers[zenProviderKey]; ok {
-		out.Zen = parseProviderModels(familyZen, zen)
-	}
-	sort.Slice(out.Models, func(i, j int) bool { return out.Models[i].UpstreamID < out.Models[j].UpstreamID })
-	sort.Slice(out.Zen, func(i, j int) bool { return out.Zen[i].UpstreamID < out.Zen[j].UpstreamID })
-	return out, nil
+		Go:        provider,
+		Zen:       doc.Providers[zenProviderKey],
+	}, nil
 }
 
-// parseProviderModels reads one provider's enabled models, dropping the ones
-// whose protocol the plugin cannot serve.
-func parseProviderModels(family modelFamily, provider configProvider) []catalogModel {
+// buildCatalog applies a workspace's Console config over models.dev's
+// catalog.
+func buildCatalog(base *modelsDevCatalog, config workspaceConfig) catalog {
+	return catalog{
+		Workspace: config.Workspace,
+		Models:    buildModels(familyGo, base.Go, config.Go),
+		Zen:       buildModels(familyZen, base.Zen, config.Zen),
+	}
+}
+
+// buildModels lists one provider's models the way OpenCode's client
+// (packages/core/src/plugin/provider/opencode.ts) applies the Console config
+// over models.dev: every models.dev model the config does not disable, with
+// the fields the config sets for it, and every model only the config lists.
+// Deprecated models.dev models are left out, as the client hides them, and so
+// are models whose package or modalities the plugin cannot serve.
+func buildModels(family modelFamily, base modelsDevProvider, overlay configProvider) []catalogModel {
+	listed := make(map[string]configModel, len(overlay.Models))
+	for id, model := range overlay.Models {
+		listed[strings.TrimSpace(id)] = model
+	}
+	ids := make(map[string]bool, len(base.Models)+len(listed))
+	for id, model := range base.Models {
+		if !deprecated(model) {
+			ids[id] = true
+		}
+	}
+	for id := range listed {
+		ids[id] = true
+	}
 	var out []catalogModel
-	for id, model := range provider.Models {
-		id = strings.TrimSpace(id)
-		if id == "" || model.Disabled {
+	for id := range ids {
+		override, isListed := listed[id]
+		if id == "" || override.Disabled {
 			continue
 		}
-		pkg := model.Package
-		if pkg == "" {
-			pkg = provider.Package
+		source := base.Models[id]
+		if deprecated(source) {
+			source = modelsDevModel{}
 		}
-		protocol, ok := protocolForPackage(family, pkg)
+		pkg, baseURL := source.Provider.NPM, source.Provider.API
+		// The client lets a package or base URL the config sets for the
+		// provider replace a listed model's own from models.dev.
+		if isListed && overlay.Package != "" {
+			pkg = ""
+		}
+		if isListed && overlay.Settings.BaseURL != "" {
+			baseURL = ""
+		}
+		protocol, ok := protocolForPackage(cmp.Or(override.Package, pkg, overlay.Package, base.NPM))
 		if !ok {
 			continue
 		}
-		baseURL := model.Settings.BaseURL
-		if baseURL == "" {
-			baseURL = provider.Settings.BaseURL
+		input, output := source.Modalities.Input, source.Modalities.Output
+		if override.Capabilities.Input != nil {
+			input = override.Capabilities.Input
 		}
-		free := len(model.Cost) > 0
-		for _, tier := range model.Cost {
-			if tier.Input != 0 || tier.Output != 0 || tier.Cache.Read != 0 || tier.Cache.Write != 0 {
-				free = false
-			}
+		if override.Capabilities.Output != nil {
+			output = override.Capabilities.Output
 		}
-		name := strings.TrimSpace(model.Name)
-		if name == "" {
-			name = id
+		if !handlesText(input) || !handlesText(output) {
+			continue
+		}
+		limit := source.Limit
+		if override.Limit.Context != nil {
+			limit.Context = *override.Limit.Context
+		}
+		if override.Limit.Input != nil {
+			limit.Input = *override.Limit.Input
+		}
+		if override.Limit.Output != nil {
+			limit.Output = *override.Limit.Output
+		}
+		cost := source.Cost
+		if !isJSONNull(override.Cost) {
+			cost = override.Cost
 		}
 		out = append(out, catalogModel{
 			Family:           family,
 			UpstreamID:       id,
-			Name:             name,
+			Name:             cmp.Or(strings.TrimSpace(override.Name), strings.TrimSpace(source.Name), id),
 			Protocol:         protocol,
-			BaseURL:          strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-			Free:             free,
-			ContextLength:    model.Limit.Context,
-			InputLimit:       model.Limit.Input,
-			OutputLimit:      model.Limit.Output,
-			InputModalities:  model.Capabilities.Input,
-			OutputModalities: model.Capabilities.Output,
+			BaseURL:          strings.TrimRight(strings.TrimSpace(cmp.Or(override.Settings.BaseURL, baseURL, overlay.Settings.BaseURL, base.API)), "/"),
+			Free:             zeroCost(cost),
+			ContextLength:    limit.Context,
+			InputLimit:       limit.Input,
+			OutputLimit:      limit.Output,
+			InputModalities:  input,
+			OutputModalities: output,
 		})
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].UpstreamID < out[j].UpstreamID })
 	return out
 }
 
-// protocolForPackage maps the AI SDK package the catalog names to the
-// endpoint the gateway accepts for that model. Responses- and
-// Messages-family models reject every other endpoint.
-//
-// The Go gateway serves only packages the plugin knows, so an unknown one
-// still maps to Chat Completions there, as the provider default. The Zen
-// gateway also serves Gemini and SystemOne models, which this plugin cannot
-// speak; it drops those rather than send them to the wrong endpoint.
-func protocolForPackage(family modelFamily, pkg string) (sdktranslator.Format, bool) {
+func deprecated(model modelsDevModel) bool {
+	return strings.EqualFold(model.Status, "deprecated")
+}
+
+// handlesText reports modalities that include text, or name none; the
+// plugin's endpoints carry text only.
+func handlesText(modalities []string) bool {
+	if len(modalities) == 0 {
+		return true
+	}
+	for _, modality := range modalities {
+		if strings.HasPrefix(modality, "text") {
+			return true
+		}
+	}
+	return false
+}
+
+// protocolForPackage maps the AI SDK package a model names to the endpoint
+// the gateway accepts for that model. Responses- and Messages-family models
+// reject every other endpoint. Both gateways also serve packages this plugin
+// cannot speak, such as Gemini's, so it drops those models rather than send
+// them to the wrong endpoint.
+func protocolForPackage(pkg string) (sdktranslator.Format, bool) {
 	switch strings.TrimPrefix(strings.TrimSpace(pkg), "aisdk:") {
 	case "@ai-sdk/anthropic":
 		return sdktranslator.FormatClaude, true
 	case "@ai-sdk/openai":
 		return sdktranslator.FormatOpenAIResponse, true
 	case "@ai-sdk/openai-compatible":
-		return sdktranslator.FormatOpenAI, true
-	}
-	if family == familyGo {
 		return sdktranslator.FormatOpenAI, true
 	}
 	return "", false
@@ -409,21 +462,21 @@ func configURL(cfg settings) string {
 	return cfg.consoleURL() + "/api/v2/config"
 }
 
-// fetchCatalog reads the live catalog with a key or login token; any key
-// permission level may read it.
-func fetchCatalog(ctx context.Context, doer httpDoer, cfg settings, bearer string) (catalog, error) {
+// fetchWorkspaceConfig reads the workspace's Console config with a key or
+// login token; any key permission level may read it.
+func fetchWorkspaceConfig(ctx context.Context, doer httpDoer, cfg settings, bearer string) (workspaceConfig, error) {
 	resp, errDo := doer.Do(ctx, pluginapi.HTTPRequest{
 		Method:  http.MethodGet,
 		URL:     configURL(cfg),
 		Headers: goRequestHeaders(cfg, bearer),
 	})
 	if errDo != nil {
-		return catalog{}, fmt.Errorf("fetch OpenCode Go catalog: %w", errDo)
+		return workspaceConfig{}, fmt.Errorf("fetch OpenCode workspace config: %w", errDo)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return catalog{}, parseUpstreamError(resp.StatusCode, resp.Headers, resp.Body)
+		return workspaceConfig{}, parseUpstreamError(resp.StatusCode, resp.Headers, resp.Body)
 	}
-	return parseCatalog(resp.Body)
+	return parseWorkspaceConfig(resp.Body)
 }
 
 // catalogSource says where a returned catalog came from.
@@ -434,12 +487,32 @@ const (
 	catalogCached   catalogSource = "cached"
 	catalogStale    catalogSource = "stale"
 	catalogLastGood catalogSource = "last-good"
+	// catalogDefault is models.dev's catalog without any workspace config.
+	catalogDefault  catalogSource = "default"
 	catalogSnapshot catalogSource = "snapshot"
 )
 
 type catalogEntry struct {
 	catalog   catalog
 	fetchedAt time.Time
+}
+
+// configEntry is one workspace config and the catalog it makes of base, the
+// models.dev catalog it was last applied to.
+type configEntry struct {
+	config    workspaceConfig
+	fetchedAt time.Time
+	base      *modelsDevCatalog
+	catalog   catalog
+}
+
+// catalogOf returns the catalog the config makes of base, building it again
+// only after models.dev's catalog changed. The caller holds the store's lock.
+func (e *configEntry) catalogOf(base *modelsDevCatalog) catalog {
+	if e.base != base {
+		e.catalog, e.base = buildCatalog(base, e.config), base
+	}
+	return e.catalog
 }
 
 // modelRegistration is the model list model.for_auth last returned for one
@@ -451,64 +524,76 @@ type modelRegistration struct {
 	at          time.Time
 }
 
-// catalogStore caches the catalog per credential ID. A failed refresh keeps
-// the credential's previous catalog, then the last catalog any credential
-// fetched, then the embedded snapshot, so models never vanish because the
-// console is down.
+// catalogStore caches the workspace config per credential ID; a credential's
+// catalog is models.dev's current one with that config applied. A failed
+// read keeps the credential's previous config, then the last config any
+// credential read, then none, so models never vanish because the Console is
+// down.
 type catalogStore struct {
 	mu         sync.Mutex
 	now        func() time.Time
-	byKey      map[string]catalogEntry
+	byKey      map[string]*configEntry
 	registered map[string]modelRegistration
-	lastGood   *catalog
-	snapshot   *catalog
+	lastGood   *configEntry
+	// unconfigured holds no workspace config.
+	unconfigured *configEntry
 }
 
 func newCatalogStore() *catalogStore {
-	return &catalogStore{now: time.Now, byKey: make(map[string]catalogEntry), registered: make(map[string]modelRegistration)}
+	return &catalogStore{
+		now:          time.Now,
+		byKey:        make(map[string]*configEntry),
+		registered:   make(map[string]modelRegistration),
+		unconfigured: &configEntry{},
+	}
 }
 
 var catalogs = newCatalogStore()
 
-// forKey returns the credential's catalog, refreshing it once it is older
-// than catalogTTL. errFetch is the refresh failure when a fallback was
-// served.
-func (s *catalogStore) forKey(ctx context.Context, doer httpDoer, cfg settings, cred credential) (catalog, catalogSource, error) {
+// forKey returns the credential's catalog of base, reading its workspace
+// config again once that is older than catalogTTL. errFetch is the read
+// failure when a fallback config was applied.
+func (s *catalogStore) forKey(ctx context.Context, doer httpDoer, cfg settings, cred credential, base *modelsDevCatalog) (catalog, catalogSource, error) {
 	s.mu.Lock()
 	entry, cached := s.byKey[cred.ID]
-	now := s.now()
+	fresh := cached && s.now().Sub(entry.fetchedAt) < catalogTTL
 	s.mu.Unlock()
-	if cached && now.Sub(entry.fetchedAt) < catalogTTL {
-		return entry.catalog, catalogCached, nil
+	if fresh {
+		cat, _ := s.cachedOver(cred.ID, base)
+		return cat, catalogCached, nil
 	}
-	fetched, errFetch := s.refresh(ctx, doer, cfg, cred)
+	fetched, errFetch := s.refresh(ctx, doer, cfg, cred, base)
 	if errFetch == nil {
 		return fetched, catalogFresh, nil
 	}
-	if cached {
-		return entry.catalog, catalogStale, errFetch
+	cat, source := s.cachedOver(cred.ID, base)
+	if source == catalogCached {
+		source = catalogStale
 	}
-	fallback, source := s.cached("")
-	return fallback, source, errFetch
+	return cat, source, errFetch
 }
 
-// refresh fetches the credential's catalog regardless of its age and caches
-// it; a failure leaves the cache as it was.
-func (s *catalogStore) refresh(ctx context.Context, doer httpDoer, cfg settings, cred credential) (catalog, error) {
-	fetched, errFetch := fetchCatalog(ctx, doer, cfg, cred.Bearer)
+// refresh reads the credential's workspace config regardless of its age and
+// returns the catalog it makes of base; a failure leaves the cache as it was.
+func (s *catalogStore) refresh(ctx context.Context, doer httpDoer, cfg settings, cred credential, base *modelsDevCatalog) (catalog, error) {
+	config, errFetch := fetchWorkspaceConfig(ctx, doer, cfg, cred.Bearer)
 	if errFetch != nil {
 		return catalog{}, errFetch
 	}
-	s.remember(cred.ID, fetched)
-	return fetched, nil
+	s.remember(cred.ID, config)
+	cat, _ := s.cachedOver(cred.ID, base)
+	return cat, nil
 }
 
-// fetchedAt is when the credential's cached catalog was fetched.
+// fetchedAt is when the credential's cached workspace config was read.
 func (s *catalogStore) fetchedAt(credID string) (time.Time, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, ok := s.byKey[credID]
-	return entry.fetchedAt, ok
+	if !ok {
+		return time.Time{}, false
+	}
+	return entry.fetchedAt, true
 }
 
 // registrationKey names one family's auth of a credential.
@@ -557,12 +642,19 @@ func (c catalog) exposedIDs(cfg settings, family modelFamily) []string {
 }
 
 // catalogFor returns the catalog one family's auth of a credential serves
-// from: the workspace's for Go and Zen, the public one for Free.
+// from: models.dev's with the workspace's config applied for Go and Zen, the
+// public free one for Free. While models.dev cannot be read, the source is
+// that of the models.dev catalog used instead.
 func catalogFor(ctx context.Context, doer httpDoer, cfg settings, cred credential, family modelFamily) (catalog, catalogSource, error) {
 	if family == familyFree {
 		return freeCatalogs.get(ctx, doer, cfg)
 	}
-	return catalogs.forKey(ctx, doer, cfg, cred)
+	base, baseSource, errBase := modelsDev.get(ctx, doer, cfg)
+	cat, source, errFetch := catalogs.forKey(ctx, doer, cfg, cred, base)
+	if errBase != nil {
+		source = baseSource
+	}
+	return cat, source, errors.Join(errFetch, errBase)
 }
 
 func cachedCatalog(credID string, family modelFamily) (catalog, catalogSource) {
@@ -574,21 +666,22 @@ func cachedCatalog(credID string, family modelFamily) (catalog, catalogSource) {
 
 // cached returns the best catalog for keyID without network access.
 func (s *catalogStore) cached(keyID string) (catalog, catalogSource) {
+	base, _ := modelsDev.cached()
+	return s.cachedOver(keyID, base)
+}
+
+// cachedOver returns the catalog the best config cached for keyID makes of
+// base.
+func (s *catalogStore) cachedOver(keyID string, base *modelsDevCatalog) (catalog, catalogSource) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if entry, ok := s.byKey[keyID]; ok {
-		return entry.catalog, catalogCached
+		return entry.catalogOf(base), catalogCached
 	}
 	if s.lastGood != nil {
-		return *s.lastGood, catalogLastGood
+		return s.lastGood.catalogOf(base), catalogLastGood
 	}
-	if s.snapshot == nil {
-		// The embedded snapshot is covered by tests; an empty catalog keeps a
-		// broken build from taking the host down.
-		parsed, _ := parseCatalog(snapshotJSON)
-		s.snapshot = &parsed
-	}
-	return *s.snapshot, catalogSnapshot
+	return s.unconfigured.catalogOf(base), catalogDefault
 }
 
 // lookupModel resolves a model requested of one family's auth of the key

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
@@ -107,13 +108,25 @@ func useSettings(t *testing.T, cfg settings) {
 	t.Cleanup(func() { currentConfig.Store(previous) })
 }
 
-// useCatalogStore gives the test an empty catalog cache.
+// useCatalogStore gives the test an empty catalog cache and an empty
+// models.dev cache.
 func useCatalogStore(t *testing.T) *catalogStore {
 	t.Helper()
-	previous := catalogs
-	catalogs = newCatalogStore()
-	t.Cleanup(func() { catalogs = previous })
+	previous, previousModelsDev := catalogs, modelsDev
+	catalogs, modelsDev = newCatalogStore(), newModelsDevStore()
+	t.Cleanup(func() { catalogs, modelsDev = previous, previousModelsDev })
 	return catalogs
+}
+
+// useModelsDev gives the test a models.dev cache holding
+// testdata/models_dev.json, read just now.
+func useModelsDev(t *testing.T) *modelsDevStore {
+	t.Helper()
+	previous := modelsDev
+	modelsDev = newModelsDevStore()
+	modelsDev.entry = &modelsDevEntry{doc: fixtureModelsDev(t), fetchedAt: time.Now()}
+	t.Cleanup(func() { modelsDev = previous })
+	return modelsDev
 }
 
 func decodeEnvelope(t *testing.T, raw []byte) envelope {

@@ -89,7 +89,7 @@ var managementRoutes = []managementRoute{
 	{Method: http.MethodGet, Path: loginsPath, Description: "List OpenCode logins: workspace, account, token expiry, state.", handle: handleListLogins},
 	{Method: http.MethodPatch, Path: loginsPath, Description: "Enable or disable an OpenCode login, or turn OpenCode Go or Zen on or off for it: {id, disabled?, go?, zen?}.", handle: handleUpdateLogin},
 	{Method: http.MethodGet, Path: loginsPath + "/usage", Description: "Read the 5-hour, weekly and monthly usage of an OpenCode login: ?id=.", handle: handleLoginUsage},
-	{Method: http.MethodGet, Path: modelsPath, Description: "List the OpenCode Go catalog of the first working login or key, and how it differs from the models CLIProxyAPI registered.", handle: handleListModels},
+	{Method: http.MethodGet, Path: modelsPath, Description: "List the OpenCode Go and Zen models of the first working login or key, as models.dev and its workspace config describe them, and how they differ from the models CLIProxyAPI registered.", handle: handleListModels},
 	{Method: http.MethodPost, Path: modelsPath + "/refresh", Description: "Read every catalog again and make CLIProxyAPI register the current model lists.", handle: handleRefreshModels},
 	{Method: http.MethodGet, Path: routingPath, Description: "Read the OpenCode Go and OpenCode Zen priority and weight of every OpenCode Go auth file.", handle: handleGetRouting},
 	{Method: http.MethodPut, Path: routingPath, Description: "Set the OpenCode Go, Zen and Free priority and weight: {go: {priority, weight}, zen: {...}, free: {...}}, null for the default.", handle: handleSetRouting},
@@ -412,7 +412,7 @@ func handleAddKey(h host, req pluginapi.ManagementRequest) (int, any, error) {
 	if errCheck != nil {
 		return 0, nil, errCheck
 	}
-	catalogs.remember(id, check.Catalog)
+	catalogs.remember(id, check.Config)
 	errSave := mutateKeyFile(keyFileName, func(file *keyFile) error {
 		_, errAdd := file.addKey(apiKey, label, time.Now())
 		return errAdd
@@ -497,12 +497,13 @@ func handleTestKey(h host, req pluginapi.ManagementRequest) (int, any, error) {
 	if errCheck != nil {
 		return http.StatusOK, map[string]any{"ok": false, "error": errCheck.Error()}, nil
 	}
-	catalogs.remember(entry.ID, check.Catalog)
+	catalogs.remember(entry.ID, check.Config)
+	cat, _ := catalogs.ownCatalog(entry.ID)
 	return http.StatusOK, map[string]any{
 		"ok":        true,
 		"usage":     newUsageView(check.Usage),
-		"workspace": check.Catalog.Workspace,
-		"models":    check.Catalog.servedCount(currentSettings(), entry.families()),
+		"workspace": check.Config.Workspace,
+		"models":    cat.servedCount(currentSettings(), entry.families()),
 	}, nil
 }
 
@@ -694,29 +695,29 @@ func cleanLabel(raw string) (string, error) {
 }
 
 type keyCheck struct {
-	Usage   usageReport
-	Catalog catalog
+	Usage  usageReport
+	Config workspaceConfig
 }
 
-// checkKey proves a key can read its Go usage and that its workspace
-// catalog lists Go models. Both endpoints are free.
+// checkKey proves a key can read its Go usage and its workspace's Console
+// config for OpenCode Go. Both endpoints are free.
 func checkKey(doer httpDoer, apiKey string) (keyCheck, error) {
 	cfg := currentSettings()
 	usage, errUsage := fetchUsage(context.Background(), doer, cfg, apiKey)
 	if errUsage != nil {
 		return keyCheck{}, describeCheckFailure(errUsage, false)
 	}
-	cat, errCatalog := fetchCatalog(context.Background(), doer, cfg, apiKey)
-	if errCatalog != nil {
-		return keyCheck{}, describeCheckFailure(errCatalog, true)
+	config, errConfig := fetchWorkspaceConfig(context.Background(), doer, cfg, apiKey)
+	if errConfig != nil {
+		return keyCheck{}, describeCheckFailure(errConfig, true)
 	}
-	return keyCheck{Usage: usage, Catalog: cat}, nil
+	return keyCheck{Usage: usage, Config: config}, nil
 }
 
 // describeCheckFailure says in plain words why a call made with a key
 // failed: 422 when OpenCode answered against the key, 502 when it could not
 // be asked.
-func describeCheckFailure(err error, catalogStage bool) error {
+func describeCheckFailure(err error, configStage bool) error {
 	var upstream *upstreamError
 	if errors.As(err, &upstream) {
 		switch {
@@ -732,26 +733,31 @@ func describeCheckFailure(err error, catalogStage bool) error {
 	if errors.As(err, &hostErr) {
 		return failf(http.StatusBadGateway, "Could not reach OpenCode: %s", hostErr.Message)
 	}
-	if catalogStage {
-		return failf(http.StatusUnprocessableEntity, "The key's workspace lists no OpenCode Go models; check that it has the Go subscription (%v).", err)
+	if configStage {
+		return failf(http.StatusUnprocessableEntity, "OpenCode sent no OpenCode Go config for the key's workspace; check that it has the Go subscription (%v).", err)
 	}
 	return failf(http.StatusBadGateway, "OpenCode sent an unreadable usage report: %v", err)
 }
 
-// ownCatalog returns the catalog fetched with key keyID itself, never
-// another key's or the snapshot.
+// ownCatalog returns the catalog of the workspace config read with key keyID
+// itself, never another key's config or none.
 func (s *catalogStore) ownCatalog(keyID string) (catalog, bool) {
+	base, _ := modelsDev.cached()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, ok := s.byKey[keyID]
-	return entry.catalog, ok
+	if !ok {
+		return catalog{}, false
+	}
+	return entry.catalogOf(base), true
 }
 
-// remember caches a catalog a key check fetched, so the model refresh that
-// saving the key triggers does not fetch it again.
-func (s *catalogStore) remember(keyID string, fetched catalog) {
+// remember caches a workspace config a key read, so the model refresh that
+// saving a checked key triggers does not read it again.
+func (s *catalogStore) remember(keyID string, config workspaceConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.byKey[keyID] = catalogEntry{catalog: fetched, fetchedAt: s.now()}
-	s.lastGood = &fetched
+	entry := &configEntry{config: config, fetchedAt: s.now()}
+	s.byKey[keyID] = entry
+	s.lastGood = entry
 }

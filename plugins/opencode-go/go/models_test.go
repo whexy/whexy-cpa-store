@@ -22,28 +22,44 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
 
-// catalogWithout is the config fixture with the named models removed and
-// the added models (Chat Completions, no cost tiers) appended.
-func catalogWithout(t *testing.T, removed []string, added ...string) []byte {
+// configWith is the workspace config fixture with the Go models it names
+// set to the given overrides.
+func configWith(t *testing.T, models map[string]any) []byte {
 	t.Helper()
 	var doc map[string]any
 	if errUnmarshal := json.Unmarshal(readFixture(t, "config.json"), &doc); errUnmarshal != nil {
 		t.Fatal(errUnmarshal)
 	}
-	models := doc["providers"].(map[string]any)[providerKey].(map[string]any)["models"].(map[string]any)
-	for _, id := range removed {
-		delete(models, id)
-	}
-	for _, id := range added {
-		models[id] = map[string]any{"name": id, "limit": map[string]any{"context": 1000, "output": 100}}
+	listed := doc["providers"].(map[string]any)[providerKey].(map[string]any)["models"].(map[string]any)
+	for id, model := range models {
+		listed[id] = model
 	}
 	return mustJSON(t, doc)
 }
 
-// serveCatalogs answers the catalog per bearer and usage for everyone.
+// configWithout is the workspace config fixture disabling the named Go
+// models and adding the added ones, which only the config lists (Chat
+// Completions, no cost).
+func configWithout(t *testing.T, removed []string, added ...string) []byte {
+	t.Helper()
+	models := map[string]any{}
+	for _, id := range removed {
+		models[id] = map[string]any{"disabled": true}
+	}
+	for _, id := range added {
+		models[id] = map[string]any{"name": id, "limit": map[string]any{"context": 1000, "output": 100}}
+	}
+	return configWith(t, models)
+}
+
+// serveCatalogs answers the workspace config per bearer, and models.dev and
+// usage for everyone.
 func (fx *managementFixture) serveCatalogs(byBearer map[string][]byte) {
+	models := readFixture(fx.t, "models_dev.json")
 	fx.upstream = func(req hostHTTPRequest) (any, error) {
 		switch req.URL {
+		case modelsDevURL:
+			return pluginapi.HTTPResponse{StatusCode: http.StatusOK, Body: models}, nil
 		case configURL(defaultSettings()):
 			body, ok := byBearer[strings.TrimPrefix(req.Headers.Get("Authorization"), "Bearer ")]
 			if !ok {
@@ -166,7 +182,7 @@ func TestManagementListModels(t *testing.T) {
 
 	resp := fx.call(http.MethodGet, modelsPath, nil, nil)
 	view := decodeBodyAs[modelsView](t, resp)
-	if resp.Status != http.StatusOK || view.Credential != "Work · oc_sk_…1111" || view.Error != "" || view.FetchedAt == "" || len(view.Models) != 11 {
+	if resp.Status != http.StatusOK || view.Credential != "Work · oc_sk_…1111" || view.Error != "" || view.FetchedAt == "" || len(view.Models) != 17 {
 		t.Fatalf("status %d: %s", resp.Status, resp.Body)
 	}
 	byID := map[string]modelView{}
@@ -179,12 +195,13 @@ func TestManagementListModels(t *testing.T) {
 	if byID["opencode-go/gpt-6-luna"].Protocol != "Responses" || byID["opencode-go/kimi-k3"].Protocol != "Chat Completions" || !byID["opencode-go/longcat-2.5-preview-free"].Free {
 		t.Fatalf("models = %+v", view.Models)
 	}
-	// The workspace's enabled Zen models are listed under their own prefix;
-	// Gemini is left out because the plugin cannot serve its endpoint.
+	// The Zen models the workspace has not disabled are listed under their
+	// own prefix; Gemini is left out because the plugin cannot serve its
+	// endpoint.
 	if got := byID["opencode/gpt-6-luna"]; got.Family != "zen" || got.UpstreamID != "gpt-6-luna" || got.Protocol != "Responses" {
 		t.Fatalf("zen gpt = %+v", got)
 	}
-	if byID["opencode/kimi-k3"].Protocol != "Chat Completions" || !byID["opencode/cat-jam-free"].Free || byID["opencode/glm-5.3"].ID != "" {
+	if byID["opencode/kimi-k3"].Protocol != "Chat Completions" || !byID["opencode/free-chat"].Free || byID["opencode/glm-5.3"].ID != "" {
 		t.Fatalf("zen models = %+v", view.Models)
 	}
 	for _, model := range view.Models {
@@ -200,22 +217,38 @@ func TestManagementListModels(t *testing.T) {
 
 	// CPA registered an older list for the key: it lacks two models and
 	// still has one the catalog dropped.
-	older, errParse := parseCatalog(catalogWithout(t, []string{"kimi-k3", "qwen3.8-max"}, "retired-two"))
+	olderConfig, errParse := parseWorkspaceConfig(configWithout(t, []string{"kimi-k3", "qwen3.8-max"}, "retired-two"))
 	if errParse != nil {
 		t.Fatal(errParse)
 	}
+	older := buildCatalog(fixtureModelsDev(t), olderConfig)
 	catalogs.markRegistered(keyIDFor(testKeyA), familyGo, defaultSettings(), older)
 	view = decodeBodyAs[modelsView](t, fx.call(http.MethodGet, modelsPath, nil, nil))
 	if strings.Join(view.Unregistered, ",") != "opencode-go/kimi-k3,opencode-go/qwen3.8-max" || strings.Join(view.Unlisted, ",") != "opencode-go/retired-two" {
 		t.Fatalf("diff = %v / %v", view.Unregistered, view.Unlisted)
 	}
 
-	// With every credential failing, the last list read is shown with the
-	// reason.
+	// With every credential failing, the last config read is applied and
+	// shown with the reason.
 	fx.serveCatalogs(nil)
-	catalogs.byKey = map[string]catalogEntry{}
+	catalogs.byKey = map[string]*configEntry{}
 	view = decodeBodyAs[modelsView](t, fx.call(http.MethodGet, modelsPath, nil, nil))
-	if !strings.Contains(view.Error, "401") || len(view.Models) != 11 {
+	if !strings.Contains(view.Error, "401") || len(view.Models) != 17 {
+		t.Fatalf("failing view = %+v", view)
+	}
+
+	// With models.dev failing too, the last models.dev catalog read is used,
+	// and the page is told why.
+	serve := fx.upstream
+	fx.upstream = func(req hostHTTPRequest) (any, error) {
+		if req.URL == modelsDevURL {
+			return upstreamJSON(503, `{}`)
+		}
+		return serve(req)
+	}
+	modelsDev.now = func() time.Time { return time.Now().Add(catalogTTL) }
+	view = decodeBodyAs[modelsView](t, fx.call(http.MethodGet, modelsPath, nil, nil))
+	if !strings.Contains(view.Error, "models.dev") || !strings.Contains(view.Error, "401") || len(view.Models) != 17 {
 		t.Fatalf("failing view = %+v", view)
 	}
 
@@ -234,7 +267,7 @@ func TestManagementListModelsWithPrefixDisabled(t *testing.T) {
 	useSettings(t, cfg)
 	fx.registerAll()
 	view := decodeBodyAs[modelsView](t, fx.call(http.MethodGet, modelsPath, nil, nil))
-	if !view.DisablePrefix || len(view.Models) != 11 || len(view.Unregistered)+len(view.Unlisted) != 0 {
+	if !view.DisablePrefix || len(view.Models) != 17 || len(view.Unregistered)+len(view.Unlisted) != 0 {
 		t.Fatalf("view = %+v", view)
 	}
 	for _, model := range view.Models {
@@ -268,7 +301,7 @@ func TestManagementRefreshModels(t *testing.T) {
 	next := previous
 	next.AccessToken, next.RefreshToken = testAccessToken2, testRefreshToken2
 	store.rotated(previous, next)
-	changed := catalogWithout(t, []string{"kimi-k3"}, "new-model")
+	changed := configWithout(t, []string{"kimi-k3"}, "new-model")
 	fx.serveCatalogs(map[string][]byte{testAccessToken2: changed, testKeyA: changed, testKeyB: changed})
 
 	resp := fx.call(http.MethodPost, modelsPath+"/refresh", nil, nil)
@@ -343,10 +376,8 @@ func TestBackgroundRecheckRewritesOnlyChangedFiles(t *testing.T) {
 	}
 
 	// Only the key's workspace changed, and a token limit is a change.
-	var doc map[string]any
-	_ = json.Unmarshal(original, &doc)
-	doc["providers"].(map[string]any)[providerKey].(map[string]any)["models"].(map[string]any)["kimi-k3"].(map[string]any)["limit"] = map[string]any{"context": 1, "output": 1}
-	fx.serveCatalogs(map[string][]byte{testAccessToken: original, testKeyA: mustJSON(t, doc), testKeyB: original})
+	limited := configWith(t, map[string]any{"kimi-k3": map[string]any{"limit": map[string]any{"context": 1, "output": 1}}})
+	fx.serveCatalogs(map[string][]byte{testAccessToken: original, testKeyA: limited, testKeyB: original})
 	recheckCatalogs(context.Background(), newHost(""))
 	if fx.saves() != 1 || strings.Join(*asked, ",") != authIDFor(keyFileName, keyIDFor(testKeyA)) {
 		t.Fatalf("saves %d, asked %v", fx.saves(), *asked)
@@ -407,8 +438,13 @@ func TestRefreshStopsWithContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	report, errRefresh := refreshCatalogs(ctx, newHost(""), refreshOptions{})
-	if errRefresh != nil || len(report.Failures) != 1 || !strings.Contains(report.Failures[0], context.Canceled.Error()) || fx.saves() != 0 || len(fx.httpCalls()) != 0 {
+	if errRefresh != nil || len(report.Failures) != 2 || fx.saves() != 0 || len(fx.httpCalls()) != 0 {
 		t.Fatalf("report = %+v, %v", report, errRefresh)
+	}
+	for _, failure := range report.Failures {
+		if !strings.Contains(failure, context.Canceled.Error()) {
+			t.Fatalf("failure = %s", failure)
+		}
 	}
 }
 

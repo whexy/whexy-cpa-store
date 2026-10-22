@@ -118,6 +118,8 @@ func TestFreeCatalogStoreFallbacks(t *testing.T) {
 		return jsonResponse(404, nil), nil
 	}}
 	now := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
+	useCatalogStore(t)
+	modelsDev.now = func() time.Time { return now }
 	store := newFreeCatalogStore()
 	store.now = func() time.Time { return now }
 	cfg := defaultSettings()

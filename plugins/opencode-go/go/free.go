@@ -27,9 +27,6 @@ const (
 	freeModelPrefix = "opencode-free"
 	// freeCredentialID keys the free catalog's model registration.
 	freeCredentialID = "free"
-	// modelsDevURL is the public catalog OpenCode's client reads when it has
-	// no Console connection; the Console's own catalog needs a key.
-	modelsDevURL = "https://models.dev/api.json"
 )
 
 var freeCredential = credential{ID: freeCredentialID, Bearer: "public", Name: freeDisplayName}
@@ -104,48 +101,24 @@ func freeAuth(base string, raw []byte) pluginapi.AuthData {
 	}
 }
 
-// modelsDevDocument is the part of models.dev's catalog the plugin reads.
-type modelsDevDocument struct {
-	OpenCode struct {
-		API    string                    `json:"api"`
-		NPM    string                    `json:"npm"`
-		Models map[string]modelsDevModel `json:"models"`
-	} `json:"opencode"`
-}
-
-type modelsDevModel struct {
-	Name   string          `json:"name"`
-	Status string          `json:"status"`
-	Cost   json.RawMessage `json:"cost"`
-	Limit  struct {
-		Context int64 `json:"context"`
-		Input   int64 `json:"input"`
-		Output  int64 `json:"output"`
-	} `json:"limit"`
-	Modalities struct {
-		Input  []string `json:"input"`
-		Output []string `json:"output"`
-	} `json:"modalities"`
-	// Provider overrides the provider's package and base for one model.
-	Provider struct {
-		NPM string `json:"npm"`
-		API string `json:"api"`
-	} `json:"provider"`
-}
-
-// parseFreeCatalog reads the free OpenCode models of models.dev: every cost
-// zero, not deprecated, and when live is not nil, served by the gateway now,
-// because models.dev keeps retired models listed.
+// parseFreeCatalog reads the free OpenCode models of a models.dev document.
 func parseFreeCatalog(raw []byte, live map[string]bool) (catalog, error) {
-	var doc modelsDevDocument
+	var doc modelsDevCatalog
 	if errUnmarshal := json.Unmarshal(raw, &doc); errUnmarshal != nil {
 		return catalog{}, fmt.Errorf("decode models.dev catalog: %w", errUnmarshal)
 	}
-	provider := doc.OpenCode
+	return doc.freeCatalog(live)
+}
+
+// freeCatalog lists the free OpenCode models of models.dev: every cost zero,
+// not deprecated, and when live is not nil, served by the gateway now,
+// because models.dev keeps retired models listed.
+func (d *modelsDevCatalog) freeCatalog(live map[string]bool) (catalog, error) {
+	provider := d.Zen
 	var out []catalogModel
 	for id, model := range provider.Models {
 		id = strings.TrimSpace(id)
-		if id == "" || strings.EqualFold(model.Status, "deprecated") || !zeroCost(model.Cost) {
+		if id == "" || deprecated(model) || !zeroCost(model.Cost) {
 			continue
 		}
 		if live != nil && !live[id] {
@@ -155,7 +128,7 @@ func parseFreeCatalog(raw []byte, live map[string]bool) (catalog, error) {
 		if pkg == "" {
 			pkg = provider.NPM
 		}
-		protocol, ok := protocolForPackage(familyFree, pkg)
+		protocol, ok := protocolForPackage(pkg)
 		if !ok {
 			continue
 		}
@@ -188,8 +161,9 @@ func parseFreeCatalog(raw []byte, live map[string]bool) (catalog, error) {
 	return catalog{Free: out}, nil
 }
 
-// zeroCost reports a cost whose every price is zero; a model without one is
-// not known to be free.
+// zeroCost reports a cost whose every price is zero, in models.dev's shape or
+// the Console config's; a model without one is not known to be free. A tier's
+// own descriptor holds its size, not a price.
 func zeroCost(raw json.RawMessage) bool {
 	var cost any
 	if isJSONNull(raw) || json.Unmarshal(raw, &cost) != nil {
@@ -203,8 +177,8 @@ func zeroCost(raw json.RawMessage) bool {
 			prices++
 			return typed == 0
 		case map[string]any:
-			for _, item := range typed {
-				if !walk(item) {
+			for key, item := range typed {
+				if key != "tier" && !walk(item) {
 					return false
 				}
 			}
@@ -220,22 +194,12 @@ func zeroCost(raw json.RawMessage) bool {
 	return walk(cost) && prices > 0
 }
 
-// fetchFreeCatalog reads models.dev and the gateway's live model list, both
-// public. A failed live list leaves the models.dev list unfiltered.
-func fetchFreeCatalog(ctx context.Context, doer httpDoer, cfg settings) (catalog, error) {
-	resp, errDo := doer.Do(ctx, pluginapi.HTTPRequest{
-		Method:  http.MethodGet,
-		URL:     modelsDevURL,
-		Headers: http.Header{"Accept": {"application/json"}, "User-Agent": {cfg.userAgent()}},
-	})
-	if errDo != nil {
-		return catalog{}, fmt.Errorf("fetch models.dev catalog: %w", errDo)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return catalog{}, fmt.Errorf("models.dev answered %d", resp.StatusCode)
-	}
+// fetchFreeCatalog reads the gateway's live model list, which is public, and
+// lists the free models of doc it serves. A failed live list leaves the
+// models.dev list unfiltered.
+func fetchFreeCatalog(ctx context.Context, doer httpDoer, cfg settings, doc *modelsDevCatalog) (catalog, error) {
 	live, _ := fetchLiveModelIDs(ctx, doer, cfg)
-	return parseFreeCatalog(resp.Body, live)
+	return doc.freeCatalog(live)
 }
 
 // liveModelsURL lists every model the pay-as-you-go gateway serves now; it
@@ -274,8 +238,9 @@ func fetchLiveModelIDs(ctx context.Context, doer httpDoer, cfg settings) (map[st
 	return ids, nil
 }
 
-// freeCatalogStore caches the free catalog. A failed refresh keeps the last
-// catalog read, then the embedded snapshot.
+// freeCatalogStore caches the free catalog. It is built only from a
+// models.dev catalog that was read, never from a fallback; a failed refresh
+// keeps the last catalog read, then the embedded snapshot.
 type freeCatalogStore struct {
 	mu       sync.Mutex
 	now      func() time.Time
@@ -299,9 +264,13 @@ func (s *freeCatalogStore) get(ctx context.Context, doer httpDoer, cfg settings)
 	if entry != nil && now.Sub(entry.fetchedAt) < catalogTTL {
 		return entry.catalog, catalogCached, nil
 	}
-	fetched, errFetch := s.refresh(ctx, doer, cfg)
+	doc, _, errFetch := modelsDev.get(ctx, doer, cfg)
 	if errFetch == nil {
-		return fetched, catalogFresh, nil
+		fetched, errRefresh := s.refresh(ctx, doer, cfg, doc)
+		if errRefresh == nil {
+			return fetched, catalogFresh, nil
+		}
+		errFetch = errRefresh
 	}
 	cat, source := s.cached()
 	if source == catalogCached {
@@ -310,8 +279,8 @@ func (s *freeCatalogStore) get(ctx context.Context, doer httpDoer, cfg settings)
 	return cat, source, errFetch
 }
 
-func (s *freeCatalogStore) refresh(ctx context.Context, doer httpDoer, cfg settings) (catalog, error) {
-	fetched, errFetch := fetchFreeCatalog(ctx, doer, cfg)
+func (s *freeCatalogStore) refresh(ctx context.Context, doer httpDoer, cfg settings, doc *modelsDevCatalog) (catalog, error) {
+	fetched, errFetch := fetchFreeCatalog(ctx, doer, cfg, doc)
 	if errFetch != nil {
 		return catalog{}, errFetch
 	}

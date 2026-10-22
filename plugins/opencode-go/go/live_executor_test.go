@@ -39,11 +39,9 @@ func liveGateway(t *testing.T) func(req hostHTTPRequest) gatewayReply {
 func useLiveCatalog(t *testing.T, key string) {
 	t.Helper()
 	store := useCatalogStore(t)
-	cat, errFetch := fetchCatalog(context.Background(), netHTTPDoer{}, defaultSettings(), key)
-	if errFetch != nil {
-		t.Fatal(redactSecrets(errFetch.Error()))
-	}
-	store.byKey[keyIDFor(key)] = catalogEntry{catalog: cat, fetchedAt: time.Now()}
+	_, doc, config := liveCatalog(t, key)
+	modelsDev.entry = &modelsDevEntry{doc: doc, fetchedAt: time.Now()}
+	store.remember(keyIDFor(key), config)
 }
 
 // liveFreeZenModel is the first free OpenCode Zen model the workspace serves.
@@ -64,10 +62,7 @@ func liveFreeZenModel(t *testing.T, cat catalog) string {
 // answers both with 403 FreeTierError.
 func TestLiveExecutorCloakedFreeModel(t *testing.T) {
 	key := liveKey(t)
-	cat, errFetch := fetchCatalog(context.Background(), netHTTPDoer{}, defaultSettings(), key)
-	if errFetch != nil {
-		t.Fatal(redactSecrets(errFetch.Error()))
-	}
+	cat, _, _ := liveCatalog(t, key)
 	model := liveFreeZenModel(t, cat)
 	cfg := defaultSettings()
 	cfg.ZenModels = []string{model}
@@ -144,10 +139,7 @@ func liveModelFor(t *testing.T, cat catalog, protocol sdktranslator.Format) stri
 
 func TestLiveExecutorCrossProtocol(t *testing.T) {
 	key := liveKey(t)
-	cat, errFetch := fetchCatalog(context.Background(), netHTTPDoer{}, defaultSettings(), key)
-	if errFetch != nil {
-		t.Fatal(redactSecrets(errFetch.Error()))
-	}
+	cat, _, _ := liveCatalog(t, key)
 	responsesModel := liveModelFor(t, cat, sdktranslator.FormatOpenAIResponse)
 	messagesModel := liveModelFor(t, cat, sdktranslator.FormatClaude)
 	useSettings(t, defaultSettings())
@@ -210,10 +202,7 @@ func TestLiveExecutorCrossProtocol(t *testing.T) {
 // model uses Codex's own tools instead of it.
 func TestLiveExecutorFreeModelWithHarnessTools(t *testing.T) {
 	key := liveKey(t)
-	cat, errFetch := fetchCatalog(context.Background(), netHTTPDoer{}, defaultSettings(), key)
-	if errFetch != nil {
-		t.Fatal(redactSecrets(errFetch.Error()))
-	}
+	cat, _, _ := liveCatalog(t, key)
 	model := liveFreeZenModel(t, cat)
 	cfg := defaultSettings()
 	cfg.ZenModels = []string{model}

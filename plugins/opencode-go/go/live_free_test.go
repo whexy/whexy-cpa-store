@@ -15,11 +15,22 @@ import (
 // send one tiny request ("Reply with OK", at most 32 output tokens) with the
 // key OpenCode's own client sends without an account.
 
-func TestLiveFreeCatalog(t *testing.T) {
-	cat, errFetch := fetchFreeCatalog(context.Background(), netHTTPDoer{}, defaultSettings())
+// liveFreeCatalog reads models.dev and the gateway's live model list.
+func liveFreeCatalog(t *testing.T) catalog {
+	t.Helper()
+	doc, errDoc := fetchModelsDev(context.Background(), netHTTPDoer{}, defaultSettings())
+	if errDoc != nil {
+		t.Fatal(errDoc)
+	}
+	cat, errFetch := fetchFreeCatalog(context.Background(), netHTTPDoer{}, defaultSettings(), doc)
 	if errFetch != nil {
 		t.Fatal(errFetch)
 	}
+	return cat
+}
+
+func TestLiveFreeCatalog(t *testing.T) {
+	cat := liveFreeCatalog(t)
 	if len(cat.Free) == 0 {
 		t.Fatal("no free model")
 	}
@@ -58,10 +69,7 @@ func TestLiveExecutorFreeWithoutKey(t *testing.T) {
 	useSettings(t, defaultSettings())
 	useCatalogStore(t)
 	store := useFreeCatalog(t)
-	cat, errFetch := fetchFreeCatalog(context.Background(), netHTTPDoer{}, defaultSettings())
-	if errFetch != nil {
-		t.Fatal(errFetch)
-	}
+	cat := liveFreeCatalog(t)
 	store.entry = &catalogEntry{catalog: cat, fetchedAt: time.Now()}
 	var model string
 	for _, candidate := range cat.Free {
