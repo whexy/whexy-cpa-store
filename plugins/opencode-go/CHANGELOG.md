@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.7.0...opencode-go-v0.7.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **opencode-go:** build the model lists from models.dev and the workspace config
+
 ## [0.7.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.6.0...opencode-go-v0.7.0) (2026-10-19)
 
 
