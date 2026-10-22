@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.7.1...opencode-go-v0.8.0) (2026-10-22)
+
+
+### Features
+
+* **opencode-go:** show each workspace's usage on the page
+
 ## [0.7.1](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.7.0...opencode-go-v0.7.1) (2026-10-22)
 
 

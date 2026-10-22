@@ -75,7 +75,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.7.1"
+	pluginVersion = "0.8.0"
 
 	providerKey = "opencode-go"
 	displayName = "OpenCode Go"
