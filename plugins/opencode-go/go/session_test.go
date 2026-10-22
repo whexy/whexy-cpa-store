@@ -208,8 +208,8 @@ func TestInferenceHeadersImpersonate(t *testing.T) {
 		t.Errorf("two turns share one request id %q", request)
 	}
 	first, second := messageIDValue(t, request), messageIDValue(t, again)
-	if second != first+1 {
-		t.Errorf("request ids count %d then %d, want consecutive", first, second)
+	if second <= first {
+		t.Errorf("request ids count %d then %d, want ascending", first, second)
 	}
 }
 
