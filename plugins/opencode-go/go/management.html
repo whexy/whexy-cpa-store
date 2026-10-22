@@ -103,6 +103,12 @@
         display: none !important;
       }
 
+      /* Tabs differ in height, so the page keeps the scrollbar's room even
+         when one needs none, and switching tabs does not shift it. */
+      html {
+        scrollbar-gutter: stable;
+      }
+
       /* Management Center floats its toolbar (and, when narrow, its menu
          button) over the top 76px of the frame. */
       main {
@@ -138,6 +144,48 @@
         display: flex;
         gap: 8px;
         margin-left: auto;
+      }
+
+      /* The baseline is an inset shadow rather than a border, so the
+         selected tab's underline covers it without overflowing the strip,
+         which scrolls when the frame is narrow. */
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 20px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        box-shadow: inset 0 -1px 0 var(--border);
+      }
+
+      .tab {
+        border: 0;
+        border-bottom: 2px solid transparent;
+        padding: 8px 12px;
+        background: transparent;
+        color: var(--text-secondary);
+        font: inherit;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          border-color 150ms ease,
+          color 150ms ease;
+      }
+
+      .tab:hover {
+        color: var(--text-primary);
+      }
+
+      .tab[aria-selected="true"] {
+        border-bottom-color: var(--text-primary);
+        color: var(--text-primary);
+      }
+
+      .tab:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: -2px;
+        border-radius: 6px 6px 0 0;
       }
 
       .btn {
@@ -306,10 +354,6 @@
       .empty {
         margin: 8px 0 16px;
         color: var(--text-secondary);
-      }
-
-      .section-hint {
-        margin-bottom: 12px;
       }
 
       .logins:not(:empty) {
@@ -492,26 +536,20 @@
         color: var(--text-quaternary);
       }
 
-      h2 {
-        margin: 0;
-        font-size: 16px;
-        font-weight: 700;
-      }
-
       h3 {
         margin: 0;
         font-size: 14px;
         font-weight: 650;
       }
 
-      .section {
-        margin-top: 32px;
-      }
-
-      /* One catalog's list inside the Models section: the OpenCode Go models
-         and the OpenCode Zen models. */
+      /* One catalog's list on the Models tab: the OpenCode Zen, Go and Free
+         models. */
       .list {
         margin-top: 20px;
+      }
+
+      #models[hidden] + .list {
+        margin-top: 0;
       }
 
       .section-head {
@@ -950,6 +988,10 @@
           grid-template-columns: max-content repeat(2, minmax(0, 1fr));
         }
 
+        .tab {
+          padding-inline: 8px;
+        }
+
         .key-actions {
           margin-left: 0;
         }
@@ -958,6 +1000,7 @@
       @media (prefers-reduced-motion: reduce) {
         .fill,
         .btn,
+        .tab,
         .input {
           transition: none;
         }
@@ -971,9 +1014,6 @@
         <div class="bar-actions" id="bar-actions" hidden>
           <button class="btn btn-ghost" id="reload" type="button">
             Reload
-          </button>
-          <button class="btn btn-primary" id="add-open" type="button">
-            Add key
           </button>
         </div>
       </div>
@@ -1000,108 +1040,252 @@
       </form>
 
       <div id="content" hidden>
+        <div class="tabs" role="tablist" aria-label="OpenCode Go">
+          <button
+            class="tab"
+            id="tab-credentials"
+            type="button"
+            role="tab"
+            aria-controls="panel-credentials"
+          >
+            Logins &amp; keys
+          </button>
+          <button
+            class="tab"
+            id="tab-usage"
+            type="button"
+            role="tab"
+            aria-controls="panel-usage"
+          >
+            Usage
+          </button>
+          <button
+            class="tab"
+            id="tab-models"
+            type="button"
+            role="tab"
+            aria-controls="panel-models"
+          >
+            Models
+          </button>
+          <button
+            class="tab"
+            id="tab-routing"
+            type="button"
+            role="tab"
+            aria-controls="panel-routing"
+          >
+            Routing
+          </button>
+        </div>
+
         <p class="error" id="page-error" hidden></p>
 
-        <p class="empty" id="empty" hidden>
-          Nothing added yet. Log in from Management Center → OAuth Login →
-          OpenCode Go, no key needed, or add a service-account key
-          (<code>oc_sk_…</code>) from the workspace that holds the Go
-          subscription.
-          <a
-            href="https://opencode.ai/v2/docs/console/go/"
-            target="_blank"
-            rel="noopener noreferrer"
-            >OpenCode Go docs</a
-          >
-        </p>
-
-        <form class="card add" id="add" hidden>
-          <label class="field">
-            Label
-            <input
-              class="input"
-              id="add-label"
-              maxlength="64"
-              placeholder="Optional"
-              autocomplete="off"
-            />
-          </label>
-          <label class="field">
-            Key
-            <input
-              class="input input-mono"
-              id="add-key"
-              type="password"
-              placeholder="oc_sk_…"
-              autocomplete="new-password"
-              spellcheck="false"
-              required
-            />
-          </label>
-          <div class="row">
-            <button class="btn btn-primary" id="add-submit" type="submit">
-              Add
-            </button>
-            <button class="btn btn-ghost" id="add-cancel" type="button">
-              Cancel
+        <div
+          id="panel-credentials"
+          role="tabpanel"
+          aria-labelledby="tab-credentials"
+        >
+          <div class="section-head">
+            <p class="hint" id="login-hint" hidden></p>
+            <button class="btn btn-primary" id="add-open" type="button">
+              Add key
             </button>
           </div>
-          <p class="error" id="add-error" hidden></p>
-        </form>
 
-        <p class="hint" id="loading">Loading…</p>
-        <p class="hint section-hint" id="login-hint" hidden></p>
-        <ul class="keys logins" id="logins"></ul>
-        <ul class="keys" id="keys"></ul>
+          <p class="empty" id="empty" hidden>
+            Nothing added yet. Log in from Management Center → OAuth Login →
+            OpenCode Go, no key needed, or add a service-account key
+            (<code>oc_sk_…</code>) from the workspace that holds the Go
+            subscription.
+            <a
+              href="https://opencode.ai/v2/docs/console/go/"
+              target="_blank"
+              rel="noopener noreferrer"
+              >OpenCode Go docs</a
+            >
+          </p>
 
-        <section class="section" id="usage" hidden>
-          <div class="section-head">
-            <h2>Usage</h2>
-          </div>
-          <div class="stack" id="usage-notices"></div>
-          <div id="usage-workspaces"></div>
-        </section>
-
-        <section class="section" id="models" hidden>
-          <div class="section-head">
-            <h2>Models</h2>
-            <span class="section-meta" id="models-meta"></span>
-            <div class="section-actions">
-              <button class="btn btn-ghost" id="models-refresh" type="button">
-                Refresh models
+          <form class="card add" id="add" hidden>
+            <label class="field">
+              Label
+              <input
+                class="input"
+                id="add-label"
+                maxlength="64"
+                placeholder="Optional"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              Key
+              <input
+                class="input input-mono"
+                id="add-key"
+                type="password"
+                placeholder="oc_sk_…"
+                autocomplete="new-password"
+                spellcheck="false"
+                required
+              />
+            </label>
+            <div class="row">
+              <button class="btn btn-primary" id="add-submit" type="submit">
+                Add
+              </button>
+              <button class="btn btn-ghost" id="add-cancel" type="button">
+                Cancel
               </button>
             </div>
-          </div>
-          <div class="stack" id="models-notices"></div>
-          <div class="stack" id="models-rules"></div>
+            <p class="error" id="add-error" hidden></p>
+          </form>
 
-          <div class="list" id="zen-models" hidden>
+          <p class="hint" id="loading">Loading…</p>
+          <ul class="keys logins" id="logins"></ul>
+          <ul class="keys" id="keys"></ul>
+        </div>
+
+        <div
+          id="panel-usage"
+          role="tabpanel"
+          aria-labelledby="tab-usage"
+          hidden
+        >
+          <p class="hint" id="usage-empty">Loading…</p>
+          <div class="stack" id="usage-notices"></div>
+          <div id="usage-workspaces"></div>
+        </div>
+
+        <div
+          id="panel-models"
+          role="tabpanel"
+          aria-labelledby="tab-models"
+          hidden
+        >
+          <div id="models" hidden>
             <div class="section-head">
-              <h3>OpenCode Zen models</h3>
-              <span class="section-meta" id="zen-meta"></span>
+              <span class="section-meta" id="models-meta"></span>
               <div class="section-actions">
-                <button class="btn btn-ghost" id="zen-enable-all" type="button">
-                  Enable all
+                <button class="btn btn-ghost" id="models-refresh" type="button">
+                  Refresh models
                 </button>
+              </div>
+            </div>
+            <div class="stack" id="models-notices"></div>
+            <div class="stack" id="models-rules"></div>
+
+            <div class="list" id="zen-models" hidden>
+              <div class="section-head">
+                <h3>OpenCode Zen models</h3>
+                <span class="section-meta" id="zen-meta"></span>
+                <div class="section-actions">
+                  <button
+                    class="btn btn-ghost"
+                    id="zen-enable-all"
+                    type="button"
+                  >
+                    Enable all
+                  </button>
+                  <button
+                    class="btn btn-ghost"
+                    id="zen-disable-all"
+                    type="button"
+                  >
+                    Disable all
+                  </button>
+                </div>
+              </div>
+              <p class="hint">
+                Off by default. Enabling a model adds
+                <span id="zen-id-note"><code>opencode/…</code></span> to
+                CLIProxyAPI for every login and key with OpenCode Zen on, and
+                sends its requests to OpenCode Zen, which bills Console credits.
+                Models priced at zero are free: the plugin presents those
+                requests as the OpenCode client, which is the only caller the
+                free tier answers.
+              </p>
+              <div class="card table-card">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Model</th>
+                      <th>Protocol</th>
+                      <th class="num">Context</th>
+                      <th
+                        class="toggle"
+                        title="Serve this model through CLIProxyAPI as an OpenCode Zen model. Stored in the plugin setting zen_models."
+                      >
+                        Enabled
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="zen-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="list" id="go-models" hidden>
+              <div class="section-head">
+                <h3>OpenCode Go models</h3>
+                <span class="section-meta" id="go-meta"></span>
+                <div class="section-actions">
+                  <button
+                    class="btn btn-ghost"
+                    id="models-disable-all"
+                    type="button"
+                  >
+                    Disable all
+                  </button>
+                </div>
+              </div>
+              <div class="card table-card">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Model</th>
+                      <th>Protocol</th>
+                      <th class="num">Context</th>
+                      <th
+                        class="toggle"
+                        title="Remove the model from CLIProxyAPI. Stored in the plugin setting disabled_models."
+                      >
+                        Disabled
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="models-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="list" id="free">
+            <div class="section-head">
+              <h3>OpenCode Free</h3>
+              <span class="section-meta" id="free-meta"></span>
+              <div class="section-actions">
                 <button
                   class="btn btn-ghost"
-                  id="zen-disable-all"
+                  id="free-refresh"
                   type="button"
+                  hidden
                 >
-                  Disable all
+                  Refresh models
+                </button>
+                <button class="btn btn-primary" id="free-toggle" type="button">
+                  Turn on
                 </button>
               </div>
             </div>
             <p class="hint">
-              Off by default. Enabling a model adds
-              <span id="zen-id-note"><code>opencode/…</code></span> to
-              CLIProxyAPI for every login and key with OpenCode Zen on, and
-              sends its requests to OpenCode Zen, which bills Console credits.
-              Models priced at zero are free: the plugin presents those requests
-              as the OpenCode client, which is the only caller the free tier
-              answers.
+              OpenCode's free models, with no login or key: requests carry no
+              credential of yours and are presented as the OpenCode client, the
+              only caller the free tier answers. Turning this on adds
+              <span id="free-id-note"><code>opencode-free/…</code></span> to
+              CLIProxyAPI.
             </p>
-            <div class="card table-card">
+            <div class="stack" id="free-notices"></div>
+            <div class="card table-card" id="free-table" hidden>
               <table>
                 <thead>
                   <tr>
@@ -1110,103 +1294,26 @@
                     <th class="num">Context</th>
                     <th
                       class="toggle"
-                      title="Serve this model through CLIProxyAPI as an OpenCode Zen model. Stored in the plugin setting zen_models."
-                    >
-                      Enabled
-                    </th>
-                  </tr>
-                </thead>
-                <tbody id="zen-body"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="list" id="go-models" hidden>
-            <div class="section-head">
-              <h3>OpenCode Go models</h3>
-              <span class="section-meta" id="go-meta"></span>
-              <div class="section-actions">
-                <button
-                  class="btn btn-ghost"
-                  id="models-disable-all"
-                  type="button"
-                >
-                  Disable all
-                </button>
-              </div>
-            </div>
-            <div class="card table-card">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Model</th>
-                    <th>Protocol</th>
-                    <th class="num">Context</th>
-                    <th
-                      class="toggle"
-                      title="Remove the model from CLIProxyAPI. Stored in the plugin setting disabled_models."
+                      title="Remove the model from CLIProxyAPI. Stored in the plugin setting free_disabled_models."
                     >
                       Disabled
                     </th>
                   </tr>
                 </thead>
-                <tbody id="models-body"></tbody>
+                <tbody id="free-body"></tbody>
               </table>
             </div>
           </div>
-        </section>
+        </div>
 
-        <section class="section" id="free">
-          <div class="section-head">
-            <h2>OpenCode Free</h2>
-            <span class="section-meta" id="free-meta"></span>
-            <div class="section-actions">
-              <button
-                class="btn btn-ghost"
-                id="free-refresh"
-                type="button"
-                hidden
-              >
-                Refresh models
-              </button>
-              <button class="btn btn-primary" id="free-toggle" type="button">
-                Turn on
-              </button>
-            </div>
-          </div>
-          <p class="hint">
-            OpenCode's free models, with no login or key: requests carry no
-            credential of yours and are presented as the OpenCode client, the
-            only caller the free tier answers. Turning this on adds
-            <span id="free-id-note"><code>opencode-free/…</code></span> to
-            CLIProxyAPI.
-          </p>
-          <div class="stack" id="free-notices"></div>
-          <div class="card table-card" id="free-table" hidden>
-            <table>
-              <thead>
-                <tr>
-                  <th>Model</th>
-                  <th>Protocol</th>
-                  <th class="num">Context</th>
-                  <th
-                    class="toggle"
-                    title="Remove the model from CLIProxyAPI. Stored in the plugin setting free_disabled_models."
-                  >
-                    Disabled
-                  </th>
-                </tr>
-              </thead>
-              <tbody id="free-body"></tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="section" id="routing" hidden>
-          <div class="section-head">
-            <h2>Routing</h2>
-          </div>
-          <form class="card routing" id="routing-form">
+        <div
+          id="panel-routing"
+          role="tabpanel"
+          aria-labelledby="tab-routing"
+          hidden
+        >
+          <p class="hint" id="routing-empty">Loading…</p>
+          <form class="card routing" id="routing-form" hidden>
             <p class="hint" id="routing-strategy"></p>
             <div class="routing-grid">
               <span></span>
@@ -1289,7 +1396,7 @@
             <p class="hint" id="routing-files"></p>
             <p class="error" id="routing-error" hidden></p>
           </form>
-        </section>
+        </div>
       </div>
     </main>
     <script>
@@ -3116,10 +3223,17 @@
       // Zen model.
       const zenEnabled = (model) => hasModel(models.zen, model.upstream_id);
 
+      // modelsListed says the Models tab shows the OpenCode Zen and Go lists
+      // and their Refresh models, which reads OpenCode Free's catalog too.
+      const modelsListed = () =>
+        Boolean(
+          models.view && (models.view.models.length > 0 || models.view.error),
+        );
+
       function renderModels() {
         const view = models.view;
         const section = $("models");
-        section.hidden = !view || (view.models.length === 0 && !view.error);
+        section.hidden = !modelsListed();
         if (section.hidden) return;
         const goModels = view.models.filter((model) => !isZen(model));
         const zenModels = view.models.filter(isZen);
@@ -3329,7 +3443,7 @@
             text: refreshSummary(report),
           };
           models.servedBy = null;
-          await loadModels();
+          await Promise.all([loadModels(), loadFree()]);
         } catch (err) {
           if (!(err instanceof AuthError))
             models.notice = { tone: "error", text: err.message };
@@ -3412,7 +3526,7 @@
         toggle.textContent = on ? "Turn off" : "Turn on";
         toggle.className = "btn " + (on ? "btn-ghost" : "btn-primary");
         toggle.disabled = free.working || !view;
-        $("free-refresh").hidden = !on;
+        $("free-refresh").hidden = !on || modelsListed();
         $("free-refresh").disabled = free.working || models.refreshing;
         $("free-id-note").replaceChildren(
           idNote("opencode-free", "their bare IDs"),
@@ -3543,7 +3657,8 @@
           ]);
         } catch (err) {
           if (err instanceof AuthError) return;
-          $("routing").hidden = false;
+          $("routing-empty").hidden = true;
+          $("routing-form").hidden = false;
           showRoutingError(err.message);
           return;
         }
@@ -3566,7 +3681,11 @@
           ...(credentialFiles.length > 0 ? ["go", "zen"] : []),
           ...(view.free ? ["free"] : []),
         ];
-        $("routing").hidden = routingFamilies.length === 0;
+        const empty = $("routing-empty");
+        empty.textContent =
+          "Nothing to route yet: add a login or key, or turn on OpenCode Free.";
+        empty.hidden = routingFamilies.length > 0;
+        $("routing-form").hidden = routingFamilies.length === 0;
         if (routingFamilies.length === 0) return;
         const strategy = config
           ? "Strategy " +
@@ -3745,8 +3864,10 @@
 
       function renderWorkspaces() {
         const { list, failures, error } = workspaceUsage;
-        $("usage").hidden =
-          !error && (!list || (list.length === 0 && failures.length === 0));
+        // Every login and key adds a workspace or a failure.
+        const empty = $("usage-empty");
+        empty.textContent = "No workspace yet: add a login or key.";
+        empty.hidden = Boolean(error) || list.length + failures.length > 0;
         const notices = [];
         if (error)
           notices.push(
@@ -4439,6 +4560,41 @@
       }
 
       $("reload").addEventListener("click", refresh);
+
+      // Tabs: the selected one is kept for this browser tab, so leaving the
+      // page and coming back returns to it.
+      const TAB_KEY = "opencode-go.tab";
+      const tabs = [...document.querySelectorAll('[role="tab"]')];
+
+      function selectTab(tab, focus) {
+        for (const other of tabs) {
+          const selected = other === tab;
+          other.setAttribute("aria-selected", String(selected));
+          other.tabIndex = selected ? 0 : -1;
+          $(other.getAttribute("aria-controls")).hidden = !selected;
+        }
+        storageSet(sessionStorage, TAB_KEY, tab.id);
+        if (focus) tab.focus();
+      }
+
+      for (const tab of tabs) {
+        tab.addEventListener("click", () => selectTab(tab));
+        tab.addEventListener("keydown", (event) => {
+          const at = tabs.indexOf(tab);
+          const next = {
+            ArrowLeft: at - 1,
+            ArrowRight: at + 1,
+            Home: 0,
+            End: tabs.length - 1,
+          }[event.key];
+          if (next === undefined) return;
+          event.preventDefault();
+          selectTab(tabs[(next + tabs.length) % tabs.length], true);
+        });
+      }
+
+      const savedTab = storageGet(sessionStorage, TAB_KEY);
+      selectTab(tabs.find((tab) => tab.id === savedTab) || tabs[0]);
 
       // Authentication
       function showContent() {

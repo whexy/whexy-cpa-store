@@ -34,7 +34,7 @@ alongside logins: add them on Management Center → OpenCode Go, which checks
 each key and stores it in `opencode-go.json`. CLIProxyAPI rotates between all
 logins and keys. The same page shows each login's account and token expiry
 and disables logins, and renames, disables, tests and removes keys. Delete a
-login on the Auth Files page. Further down, it shows each workspace's
+login on the Auth Files page. Its Usage tab shows each workspace's
 [usage](#usage).
 
 <details>
@@ -119,7 +119,7 @@ applies the workspace's Console config over them. A model the workspace
 disabled there is left out, and what the config sets for a model, such as its
 name, limits or price, replaces models.dev's. Models that models.dev marks
 deprecated are left out too, and so are the API families the plugin does not
-speak, such as Gemini. The OpenCode Go page shows both lists.
+speak, such as Gemini. The OpenCode Go page's Models tab shows both lists.
 
 **OpenCode Go models** are the subscription models. By default every ID
 carries the `opencode-go/` prefix, so Go never takes requests meant for
@@ -149,11 +149,11 @@ like any other model.
 ## OpenCode Free
 
 OpenCode serves its free models without an account, and so does the plugin:
-turn on **OpenCode Free** on the OpenCode Go page and request them as
-`opencode-free/<model>`. It needs no login or key, and its requests carry none
-of yours: they send the key OpenCode's own client sends without an account,
-`public`, and are presented as that client, the only caller the free tier
-answers (see [Free models](#free-models)).
+turn on **OpenCode Free** on the OpenCode Go page's Models tab and request
+them as `opencode-free/<model>`. It needs no login or key, and its requests
+carry none of yours: they send the key OpenCode's own client sends without an
+account, `public`, and are presented as that client, the only caller the free
+tier answers (see [Free models](#free-models)).
 
 The models are the OpenCode models [models.dev](https://models.dev) prices at
 zero and does not mark deprecated, among those the gateway lists as live. The
@@ -289,9 +289,9 @@ configuration form in Management Center:
 
 ## Usage
 
-The OpenCode Go page shows what each workspace a login or key reaches has
-used, as the Console's workspace usage page does, for today, the last 7 or 30
-days or all time:
+The OpenCode Go page's Usage tab shows what each workspace a login or key
+reaches has used, as the Console's workspace usage page does, for today, the
+last 7 or 30 days or all time:
 
 - cost, requests and tokens;
 - cost or tokens per hour for today, from your browser's midnight, and per
