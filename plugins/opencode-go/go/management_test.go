@@ -239,6 +239,8 @@ func TestManagementRegistrationWireShape(t *testing.T) {
 		"PUT /v0/management/opencode-go/routing",
 		"GET /v0/management/opencode-go/free",
 		"PUT /v0/management/opencode-go/free",
+		"GET /v0/management/opencode-go/workspaces",
+		"GET /v0/management/opencode-go/workspaces/usage",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("routes =\n%s", strings.Join(got, "\n"))
@@ -301,8 +303,11 @@ func TestManagementPageServed(t *testing.T) {
 	if secretPattern.MatchString(page) {
 		t.Fatal("page embeds an oc_sk_ token")
 	}
+	// The SVG namespace is a name the chart's elements are created in, not
+	// an address the page loads.
+	scanned := strings.ReplaceAll(page, `"http://www.w3.org/2000/svg"`, "")
 	for _, asset := range []string{"<link", " src=", "@import", "url(", "http://"} {
-		if strings.Contains(page, asset) {
+		if strings.Contains(scanned, asset) {
 			t.Fatalf("page references an external asset (%s)", asset)
 		}
 	}

@@ -95,13 +95,15 @@ var managementRoutes = []managementRoute{
 	{Method: http.MethodPut, Path: routingPath, Description: "Set the OpenCode Go, Zen and Free priority and weight: {go: {priority, weight}, zen: {...}, free: {...}}, null for the default.", handle: handleSetRouting},
 	{Method: http.MethodGet, Path: freePath, Description: "Read OpenCode Free: its auth file, state and free models.", handle: handleGetFree},
 	{Method: http.MethodPut, Path: freePath, Description: "Turn OpenCode Free on or off: {enabled}.", handle: handlePutFree},
+	{Method: http.MethodGet, Path: workspacesPath, Description: "List the OpenCode workspaces the logins and keys reach, each with the login or key its usage is read with.", handle: handleListWorkspaces},
+	{Method: http.MethodGet, Path: workspacesPath + "/usage", Description: "Read the usage of a workspace over a range: totals, cost by hour or day, cost by model, web search and the latest requests: ?id=, range (today, 7d, 30d or all) and since (the start of today).", handle: handleWorkspaceUsage},
 }
 
 func managementRegister(raw []byte) ([]byte, error) {
 	return okEnvelope(managementRegistration{
 		Routes: managementRoutes,
 		Resources: []resourceRoute{
-			{Path: resourcePagePath, Menu: displayName, Description: "Manage OpenCode Go logins, keys, models, OpenCode Free and routing."},
+			{Path: resourcePagePath, Menu: displayName, Description: "Manage OpenCode Go logins, keys, models, OpenCode Free and routing, and see workspace usage."},
 			{Path: logoPath, Description: "OpenCode Go logo."},
 		},
 	})

@@ -7,15 +7,18 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
 
 // Live tests read OPENCODE_API_KEY and call only free endpoints: models.dev,
-// the workspace config and the Go gateway's /v1/usage.
+// the workspace config, the Go gateway's /v1/usage and the Console's usage
+// reports.
 //
 //	set -a; . /path/to/.env; set +a; go test -tags live -run Live ./...
 
@@ -106,5 +109,43 @@ func TestLiveUsage(t *testing.T) {
 			t.Errorf("%s has no reset time", window.Name)
 		}
 		t.Logf("%s: status %s, %.1f%% used, resets %s", window.Name, window.Status, window.Percent, window.ResetsAt)
+	}
+}
+
+// TestLiveWorkspaceUsage reads every range of the key's workspace. A key
+// cannot read the request log, so it must come back as needing a login.
+func TestLiveWorkspaceUsage(t *testing.T) {
+	key := liveKey(t)
+	store := newUsageStore()
+	id, errWorkspace := keyWorkspace(context.Background(), netHTTPDoer{}, defaultSettings(), keyEntry{ID: keyIDFor(key), APIKey: key})
+	if errWorkspace != nil || !strings.HasPrefix(id, "wrk_") {
+		t.Fatalf("workspace %q, %v", id, errWorkspace)
+	}
+	reader := workspaceReader{cred: credential{ID: "live", Bearer: key, Name: "live key"}}
+	workspace := usageWorkspace{ID: id, readers: []workspaceReader{reader}}
+	for _, name := range []string{rangeToday, range7d, range30d, rangeAll} {
+		q, errQuery := parseUsageQuery(url.Values{"range": {name}}, time.Now())
+		if errQuery != nil {
+			t.Fatal(errQuery)
+		}
+		view := store.read(context.Background(), netHTTPDoer{}, defaultSettings(), workspace, q)
+		for part, failure := range map[string]string{"summary": view.Summary.Error, "chart": view.Chart.Error, "models": view.Models.Error, "request log": view.RequestLog.Error} {
+			if failure != "" {
+				t.Fatalf("%s %s: %s", name, part, failure)
+			}
+		}
+		if !view.RequestLog.NeedsLogin {
+			t.Errorf("%s: a key read the request log: %d entries", name, len(view.RequestLog.Entries))
+		}
+		var charted, modelled int64
+		for _, bucket := range view.Chart.Buckets {
+			charted += bucket.Requests
+		}
+		for _, row := range view.Models.Rows {
+			modelled += row.Requests
+		}
+		t.Logf("%s: %d requests, $%.2f, %d tokens, %d web searches; %d %s buckets holding %d requests; %d models holding %d requests",
+			name, view.Summary.Requests, view.Summary.Cost, view.Summary.Tokens, view.Summary.WebSearches,
+			len(view.Chart.Buckets), view.Chart.Bucket, charted, len(view.Models.Rows), modelled)
 	}
 }

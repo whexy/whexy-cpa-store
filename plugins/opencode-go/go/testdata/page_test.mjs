@@ -369,3 +369,44 @@ test("token counts are short", () => {
   assert.equal(tokens(262144), "262K");
   assert.equal(tokens(0), "");
 });
+
+test("usage amounts read like the Console's", () => {
+  const usd = fn("usd");
+  assert.equal(usd(0), "$0.00");
+  assert.equal(usd(1234.56), "$1,234.56");
+  assert.equal(usd(2.5134), "$2.51");
+  assert.equal(usd(0.2430549), "$0.24");
+  assert.equal(usd(0.01), "$0.01");
+  assert.equal(usd(0.0035), "$0.0035");
+  assert.equal(usd(0.00031), "$0.0003");
+  assert.equal(usd(0.003), "$0.003");
+  assert.equal(usd(0.0001), "$0.0001");
+  assert.equal(usd(0.000026), "<$0.0001");
+  const compact = fn("compact");
+  assert.equal(compact(0), "0");
+  assert.equal(compact(9876), "9,876");
+  assert.equal(compact(12345), "12.3K");
+  assert.equal(compact(365354097), "365M");
+  assert.equal(compact(1500000000), "1.5B");
+  const duration = fn("duration");
+  assert.equal(duration(40), "40 ms");
+  assert.equal(duration(1834), "1.83 s");
+  assert.equal(duration(125000), "2m 5s");
+});
+
+test("chart axes tick at round numbers", () => {
+  const axisMax = fn("axisMax");
+  assert.equal(axisMax(0), 1);
+  assert.equal(axisMax(0.2430549), 0.4);
+  assert.equal(axisMax(1), 1);
+  assert.equal(axisMax(3.31), 4);
+  assert.equal(axisMax(0.03), 0.04);
+  assert.equal(axisMax(7617497), 10000000);
+  const labelEvery = fn("labelEvery");
+  assert.equal(labelEvery(24, 17, true), 2);
+  assert.equal(labelEvery(24, 5, true), 6);
+  assert.equal(labelEvery(7, 17, false), 1);
+  assert.equal(labelEvery(30, 12, false), 3);
+  assert.equal(labelEvery(74, 17, false), 7);
+  assert.equal(labelEvery(400, 10, false), 40);
+});

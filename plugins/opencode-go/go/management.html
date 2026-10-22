@@ -706,6 +706,240 @@
         font-weight: 600;
       }
 
+      /* Workspace usage: one block per workspace, its range picker in the
+         block's head scoping everything below it. */
+      .workspace {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .workspace + .workspace {
+        margin-top: 28px;
+      }
+
+      .workspace-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        transition: opacity 150ms ease;
+      }
+
+      .workspace-body.is-loading {
+        opacity: 0.6;
+      }
+
+      .workspace h4 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .usage-part {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .usage-line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 12px;
+      }
+
+      .usage-line > p {
+        margin: 0;
+      }
+
+      td.time {
+        color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .workspace .section-head {
+        margin-bottom: 0;
+      }
+
+      .segmented {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 8px;
+        background: var(--bg-subtle);
+      }
+
+      .segmented button {
+        border: 0;
+        border-radius: 6px;
+        padding: 4px 10px;
+        background: transparent;
+        color: var(--text-secondary);
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+
+      .segmented button[aria-pressed="true"] {
+        background: var(--bg-card);
+        color: var(--text-primary);
+        box-shadow: var(--shadow);
+      }
+
+      [data-theme="dark"] .segmented button[aria-pressed="true"] {
+        background: var(--border);
+      }
+
+      .segmented button:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 1px;
+      }
+
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .tile {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 12px 16px;
+      }
+
+      .tile-label {
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .tile-value {
+        font-size: 22px;
+        font-weight: 650;
+        overflow-wrap: anywhere;
+      }
+
+      .chart-card {
+        padding: 12px 16px 10px;
+      }
+
+      .chart-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      .chart-head .segmented {
+        margin-left: auto;
+      }
+
+      /* The bar color is the reference palette's first categorical slot,
+         stepped per theme and checked against the card surfaces. */
+      .chart {
+        --chart-bar: #2a78d6;
+        --chart-bar-active: #5598e7;
+        position: relative;
+        min-height: 180px;
+        outline: none;
+      }
+
+      [data-theme="dark"] .chart {
+        --chart-bar: #3987e5;
+        --chart-bar-active: #6da7ec;
+      }
+
+      .chart:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+
+      .chart svg {
+        display: block;
+        overflow: visible;
+      }
+
+      .chart .bar {
+        fill: var(--chart-bar);
+      }
+
+      .chart .bar.is-active {
+        fill: var(--chart-bar-active);
+      }
+
+      .chart .grid {
+        stroke: var(--border);
+        stroke-width: 1;
+        shape-rendering: crispEdges;
+      }
+
+      .chart text {
+        fill: var(--text-tertiary);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .chart text.peak {
+        fill: var(--text-secondary);
+        font-weight: 600;
+      }
+
+      .chart-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 180px;
+        margin: 0;
+      }
+
+      .chart-tip {
+        position: absolute;
+        top: 0;
+        z-index: 1;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 6px 10px;
+        background: var(--bg-card);
+        box-shadow: var(--shadow);
+        color: var(--text-secondary);
+        font-size: 12px;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      .chart-tip strong {
+        display: block;
+        color: var(--text-primary);
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      @media (max-width: 640px) {
+        .tiles {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .workspace-body {
+          transition: none;
+        }
+      }
+
       @media (max-width: 640px) {
         .add,
         .usage {
@@ -819,6 +1053,14 @@
         <p class="hint section-hint" id="login-hint" hidden></p>
         <ul class="keys logins" id="logins"></ul>
         <ul class="keys" id="keys"></ul>
+
+        <section class="section" id="usage" hidden>
+          <div class="section-head">
+            <h2>Usage</h2>
+          </div>
+          <div class="stack" id="usage-notices"></div>
+          <div id="usage-workspaces"></div>
+        </section>
 
         <section class="section" id="models" hidden>
           <div class="section-head">
@@ -1361,6 +1603,60 @@
         if (count >= 1e6) return +(count / 1e6).toFixed(2) + "M";
         if (count >= 1e3) return Math.round(count / 1e3) + "K";
         return String(count);
+      }
+
+      // usd formats an amount as the Console does: cents from a cent up, up
+      // to four decimals below that, and "<$0.0001" for anything smaller.
+      function usd(amount) {
+        if (amount === 0) return "$0.00";
+        if (amount < 0.0001) return "<$0.0001";
+        return amount.toLocaleString("en-US", {
+          style: "currency",
+          currency: "USD",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: amount >= 0.01 ? 2 : 4,
+        });
+      }
+
+      // compact shortens a count from 10,000 up: 9,876, 12.3K, 4.5M, 1.2B.
+      function compact(count) {
+        const units = [
+          [1e9, "B"],
+          [1e6, "M"],
+          [1e3, "K"],
+        ];
+        if (count < 1e4) return count.toLocaleString("en-US");
+        for (const [size, unit] of units) {
+          if (count >= size)
+            return +(count / size).toFixed(count / size >= 100 ? 0 : 1) + unit;
+        }
+      }
+
+      // duration formats a request's duration as the Console does.
+      function duration(ms) {
+        if (ms < 1000) return Math.round(ms) + " ms";
+        if (ms < 60000) return +(ms / 1000).toFixed(2) + " s";
+        const seconds = Math.round(ms / 1000);
+        return Math.floor(seconds / 60) + "m " + (seconds % 60) + "s";
+      }
+
+      // axisMax rounds a chart's peak up to 1, 2, 4 or 5 times a power of
+      // ten, so the half-way tick is a round number too.
+      function axisMax(peak) {
+        if (!(peak > 0)) return 1;
+        const power = 10 ** Math.floor(Math.log10(peak));
+        const step = [1, 2, 4, 5, 10].find(
+          (n) => peak <= n * power * 1.0000001,
+        );
+        return +(step * power).toPrecision(12);
+      }
+
+      // labelEvery is how many buckets apart the x-axis labels sit, so at
+      // most fit labels show; hours step to a divisor of a day.
+      function labelEvery(count, fit, hourly) {
+        const steps = hourly ? [1, 2, 3, 4, 6, 12, 24] : [1, 2, 3, 7, 14, 28];
+        const need = Math.ceil(count / Math.max(1, fit));
+        return steps.find((step) => step >= need) || need;
       }
     </script>
     <script>
@@ -2156,7 +2452,7 @@
         try {
           await loadList();
           queueUsage(allIds());
-          loadExtras();
+          loadExtras(true);
         } catch (err) {
           if (!(err instanceof AuthError)) {
             $("loading").hidden = true;
@@ -2165,12 +2461,14 @@
         }
       }
 
-      // Models and routing load after the credential list, which decides
-      // whether either section has anything to show.
-      function loadExtras() {
+      // Models, routing and usage load after the credential list, which
+      // decides whether each section has anything to show. Edits list the
+      // workspaces again; only a reload reads their usage again.
+      function loadExtras(reloadUsage) {
         loadModels();
         loadFree();
         loadRouting();
+        loadWorkspaces(reloadUsage);
       }
 
       function replaceKey(view) {
@@ -3357,6 +3655,788 @@
           save.disabled = false;
         }
       });
+
+      // Usage: every workspace a login or key reaches, as the Console's usage
+      // page shows it. A workspace loads when its block scrolls into view and
+      // when its range changes; the plugin keeps the Console's answers for 30
+      // seconds, and the request log's for 10.
+      const RANGES = [
+        ["today", "Today"],
+        ["7d", "7 days"],
+        ["30d", "30 days"],
+        ["all", "All time"],
+      ];
+      const METRICS = [
+        ["cost", "Cost"],
+        ["tokens", "Tokens"],
+      ];
+      const FAMILY_BADGES = {
+        go: ["Go", "OpenCode Go subscription"],
+        zen: ["Zen", "OpenCode Zen, billed to Console credits"],
+      };
+      const OUTCOMES = {
+        succeeded: ["Succeeded", "ok"],
+        failed: ["Failed", "bad"],
+        rejected: ["Rejected", "warn"],
+        cancelled: ["Cancelled", "warn"],
+      };
+      const SVG_NS = "http://www.w3.org/2000/svg";
+
+      const workspaceUsage = {
+        list: null,
+        failures: [],
+        error: "",
+        // views holds each workspace's range, chart metric and last read.
+        views: new Map(),
+      };
+
+      const chartDraws = new WeakMap();
+      const chartResize = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const draw = chartDraws.get(entry.target);
+          if (draw) draw();
+        }
+      });
+      const usageVisible = new IntersectionObserver((entries) => {
+        for (const entry of entries)
+          if (entry.isIntersecting)
+            ensureWorkspaceUsage(entry.target.dataset.id);
+      });
+
+      async function loadWorkspaces(reload) {
+        let data;
+        try {
+          data = await api("GET", "/workspaces");
+        } catch (err) {
+          if (err instanceof AuthError) return;
+          workspaceUsage.error = err.message;
+          renderWorkspaces();
+          return;
+        }
+        workspaceUsage.error = "";
+        workspaceUsage.list = data.workspaces || [];
+        workspaceUsage.failures = data.failures || [];
+        const listed = new Set(workspaceUsage.list.map((ws) => ws.id));
+        for (const id of [...workspaceUsage.views.keys()])
+          if (!listed.has(id)) workspaceUsage.views.delete(id);
+        for (const ws of workspaceUsage.list) {
+          const view = workspaceUsage.views.get(ws.id);
+          if (!view) {
+            workspaceUsage.views.set(ws.id, {
+              workspace: ws,
+              range: "today",
+              metric: "cost",
+              data: null,
+              error: "",
+              loading: false,
+              stale: false,
+              readRange: "",
+              seq: 0,
+            });
+            continue;
+          }
+          // Another credential may read the request log differently.
+          if (reload || view.workspace.credential !== ws.credential)
+            view.stale = true;
+          view.workspace = ws;
+        }
+        renderWorkspaces();
+      }
+
+      function renderWorkspaces() {
+        const { list, failures, error } = workspaceUsage;
+        $("usage").hidden =
+          !error && (!list || (list.length === 0 && failures.length === 0));
+        const notices = [];
+        if (error)
+          notices.push(
+            note("error", "Could not list the workspaces: " + error),
+          );
+        for (const failure of failures)
+          notices.push(
+            note("error", "Could not find the workspace of " + failure),
+          );
+        $("usage-notices").replaceChildren(...notices);
+        usageVisible.disconnect();
+        const blocks = (list || []).map((ws) => {
+          const view = workspaceUsage.views.get(ws.id);
+          view.el = h("div", { class: "workspace", "data-id": ws.id });
+          fillWorkspace(view);
+          usageVisible.observe(view.el);
+          return view.el;
+        });
+        $("usage-workspaces").replaceChildren(...blocks);
+      }
+
+      function ensureWorkspaceUsage(id) {
+        const view = workspaceUsage.views.get(id);
+        if (!view || view.loading) return;
+        if (!view.stale && view.readRange === view.range) return;
+        readWorkspaceUsage(view);
+      }
+
+      async function readWorkspaceUsage(view) {
+        const seq = ++view.seq;
+        view.loading = true;
+        view.stale = false;
+        view.readRange = view.range;
+        fillWorkspace(view);
+        const params = new URLSearchParams({
+          id: view.workspace.id,
+          range: view.range,
+        });
+        // Today starts at the viewer's midnight, which only the browser
+        // knows; the Console's own page sends the same.
+        if (view.range === "today") {
+          const midnight = new Date();
+          midnight.setHours(0, 0, 0, 0);
+          params.set("since", midnight.toISOString());
+        }
+        let data = null;
+        let error = "";
+        try {
+          data = await api("GET", "/workspaces/usage?" + params);
+        } catch (err) {
+          if (err instanceof AuthError) {
+            view.loading = false;
+            return;
+          }
+          error = err.message;
+        }
+        if (seq !== view.seq) return;
+        view.loading = false;
+        view.error = error;
+        if (data) view.data = data;
+        fillWorkspace(view);
+      }
+
+      function setRange(view, range) {
+        if (view.range === range && !view.error) return;
+        view.range = range;
+        readWorkspaceUsage(view);
+      }
+
+      function setMetric(view, metric) {
+        view.metric = metric;
+        fillWorkspace(view);
+      }
+
+      function segmented(options, current, label, onpick) {
+        return h(
+          "div",
+          { class: "segmented", role: "group", "aria-label": label },
+          ...options.map(([value, text]) =>
+            h(
+              "button",
+              {
+                type: "button",
+                "aria-pressed": String(value === current),
+                onclick: () => onpick(value),
+              },
+              text,
+            ),
+          ),
+        );
+      }
+
+      function fillWorkspace(view) {
+        if (!view.el) return;
+        if (view.chartHost) chartResize.unobserve(view.chartHost);
+        view.chartHost = null;
+        const ws = view.workspace;
+        const meta = [];
+        if (ws.name) meta.push(h("code", { title: "Workspace" }, ws.id), " · ");
+        meta.push("read with " + ws.credential);
+        const children = [
+          h(
+            "div",
+            { class: "section-head" },
+            h("h3", {}, ws.name || h("code", {}, ws.id)),
+            h("span", { class: "section-meta" }, ...meta),
+            h(
+              "div",
+              { class: "section-actions" },
+              segmented(RANGES, view.range, "Range", (range) =>
+                setRange(view, range),
+              ),
+            ),
+          ),
+        ];
+        if (view.error) children.push(h("p", { class: "error" }, view.error));
+        else if (view.data) children.push(workspaceBody(view));
+        else children.push(h("p", { class: "hint" }, "Loading…"));
+        view.el.replaceChildren(...children);
+      }
+
+      function workspaceBody(view) {
+        const data = view.data;
+        return h(
+          "div",
+          {
+            class: "workspace-body" + (view.loading ? " is-loading" : ""),
+            "aria-busy": view.loading ? "true" : null,
+          },
+          summaryTiles(data.summary),
+          chartCard(view),
+          modelPart(data.models),
+          webSearchPart(data.summary),
+          requestLogPart(data.request_log),
+        );
+      }
+
+      function tile(label, value, title) {
+        return h(
+          "div",
+          { class: "card tile", title },
+          h("span", { class: "tile-label" }, label),
+          h("span", { class: "tile-value" }, value),
+        );
+      }
+
+      const plural = (count, one, many) =>
+        count.toLocaleString("en-US") + " " + (count === 1 ? one : many);
+
+      function summaryTiles(summary) {
+        if (summary.error)
+          return h(
+            "p",
+            { class: "error" },
+            "Totals unavailable: " + summary.error,
+          );
+        const parts = [
+          [summary.input_tokens, "input"],
+          [summary.output_tokens, "output"],
+          [summary.cache_read_tokens, "cache read"],
+          [summary.cache_write_tokens, "cache write"],
+        ];
+        return h(
+          "div",
+          { class: "tiles" },
+          tile("Cost", usd(summary.cost)),
+          tile("Requests", summary.requests.toLocaleString("en-US")),
+          tile(
+            "Tokens",
+            compact(summary.tokens),
+            parts
+              .map(
+                ([count, name]) => count.toLocaleString("en-US") + " " + name,
+              )
+              .join(" · "),
+          ),
+        );
+      }
+
+      function chartCard(view) {
+        const chart = view.data.chart;
+        const title =
+          (chart.bucket === "hour" ? "Hourly " : "Daily ") +
+          (view.metric === "cost" ? "cost" : "tokens");
+        const card = h(
+          "div",
+          { class: "card chart-card" },
+          h(
+            "div",
+            { class: "chart-head" },
+            h("h4", {}, title),
+            segmented(METRICS, view.metric, "Chart value", (metric) =>
+              setMetric(view, metric),
+            ),
+          ),
+        );
+        if (chart.error) {
+          card.append(
+            h("p", { class: "error" }, "Chart unavailable: " + chart.error),
+          );
+          return card;
+        }
+        const host = h("div", {
+          class: "chart",
+          role: "group",
+          "aria-label": title,
+        });
+        card.append(host);
+        chartDraws.set(host, () => drawChart(host, chart, view.metric));
+        chartResize.observe(host);
+        view.chartHost = host;
+        return card;
+      }
+
+      // bucketName names a chart bucket: an hour by the viewer's clock, or a
+      // UTC day, briefly for the axis and in full for the tooltip.
+      function bucketName(date, hourly, brief) {
+        if (hourly) {
+          const start = new Date(date);
+          const end = new Date(start.getTime() + 3600000);
+          const clock = (at) => at.getHours() + ":" + pad(at.getMinutes());
+          return brief ? clock(start) : clock(start) + "–" + clock(end);
+        }
+        const [, month, dayOfMonth] = date.split("-");
+        return brief
+          ? Number(month) + "/" + Number(dayOfMonth)
+          : date + " (UTC)";
+      }
+
+      function svg(tag, attrs, text) {
+        const el = document.createElementNS(SVG_NS, tag);
+        for (const [name, value] of Object.entries(attrs))
+          el.setAttribute(name, String(value));
+        if (text !== undefined) el.textContent = text;
+        return el;
+      }
+
+      // drawChart draws one bar per bucket at the host's width: thin bars
+      // with rounded tops, hairline ticks at zero, half and the axis top, the
+      // peak labelled, and every value in a tooltip and a hidden table.
+      function drawChart(host, chart, metric) {
+        const buckets = chart.buckets;
+        const hourly = chart.bucket === "hour";
+        const value = (bucket) =>
+          metric === "cost" ? bucket.cost : bucket.tokens;
+        const format = metric === "cost" ? usd : compact;
+        let peakAt = 0;
+        buckets.forEach((bucket, i) => {
+          if (value(bucket) > value(buckets[peakAt])) peakAt = i;
+        });
+        const peak = buckets.length > 0 ? value(buckets[peakAt]) : 0;
+        host.onkeydown = null;
+        host.onfocus = null;
+        host.onblur = null;
+        if (!(peak > 0)) {
+          host.removeAttribute("tabindex");
+          host.replaceChildren(
+            h(
+              "p",
+              { class: "hint chart-empty" },
+              metric === "cost"
+                ? "No cost in this range."
+                : "No tokens in this range.",
+            ),
+          );
+          return;
+        }
+        const width = Math.max(host.clientWidth, 240);
+        const height = 180;
+        const top = axisMax(peak);
+        const ticks = [0, top / 2, top].map((tick) => [tick, format(tick)]);
+        // The gutter fits the longest tick label at 11px, about 6.5px a
+        // character.
+        const longest = Math.max(...ticks.map(([, label]) => label.length));
+        const gutter = {
+          top: 18,
+          bottom: 22,
+          left: Math.max(40, longest * 6.5 + 12),
+        };
+        const plotWidth = width - gutter.left;
+        const plotHeight = height - gutter.top - gutter.bottom;
+        const base = gutter.top + plotHeight;
+        const band = plotWidth / buckets.length;
+        const barWidth = Math.max(1, Math.min(24, band - 2));
+        const y = (amount) => gutter.top + plotHeight * (1 - amount / top);
+        const centre = (i) => gutter.left + band * (i + 0.5);
+        const root = svg("svg", {
+          width,
+          height,
+          viewBox: "0 0 " + width + " " + height,
+          "aria-hidden": "true",
+        });
+        for (const [tick, label] of ticks) {
+          const at = Math.round(y(tick)) + 0.5;
+          root.append(
+            svg("line", {
+              class: "grid",
+              x1: gutter.left,
+              x2: width,
+              y1: at,
+              y2: at,
+            }),
+            svg(
+              "text",
+              { x: gutter.left - 8, y: y(tick) + 4, "text-anchor": "end" },
+              label,
+            ),
+          );
+        }
+        const bars = buckets.map((bucket, i) => {
+          const amount = value(bucket);
+          if (!(amount > 0)) return null;
+          const tall = Math.max(1, (plotHeight * amount) / top);
+          const left = centre(i) - barWidth / 2;
+          const right = left + barWidth;
+          const crest = base - tall;
+          const r = Math.min(4, barWidth / 2, tall);
+          const bar = svg("path", {
+            class: "bar",
+            d:
+              `M${left},${base}V${crest + r}Q${left},${crest} ${left + r},${crest}` +
+              `H${right - r}Q${right},${crest} ${right},${crest + r}V${base}Z`,
+          });
+          root.append(bar);
+          return bar;
+        });
+        const every = labelEvery(
+          buckets.length,
+          Math.floor(plotWidth / 48),
+          hourly,
+        );
+        buckets.forEach((bucket, i) => {
+          // Hours are labelled on the clock, days counting back from today.
+          const labelled = hourly
+            ? new Date(bucket.date).getHours() % every === 0
+            : (buckets.length - 1 - i) % every === 0;
+          if (labelled)
+            root.append(
+              svg(
+                "text",
+                { x: centre(i), y: height - 6, "text-anchor": "middle" },
+                bucketName(bucket.date, hourly, true),
+              ),
+            );
+        });
+        const peakX = centre(peakAt);
+        const anchor =
+          peakX < gutter.left + 40
+            ? "start"
+            : peakX > width - 40
+              ? "end"
+              : "middle";
+        root.append(
+          svg(
+            "text",
+            {
+              class: "peak",
+              x:
+                anchor === "start"
+                  ? peakX - barWidth / 2
+                  : anchor === "end"
+                    ? peakX + barWidth / 2
+                    : peakX,
+              y: y(peak) - 6,
+              "text-anchor": anchor,
+            },
+            format(peak),
+          ),
+        );
+        const hit = svg("rect", {
+          x: gutter.left,
+          y: 0,
+          width: plotWidth,
+          height: base,
+          fill: "transparent",
+        });
+        root.append(hit);
+
+        const tip = h("div", { class: "chart-tip", hidden: true });
+        let active = -1;
+        const show = (i) => {
+          if (active >= 0 && bars[active])
+            bars[active].classList.remove("is-active");
+          active = i;
+          if (i < 0) {
+            tip.hidden = true;
+            return;
+          }
+          if (bars[i]) bars[i].classList.add("is-active");
+          const bucket = buckets[i];
+          tip.replaceChildren(
+            h("strong", {}, format(value(bucket))),
+            [
+              bucketName(bucket.date, hourly, false),
+              plural(bucket.requests, "request", "requests"),
+              metric === "cost"
+                ? compact(bucket.tokens) + " tokens"
+                : usd(bucket.cost),
+            ].join(" · "),
+          );
+          tip.hidden = false;
+          const left = centre(i) - tip.offsetWidth / 2;
+          tip.style.left =
+            Math.max(0, Math.min(left, width - tip.offsetWidth)) + "px";
+          tip.style.top =
+            Math.max(0, y(value(bucket)) - tip.offsetHeight - 8) + "px";
+        };
+        hit.addEventListener("pointermove", (event) => {
+          const from =
+            event.clientX - root.getBoundingClientRect().left - gutter.left;
+          show(
+            Math.max(0, Math.min(buckets.length - 1, Math.floor(from / band))),
+          );
+        });
+        hit.addEventListener("pointerleave", () => show(-1));
+        host.tabIndex = 0;
+        host.onfocus = () => show(buckets.length - 1);
+        host.onblur = () => show(-1);
+        host.onkeydown = (event) => {
+          const move = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+          if (!move) return;
+          event.preventDefault();
+          show(Math.max(0, Math.min(buckets.length - 1, active + move)));
+        };
+
+        const table = h(
+          "table",
+          { class: "sr-only" },
+          h(
+            "thead",
+            {},
+            h(
+              "tr",
+              {},
+              ...[hourly ? "Hour" : "Day", "Cost", "Tokens", "Requests"].map(
+                (name) => h("th", {}, name),
+              ),
+            ),
+          ),
+          h(
+            "tbody",
+            {},
+            ...buckets.map((bucket) =>
+              h(
+                "tr",
+                {},
+                h("td", {}, bucketName(bucket.date, hourly, false)),
+                h("td", {}, usd(bucket.cost)),
+                h("td", {}, bucket.tokens.toLocaleString("en-US")),
+                h("td", {}, bucket.requests.toLocaleString("en-US")),
+              ),
+            ),
+          ),
+        );
+        host.replaceChildren(root, tip, table);
+      }
+
+      function familyBadge(family) {
+        const known = FAMILY_BADGES[family];
+        if (known) return badge(known[0], "", known[1]);
+        return family ? badge(family) : null;
+      }
+
+      // countCell shows a count compactly, with the exact number on hover.
+      function countCell(count) {
+        return h(
+          "td",
+          {
+            class: "num",
+            title: count >= 1e4 ? count.toLocaleString("en-US") : null,
+          },
+          compact(count),
+        );
+      }
+
+      function modelPart(list) {
+        const part = h("div", { class: "usage-part" }, h("h4", {}, "By model"));
+        if (list.error) {
+          part.append(
+            h("p", { class: "error" }, "Models unavailable: " + list.error),
+          );
+          return part;
+        }
+        if (list.rows.length === 0) {
+          part.append(
+            h("p", { class: "hint" }, "No model was used in this range."),
+          );
+          return part;
+        }
+        const columns = [
+          "Requests",
+          "Input",
+          "Cache read",
+          "Cache write",
+          "Output",
+          "Cost",
+        ];
+        part.append(
+          h(
+            "div",
+            { class: "card table-card" },
+            h(
+              "table",
+              {},
+              h(
+                "thead",
+                {},
+                h(
+                  "tr",
+                  {},
+                  h("th", {}, "Model"),
+                  ...columns.map((name) => h("th", { class: "num" }, name)),
+                ),
+              ),
+              h(
+                "tbody",
+                {},
+                ...list.rows.map((row) =>
+                  h(
+                    "tr",
+                    {},
+                    h(
+                      "td",
+                      {},
+                      h(
+                        "div",
+                        { class: "model-head" },
+                        row.model,
+                        familyBadge(row.family),
+                      ),
+                    ),
+                    h(
+                      "td",
+                      { class: "num" },
+                      row.requests.toLocaleString("en-US"),
+                    ),
+                    countCell(row.input_tokens),
+                    countCell(row.cache_read_tokens),
+                    countCell(row.cache_write_tokens),
+                    countCell(row.output_tokens),
+                    h("td", { class: "num" }, usd(row.cost)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        if (list.truncated)
+          part.append(
+            h(
+              "p",
+              { class: "hint" },
+              "Only the " + list.rows.length + " costliest models are listed.",
+            ),
+          );
+        return part;
+      }
+
+      function webSearchPart(summary) {
+        if (summary.error) return null;
+        return h(
+          "div",
+          { class: "usage-line" },
+          h("h4", {}, "Web search"),
+          h(
+            "span",
+            { class: "section-meta" },
+            summary.web_searches > 0
+              ? plural(summary.web_searches, "search", "searches") +
+                  " · " +
+                  usd(summary.web_search_cost) +
+                  ", in the totals above"
+              : "None in this range",
+          ),
+        );
+      }
+
+      function requestRow(entry) {
+        const started = new Date(entry.started_at);
+        const [outcome, tone] = OUTCOMES[entry.outcome] || [entry.outcome, ""];
+        return h(
+          "tr",
+          {},
+          h(
+            "td",
+            { class: "time", title: started.toLocaleString() },
+            stamp(started) + ":" + pad(started.getSeconds()),
+          ),
+          h(
+            "td",
+            {},
+            badge(entry.status ? String(entry.status) : outcome, tone, outcome),
+          ),
+          h(
+            "td",
+            {},
+            h(
+              "div",
+              { class: "model-head" },
+              entry.model,
+              familyBadge(entry.family),
+            ),
+          ),
+          h("td", { class: "num" }, duration(entry.duration_ms)),
+          h(
+            "td",
+            {
+              class: "num",
+              title:
+                entry.input_tokens.toLocaleString("en-US") +
+                " in · " +
+                entry.output_tokens.toLocaleString("en-US") +
+                " out",
+            },
+            compact(entry.input_tokens + entry.output_tokens),
+          ),
+          h(
+            "td",
+            { class: "num" },
+            entry.cost === undefined ? "" : usd(entry.cost),
+          ),
+        );
+      }
+
+      function requestLogPart(log) {
+        const listed = !log.needs_login && !log.error && log.entries.length > 0;
+        const part = h(
+          "div",
+          { class: "usage-part" },
+          h(
+            "div",
+            { class: "usage-line" },
+            h("h4", {}, "Latest requests"),
+            listed
+              ? h(
+                  "span",
+                  { class: "section-meta" },
+                  "newest first, regardless of range",
+                )
+              : null,
+          ),
+        );
+        if (log.needs_login) {
+          part.append(
+            h(
+              "p",
+              { class: "hint" },
+              "The request log needs an OpenCode login: log in from OAuth Login → OpenCode Go.",
+            ),
+          );
+        } else if (log.error) {
+          part.append(
+            h("p", { class: "error" }, "Request log unavailable: " + log.error),
+          );
+        } else if (log.entries.length === 0) {
+          part.append(h("p", { class: "hint" }, "No requests yet."));
+        } else {
+          const columns = [
+            ["Time", ""],
+            ["Status", ""],
+            ["Model", ""],
+            ["Duration", "num"],
+            ["Tokens", "num"],
+            ["Cost", "num"],
+          ];
+          part.append(
+            h(
+              "div",
+              { class: "card table-card" },
+              h(
+                "table",
+                {},
+                h(
+                  "thead",
+                  {},
+                  h(
+                    "tr",
+                    {},
+                    ...columns.map(([name, cls]) =>
+                      h("th", { class: cls || null }, name),
+                    ),
+                  ),
+                ),
+                h("tbody", {}, ...log.entries.map(requestRow)),
+              ),
+            ),
+          );
+        }
+        return part;
+      }
 
       $("reload").addEventListener("click", refresh);
 

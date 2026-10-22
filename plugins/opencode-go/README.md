@@ -34,7 +34,8 @@ alongside logins: add them on Management Center → OpenCode Go, which checks
 each key and stores it in `opencode-go.json`. CLIProxyAPI rotates between all
 logins and keys. The same page shows each login's account and token expiry
 and disables logins, and renames, disables, tests and removes keys. Delete a
-login on the Auth Files page.
+login on the Auth Files page. Further down, it shows each workspace's
+[usage](#usage).
 
 <details>
 <summary>Adding a key as an auth file instead</summary>
@@ -92,6 +93,15 @@ key or a token. Failures answer `{"error": "<message>"}`.
 - `GET /free`: OpenCode Free's auth file, enabled state and free models.
 - `PUT /free` with `{"enabled": true}`: turns OpenCode Free on, creating its
   file, or off.
+- `GET /workspaces`: every workspace the logins and keys reach, once each,
+  with the login or key its usage is read with, and the keys whose workspace
+  could not be learned.
+- `GET /workspaces/usage?id=wrk_…&range=today`: the workspace's totals and
+  web search, its cost and tokens per hour or UTC day with empty ones
+  included, its models by cost, and its latest 40 requests. `range` is
+  `today`, `7d`, `30d` or `all`, and `since` gives the start of today as an
+  ISO time. Each part carries its own `error`; a request log read with a key
+  answers `needs_login`.
 
 The page's model toggles are plugin settings, which it edits through
 `/v8/management/config/plugins/configs/opencode-go`. It also removes each
@@ -276,6 +286,27 @@ configuration form in Management Center:
   [Free models](#free-models).
 - `user_agent`: sent upstream when the client sends none. Default
   `whexy-cpa-opencode-go/<version>`.
+
+## Usage
+
+The OpenCode Go page shows what each workspace a login or key reaches has
+used, as the Console's workspace usage page does, for today, the last 7 or 30
+days or all time:
+
+- cost, requests and tokens;
+- cost or tokens per hour for today, from your browser's midnight, and per
+  UTC day for the longer ranges;
+- each model's requests, input, cache and output tokens and cost, marked Go
+  for the subscription or Zen for pay-as-you-go;
+- web searches and their cost;
+- the workspace's latest 40 requests, whatever the range.
+
+A workspace that several logins and keys reach is shown once, read with a
+login when there is one, because only a login can read the request log; a
+workspace read with a key shows everything else. The plugin keeps OpenCode's
+answers for 30 seconds, and the request log for 10, as the Console does.
+OpenCode labels these Console endpoints internal, so a Console change can
+break this part of the page alone.
 
 ## Quota
 
