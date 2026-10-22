@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.8.0...opencode-go-v0.9.0) (2026-10-22)
+
+
+### Features
+
+* **opencode-go:** split the page into tabs
+
 ## [0.8.0](https://github.com/whexy/whexy-cpa-store/compare/opencode-go-v0.7.1...opencode-go-v0.8.0) (2026-10-22)
 
 
