@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.2.0...model-groups-v0.2.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **model-groups:** list the group IDs in /v1/models again
+
 ## [0.2.0](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.1.5...model-groups-v0.2.0) (2026-10-19)
 
 
