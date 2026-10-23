@@ -97,11 +97,17 @@ type registration struct {
 }
 
 type registrationCapability struct {
-	ModelRegistrar         bool `json:"model_registrar"`
-	ModelRouter            bool `json:"model_router"`
-	RequestInterceptor     bool `json:"request_interceptor"`
-	RequestLifecyclePlugin bool `json:"request_lifecycle_plugin"`
-	ManagementAPI          bool `json:"management_api"`
+	ModelRegistrar         bool                         `json:"model_registrar"`
+	ModelRouter            bool                         `json:"model_router"`
+	Executor               bool                         `json:"executor"`
+	ExecutorModelScope     pluginapi.ExecutorModelScope `json:"executor_model_scope"`
+	RequestInterceptor     bool                         `json:"request_interceptor"`
+	RequestLifecyclePlugin bool                         `json:"request_lifecycle_plugin"`
+	ManagementAPI          bool                         `json:"management_api"`
+}
+
+type identifierResponse struct {
+	Identifier string `json:"identifier"`
 }
 
 func pluginRegistration() registration {
@@ -125,8 +131,15 @@ func pluginRegistration() registration {
 			},
 		},
 		Capabilities: registrationCapability{
-			ModelRegistrar:         true,
-			ModelRouter:            true,
+			ModelRegistrar: true,
+			ModelRouter:    true,
+			// CPA lists the model IDs of a plugin without an executor only
+			// through credentials of its provider, and providerKey has none.
+			// The executor is never asked to serve: the router answers every
+			// group ID first, and a request that falls through finds no
+			// credential.
+			Executor:               true,
+			ExecutorModelScope:     pluginapi.ExecutorModelScopeStatic,
 			RequestInterceptor:     true,
 			RequestLifecyclePlugin: true,
 			ManagementAPI:          true,
@@ -215,6 +228,9 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 
 	case pluginabi.MethodModelRegister:
 		return okEnvelope(registerModels())
+
+	case pluginabi.MethodExecutorIdentifier:
+		return okEnvelope(identifierResponse{Identifier: providerKey})
 
 	case pluginabi.MethodModelRoute:
 		return routeModel(request)
