@@ -215,7 +215,7 @@
         height: 17px;
       }
 
-      .busy .icon-button svg {
+      .busy #refresh svg {
         animation: spin 0.9s linear infinite;
       }
 
@@ -795,6 +795,277 @@
         margin-left: auto;
       }
 
+      .quota-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 14px;
+      }
+
+      .quota-range {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .quota-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .quota-control select {
+        padding: 5px 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-input);
+        color: var(--text-primary);
+        font: inherit;
+      }
+
+      .quota-control select:hover {
+        border-color: var(--border-hover);
+      }
+
+      #quota-range {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .quota-range .text-button {
+        align-self: center;
+        color: var(--text-primary);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .quota-error {
+        margin: 16px 0 0;
+        color: var(--error-text);
+      }
+
+      .quota-panel {
+        margin-top: 20px;
+        padding-top: 22px;
+        border-top: 1px solid var(--border);
+      }
+
+      .quota-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px 32px;
+      }
+
+      .quota-title {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 10px;
+      }
+
+      .quota-title h3 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .quota-title .dot {
+        align-self: center;
+      }
+
+      .quota-title span:last-child,
+      .quota-hero span,
+      .quota-panel > p {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .quota-hero {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-top: 6px;
+      }
+
+      .quota-hero strong {
+        font-size: 40px;
+        font-weight: 650;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .quota-panel > p {
+        margin: 8px 0 0;
+      }
+
+      .quota-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 28px;
+        margin: 0;
+      }
+
+      .quota-stats dt {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .quota-stats div[title] dt {
+        text-decoration: underline dotted;
+        text-underline-offset: 3px;
+        cursor: help;
+      }
+
+      .quota-stats dd {
+        max-width: 240px;
+        margin: 3px 0 0;
+        overflow: hidden;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .quota-chart {
+        position: relative;
+        margin-top: 10px;
+        border-radius: 6px;
+      }
+
+      .quota-chart:focus-visible {
+        outline: 2px solid var(--s1);
+        outline-offset: 2px;
+      }
+
+      .quota-chart svg {
+        display: block;
+        width: 100%;
+        height: 300px;
+        overflow: visible;
+      }
+
+      .quota-chart text {
+        fill: var(--text-tertiary);
+        font-family: var(--font-sans);
+        font-size: 11px;
+      }
+
+      .quota-chart .grid line {
+        stroke: var(--grid);
+        stroke-width: 1;
+      }
+
+      .quota-chart stop {
+        stop-color: var(--c);
+      }
+
+      .quota-chart .fill-top {
+        stop-opacity: 0.22;
+      }
+
+      .quota-chart .fill-bottom {
+        stop-opacity: 0.02;
+      }
+
+      .quota-chart .line {
+        fill: none;
+        stroke: var(--c);
+        stroke-width: 2;
+        stroke-linejoin: round;
+      }
+
+      .quota-chart .accounts-line {
+        fill: none;
+        stroke: var(--c);
+        stroke-opacity: 0.5;
+        stroke-width: 1;
+      }
+
+      .quota-chart .dashed {
+        stroke-dasharray: 6 5;
+      }
+
+      .quota-chart .mark text,
+      .quota-chart text.mark {
+        fill: var(--text-secondary);
+      }
+
+      .quota-chart .now-line,
+      .quota-chart .cursor line {
+        stroke: var(--text-tertiary);
+        stroke-width: 1;
+      }
+
+      .quota-chart .now-dot,
+      .quota-chart .cursor circle {
+        fill: var(--c);
+        stroke: var(--bg-page);
+        stroke-width: 2;
+      }
+
+      .quota-chart .empty-dot {
+        fill: var(--bg-page);
+        stroke: var(--text-primary);
+        stroke-width: 2;
+      }
+
+      .quota-chart text.empty-label {
+        fill: var(--text-primary);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .quota-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 22px;
+        margin-top: 6px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .quota-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .quota-legend b {
+        margin-right: 8px;
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .line-key {
+        display: inline-block;
+        width: 14px;
+        border-top: 2px solid var(--c);
+      }
+
+      .line-key.dashed {
+        border-top-style: dashed;
+      }
+
+      .line-key.thin {
+        border-top-width: 1px;
+        opacity: 0.6;
+      }
+
+      .tooltip-row .line-key {
+        width: 12px;
+      }
+
+      .tooltip-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
       @media (max-width: 820px) {
         .overview {
           grid-template-columns: 1fr;
@@ -916,6 +1187,83 @@
             <tbody id="breakdown"></tbody>
           </table>
         </section>
+
+        <section class="quota" id="quota" hidden>
+          <h2>Quota</h2>
+          <div class="quota-bar">
+            <div
+              class="seg"
+              id="quota-mode"
+              role="group"
+              aria-label="Chart"
+            ></div>
+            <span class="quota-control">
+              <span id="quota-burn-label">Burn rate</span>
+              <span
+                class="seg"
+                id="quota-lookback"
+                role="group"
+                aria-labelledby="quota-burn-label"
+              ></span>
+            </span>
+            <label class="quota-control">
+              Future usage
+              <select id="quota-future"></select>
+            </label>
+            <span class="seg">
+              <button type="button" id="quota-accounts" aria-pressed="false">
+                Accounts
+              </button>
+            </span>
+            <span class="spacer"></span>
+            <span class="quota-range">
+              <span id="quota-range"></span>
+              <button
+                class="icon-button"
+                id="quota-previous"
+                type="button"
+                aria-label="Previous week"
+                title="Previous week"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+              </button>
+              <button class="text-button" id="quota-today" type="button">
+                Today
+              </button>
+              <button
+                class="icon-button"
+                id="quota-next"
+                type="button"
+                aria-label="Next week"
+                title="Next week"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+            </span>
+          </div>
+          <p class="quota-error" id="quota-error" role="alert" hidden></p>
+          <div id="quota-panels"></div>
+        </section>
       </div>
     </main>
 
@@ -962,6 +1310,956 @@
         </footer>
       </form>
     </dialog>
+    <script>
+      "use strict";
+
+      // The Quota section's model: no DOM, so testdata/page_test.mjs runs it
+      // under node. The page script below draws it.
+
+      const MINUTE = 60 * 1000;
+      const HOUR = 60 * MINUTE;
+      const DAY = 24 * HOUR;
+      // Spacing of the recorded grid and of projected points between events.
+      const QUOTA_STEP = 10 * MINUTE;
+      const QUOTA_SPAN_DAYS = 14;
+      const QUOTA_PAST_DAYS = 3;
+      // Stats look this far ahead whatever range the chart shows.
+      const QUOTA_HORIZON = 14 * DAY;
+      const QUOTA_LOOKBACKS = [1, 3, 6, 24];
+      // An account read for less of the lookback than this has no rate yet.
+      const MIN_RATE_COVERAGE = 15 * MINUTE;
+      // A window open for less than this has too little use behind it for an
+      // average.
+      const MIN_WINDOW_AVERAGE = HOUR;
+      // A rise this large with no reset passed still restored quota.
+      const RISE_THRESHOLD = 0.5;
+      // Rises below a point are rounding, not a reset.
+      const MIN_JUMP = 1;
+      const EPSILON = 1e-6;
+      const CHART_HEIGHT = 300;
+      const CHART_MARGIN = { top: 30, right: 14, bottom: 30, left: 56 };
+      // Day labels closer than this run into each other.
+      const MIN_DAY_LABEL_WIDTH = 60;
+      const JUMP_LABEL_CHAR_WIDTH = 6.4;
+      const JUMP_LABEL_HEIGHT = 14;
+      const JUMP_LABEL_GAP = 4;
+
+      // The chart's range: a fortnight from three days before today, moved by
+      // whole weeks.
+      function quotaSpan(offsetWeeks, now) {
+        const start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() - QUOTA_PAST_DAYS + offsetWeeks * 7);
+        const end = new Date(start);
+        end.setDate(end.getDate() + QUOTA_SPAN_DAYS);
+        return { start: start.getTime(), end: end.getTime() };
+      }
+
+      // The window a provider's pool is drawn from: the longest one its
+      // accounts report, since a fortnight of 5-hour windows is a sawtooth.
+      function pooledWindow(accounts) {
+        let pooled = null;
+        for (const account of accounts) {
+          const last = account.samples[account.samples.length - 1];
+          for (const window of last ? last.windows : []) {
+            if (!pooled || window.period_minutes > pooled.minutes)
+              pooled = { id: window.id, minutes: window.period_minutes };
+          }
+        }
+        return pooled;
+      }
+
+      // Index of the last item at or before `t`; -1 when all are later.
+      function indexAtOrBefore(items, t, timeOf) {
+        let low = 0;
+        let high = items.length - 1;
+        let found = -1;
+        while (low <= high) {
+          const middle = (low + high) >> 1;
+          if (timeOf(items[middle]) <= t) {
+            found = middle;
+            low = middle + 1;
+          } else {
+            high = middle - 1;
+          }
+        }
+        return found;
+      }
+
+      const timeOfValue = (value) => value;
+      const timeOfPoint = (point) => point.at;
+
+      // One account's readings of one window, oldest first.
+      function quotaTrack(samples, windowId) {
+        const track = [];
+        for (const sample of samples) {
+          const window = sample.windows.find((item) => item.id === windowId);
+          if (!window) continue;
+          track.push({
+            at: sample.at,
+            remaining: window.remaining,
+            resetAt: window.reset_at || null,
+            period: window.period_minutes * MINUTE,
+          });
+        }
+        return track.sort((a, b) => a.at - b.at);
+      }
+
+      // The window's figure at `t`: the reading then standing, or 100 once
+      // its reset passed. The plugin keeps every change of a pooled window, so
+      // it held still between readings. Null before the first reading.
+      function trackValueAt(track, t) {
+        const index = indexAtOrBefore(track, t, timeOfPoint);
+        if (index === -1) return null;
+        const point = track[index];
+        return point.resetAt !== null && point.resetAt <= t
+          ? 100
+          : point.remaining;
+      }
+
+      // Points used in each `step` bucket from `from`, and how much of each
+      // bucket the readings cover: from the first reading to `now`. A drop
+      // between two readings is spread over the time between them; across a
+      // reset only the use after it is known.
+      function usageBuckets(track, from, step, count, now) {
+        const used = new Array(count).fill(0);
+        const covered = new Array(count).fill(0);
+        const spread = (target, start, end, amount) => {
+          if (end <= start) {
+            const bucket = Math.floor((end - from) / step);
+            if (bucket >= 0 && bucket < count) target[bucket] += amount;
+            return;
+          }
+          const first = Math.max(0, Math.floor((start - from) / step));
+          const last = Math.min(count - 1, Math.floor((end - from - 1) / step));
+          for (let bucket = first; bucket <= last; bucket++) {
+            const bucketStart = from + bucket * step;
+            const overlap =
+              Math.min(end, bucketStart + step) - Math.max(start, bucketStart);
+            if (overlap > 0)
+              target[bucket] += (amount * overlap) / (end - start);
+          }
+        };
+        if (track.length && now > track[0].at)
+          spread(covered, track[0].at, now, now - track[0].at);
+        for (let index = 0; index + 1 < track.length; index++) {
+          const before = track[index];
+          const after = track[index + 1];
+          const reset =
+            before.resetAt !== null &&
+            before.resetAt > before.at &&
+            before.resetAt <= after.at;
+          let start = before.at;
+          let drop = before.remaining - after.remaining;
+          if (reset || after.remaining > before.remaining + RISE_THRESHOLD) {
+            drop = 100 - after.remaining;
+            if (reset) start = before.resetAt;
+          }
+          if (drop > 0) spread(used, start, after.at, drop);
+        }
+        return { used, covered };
+      }
+
+      // Running totals of an account's buckets, as poolRate reads them.
+      function runningUsage({ used, covered }) {
+        const sum = (values) => {
+          const out = [0];
+          for (const value of values) out.push(out[out.length - 1] + value);
+          return out;
+        };
+        return { used: sum(used), covered: sum(covered) };
+      }
+
+      // Pool burn over buckets first..last: each account's own rate over the
+      // time its readings cover, summed. Null when no account was read long
+      // enough.
+      function poolRate(usages, first, last) {
+        let perHour = 0;
+        let coveredMs = 0;
+        let measured = false;
+        for (const usage of usages) {
+          const low = Math.max(0, first);
+          const high = Math.min(last + 1, usage.used.length - 1);
+          if (high <= low) continue;
+          const used = usage.used[high] - usage.used[low];
+          const covered = usage.covered[high] - usage.covered[low];
+          coveredMs = Math.max(coveredMs, covered);
+          if (covered < MIN_RATE_COVERAGE) continue;
+          measured = true;
+          perHour += used / (covered / HOUR);
+        }
+        return measured ? { perHour, coveredMs } : null;
+      }
+
+      // The first reset after `after`, moving a passed one on by whole
+      // periods.
+      function upcomingReset(resetAt, period, after) {
+        if (resetAt > after) return resetAt;
+        if (!period) return null;
+        return resetAt + Math.ceil((after - resetAt + 1) / period) * period;
+      }
+
+      // Where a pool goes from `from`. The burn is split evenly over the
+      // accounts with quota left, as CLIProxyAPI's default round-robin
+      // routing spreads requests; an account that runs dry hands its share to
+      // the rest, and a reset puts it back at 100%. `values[k][i]` is account
+      // i at `times[k]`; a reset repeats its instant, before and after.
+      function projectPool(accounts, burnPerHour, from, until, step) {
+        const remaining = accounts.map((account) =>
+          Math.min(100, Math.max(0, account.remaining)),
+        );
+        const nextReset = accounts.map((account, index) => {
+          if (account.resetAt === null) return null;
+          if (account.resetAt > from) return account.resetAt;
+          // The reading predates its reset, which has since restored it.
+          remaining[index] = 100;
+          return upcomingReset(account.resetAt, account.period, from);
+        });
+        const times = [];
+        const values = [];
+        const pool = [];
+        const resets = [];
+        const empties = [];
+        let poolEmptyAt = null;
+        const push = (at) => {
+          times.push(at);
+          values.push(remaining.slice());
+          pool.push(remaining.reduce((sum, value) => sum + value, 0));
+        };
+        const markPoolEmpty = (at) => {
+          if (poolEmptyAt === null && accounts.length) poolEmptyAt = at;
+        };
+        const ratePerMs = Math.max(0, burnPerHour) / HOUR;
+        const drain = (start, end) => {
+          let amount = ratePerMs * (end - start);
+          let cursor = start;
+          while (amount > EPSILON) {
+            const active = [];
+            remaining.forEach((value, index) => {
+              if (value > EPSILON) active.push(index);
+            });
+            if (!active.length) {
+              markPoolEmpty(cursor);
+              return;
+            }
+            // A window that has not started yet starts with its first use.
+            for (const index of active) {
+              const period = accounts[index].period;
+              if (
+                nextReset[index] === null &&
+                accounts[index].resetAt === null &&
+                period
+              )
+                nextReset[index] = cursor + period;
+            }
+            const share = amount / active.length;
+            const smallest = Math.min(
+              ...active.map((index) => remaining[index]),
+            );
+            const taken = Math.min(share, smallest);
+            cursor =
+              share <= smallest
+                ? end
+                : cursor + (smallest * active.length) / ratePerMs;
+            amount -= taken * active.length;
+            let emptied = false;
+            for (const index of active) {
+              remaining[index] -= taken;
+              if (remaining[index] <= EPSILON) {
+                remaining[index] = 0;
+                empties.push({ at: cursor, account: index });
+                emptied = true;
+              }
+            }
+            if (!emptied) return;
+            push(cursor);
+            if (remaining.every((value) => value <= EPSILON))
+              markPoolEmpty(cursor);
+          }
+        };
+
+        if (accounts.length && remaining.every((value) => value <= EPSILON))
+          markPoolEmpty(from);
+        push(from);
+        let cursor = from;
+        while (cursor < until) {
+          let due = Infinity;
+          for (const at of nextReset)
+            if (at !== null && at > cursor && at < due) due = at;
+          const next = Math.min(cursor + step, until, due);
+          drain(cursor, next);
+          cursor = next;
+          const resetting = [];
+          nextReset.forEach((at, index) => {
+            if (at !== null && at <= cursor) resetting.push(index);
+          });
+          if (resetting.length) {
+            push(cursor);
+            for (const index of resetting) {
+              resets.push({
+                at: cursor,
+                account: index,
+                gain: 100 - remaining[index],
+              });
+              remaining[index] = 100;
+              nextReset[index] = upcomingReset(
+                nextReset[index],
+                accounts[index].period,
+                cursor,
+              );
+            }
+          }
+          if (times[times.length - 1] !== cursor || resetting.length)
+            push(cursor);
+        }
+        return { times, values, pool, resets, empties, poolEmptyAt };
+      }
+
+      // Each account's projected figure at `t`, linear between points; null
+      // outside the run.
+      function projectionAt(projection, t) {
+        const { times, values } = projection;
+        const index = indexAtOrBefore(times, t, timeOfValue);
+        if (index === -1) return null;
+        if (index === times.length - 1)
+          return t === times[index] ? values[index] : null;
+        const span = times[index + 1] - times[index];
+        if (span <= 0) return values[index + 1];
+        const ratio = (t - times[index]) / span;
+        return values[index].map(
+          (value, account) =>
+            value + (values[index + 1][account] - value) * ratio,
+        );
+      }
+
+      function windowAverage(members, now) {
+        let perHour = 0;
+        let measured = false;
+        for (const member of members) {
+          if (member.resetAt === null || !member.period) continue;
+          const elapsed = now - (member.resetAt - member.period);
+          if (elapsed < MIN_WINDOW_AVERAGE) continue;
+          measured = true;
+          perHour += (100 - member.remaining) / (elapsed / HOUR);
+        }
+        return measured ? perHour : null;
+      }
+
+      // Events at one instant together, keeping those that restore a point.
+      function groupGains(events) {
+        const byTime = new Map();
+        for (const event of events)
+          byTime.set(event.at, (byTime.get(event.at) || 0) + event.gain);
+        return Array.from(byTime, ([at, gain]) => ({ at, gain })).filter(
+          (event) => event.gain >= MIN_JUMP,
+        );
+      }
+
+      // One provider's pool: what was recorded, how fast it burns and where
+      // it goes from `now`. `accounts` are the route's accounts of the
+      // provider; null when none has a reading.
+      function buildQuotaSection(accounts, options) {
+        const { now, start, end, lookbackHours, usageFactor } = options;
+        const pooled = pooledWindow(accounts);
+        if (!pooled) return null;
+        const members = [];
+        const unseen = [];
+        for (const account of accounts) {
+          const track = quotaTrack(account.samples, pooled.id);
+          if (!track.length) {
+            unseen.push(account.label);
+            continue;
+          }
+          const last = track[track.length - 1];
+          const remaining = trackValueAt(track, now);
+          members.push({
+            name: account.label,
+            track,
+            remaining: remaining === null ? last.remaining : remaining,
+            resetAt:
+              last.resetAt === null
+                ? null
+                : upcomingReset(last.resetAt, last.period, now),
+            period: last.period,
+          });
+        }
+        if (!members.length) return null;
+        const capacity = members.length * 100;
+        const poolNow = members.reduce(
+          (sum, member) => sum + member.remaining,
+          0,
+        );
+
+        // Recorded: the grid through the span up to now, then now itself.
+        const recordedEnd = Math.min(now, end);
+        const times = [];
+        for (let at = start; at <= recordedEnd; at += QUOTA_STEP)
+          if (at !== now) times.push(at);
+        const recordedAccounts = times.map((at) =>
+          members.map((member) => trackValueAt(member.track, at)),
+        );
+        if (now >= start && now <= end) {
+          times.push(now);
+          recordedAccounts.push(members.map((member) => member.remaining));
+        }
+        const recordedPool = recordedAccounts.map((values) =>
+          values.some((value) => value !== null)
+            ? values.reduce((sum, value) => sum + (value || 0), 0)
+            : null,
+        );
+        const recordedGains = [];
+        for (let k = 1; k < times.length; k++) {
+          let gain = 0;
+          recordedAccounts[k].forEach((value, index) => {
+            const before = recordedAccounts[k - 1][index];
+            if (value !== null && before !== null && value > before)
+              gain += value - before;
+          });
+          if (gain < MIN_JUMP) continue;
+          const previous = recordedGains[recordedGains.length - 1];
+          // A reset spread over neighbouring steps reads as one jump.
+          if (previous && times[k - 1] === previous.at) {
+            previous.at = times[k];
+            previous.gain += gain;
+            previous.top = recordedPool[k] ?? previous.top;
+          } else {
+            recordedGains.push({
+              at: times[k],
+              gain,
+              top: recordedPool[k] ?? 0,
+            });
+          }
+        }
+
+        // Burn over the lookback, else the average since each window opened.
+        const lookback = lookbackHours * HOUR;
+        const recent = poolRate(
+          members.map((member) =>
+            runningUsage(
+              usageBuckets(member.track, now - lookback, lookback, 1, now),
+            ),
+          ),
+          0,
+          0,
+        );
+        const average = recent ? null : windowAverage(members, now);
+        const burn = recent
+          ? {
+              perHour: recent.perHour,
+              source: "recorded",
+              coveredMs: recent.coveredMs,
+            }
+          : average !== null
+            ? { perHour: average, source: "window", coveredMs: 0 }
+            : null;
+
+        // Drain: the burn over the lookback ending at each step.
+        const lookbackSteps = Math.max(1, Math.round(lookback / QUOTA_STEP));
+        const drainSteps = Math.max(
+          0,
+          Math.ceil((recordedEnd - start) / QUOTA_STEP),
+        );
+        const drainUsages = members.map((member) =>
+          runningUsage(
+            usageBuckets(
+              member.track,
+              start - lookbackSteps * QUOTA_STEP,
+              QUOTA_STEP,
+              lookbackSteps + drainSteps,
+              now,
+            ),
+          ),
+        );
+        const drainTimes = [];
+        const drainValues = [];
+        for (let k = 0; k < drainSteps; k++) {
+          drainTimes.push(Math.min(recordedEnd, start + (k + 1) * QUOTA_STEP));
+          const rate = poolRate(drainUsages, k + 1, k + lookbackSteps);
+          drainValues.push(rate ? rate.perHour : null);
+        }
+
+        const projectedBurn = burn === null ? null : burn.perHour * usageFactor;
+        const horizonEnd = now + QUOTA_HORIZON;
+        const projection =
+          projectedBurn === null
+            ? null
+            : projectPool(
+                members,
+                projectedBurn,
+                now,
+                Math.max(end, horizonEnd),
+                QUOTA_STEP,
+              );
+        const projectedGains = projection
+          ? groupGains(projection.resets).map(({ at, gain }) => ({
+              at,
+              gain,
+              top: projection.pool[projection.times.lastIndexOf(at)] ?? 0,
+            }))
+          : [];
+        const jumps = [
+          ...recordedGains.map((jump) => ({ ...jump, projected: false })),
+          ...projectedGains.map((jump) => ({ ...jump, projected: true })),
+        ].filter((jump) => jump.at >= start && jump.at <= end);
+
+        const projectedEmptyAt = projection ? projection.poolEmptyAt : null;
+        const poolEmptyAt =
+          projectedEmptyAt !== null && projectedEmptyAt <= horizonEnd
+            ? projectedEmptyAt
+            : null;
+        const dryNow = members.findIndex((member) => member.remaining <= 0);
+        const firstDry =
+          dryNow !== -1
+            ? { at: now, account: dryNow }
+            : projection
+              ? projection.empties.find((event) => event.at <= horizonEnd) ||
+                null
+              : null;
+        const nextReset = projection
+          ? groupGains(projection.resets).find((reset) => reset.at > now) ||
+            null
+          : groupGains(
+              members
+                .filter(
+                  (member) => member.resetAt !== null && member.resetAt > now,
+                )
+                .map((member) => ({
+                  at: member.resetAt,
+                  gain: 100 - member.remaining,
+                })),
+            ).sort((a, b) => a.at - b.at)[0] || null;
+
+        return {
+          windowMinutes: pooled.minutes,
+          names: members.map((member) => member.name),
+          unseen,
+          capacity,
+          poolNow,
+          recorded: { times, accounts: recordedAccounts, pool: recordedPool },
+          drain: { times: drainTimes, values: drainValues },
+          burn,
+          projectedBurn,
+          projection,
+          jumps,
+          poolEmptyAt,
+          firstEmpty: firstDry
+            ? { at: firstDry.at, name: members[firstDry.account].name }
+            : null,
+          nextReset,
+        };
+      }
+
+      const round1 = (value) => Math.round(value * 10) / 10;
+
+      function linePath(segments) {
+        return segments
+          .filter((segment) => segment.length > 0)
+          .map((segment) =>
+            segment
+              .map(
+                ([x, y], index) =>
+                  (index ? "L" : "M") + round1(x) + " " + round1(y),
+              )
+              .join(""),
+          )
+          .join("");
+      }
+
+      function areaPath(segments, baseline) {
+        return segments
+          .filter((segment) => segment.length > 1)
+          .map((segment) => {
+            const first = segment[0];
+            const last = segment[segment.length - 1];
+            return (
+              linePath([segment]) +
+              "L" +
+              round1(last[0]) +
+              " " +
+              round1(baseline) +
+              "L" +
+              round1(first[0]) +
+              " " +
+              round1(baseline) +
+              "Z"
+            );
+          })
+          .join("");
+      }
+
+      // A series split at nulls into drawable runs.
+      function runs(times, values) {
+        const out = [];
+        let current = [];
+        times.forEach((at, index) => {
+          if (values[index] === null) {
+            if (current.length) out.push(current);
+            current = [];
+          } else {
+            current.push([at, values[index]]);
+          }
+        });
+        if (current.length) out.push(current);
+        return out;
+      }
+
+      // Indexes of `times` inside [from, to], with one neighbour either side
+      // so lines reach the edges.
+      function visibleRange(times, from, to) {
+        let first = times.findIndex((at) => at >= from);
+        if (first === -1) return null;
+        first = Math.max(0, first - 1);
+        let last = first;
+        while (last + 1 < times.length && times[last] <= to) last++;
+        return [first, last];
+      }
+
+      // The smallest of 1, 2, 2.5 or 5 times a power of ten at or above
+      // `value`.
+      function niceCeiling(value) {
+        if (!(value > 0)) return 1;
+        const magnitude = 10 ** Math.floor(Math.log10(value));
+        const fraction = value / magnitude;
+        const nice =
+          fraction <= 1
+            ? 1
+            : fraction <= 2
+              ? 2
+              : fraction <= 2.5
+                ? 2.5
+                : fraction <= 5
+                  ? 5
+                  : 10;
+        return nice * magnitude;
+      }
+
+      // The projected burn as steps: the burn while any account has quota.
+      function projectedDrain(section) {
+        const { projection, projectedBurn } = section;
+        const times = [];
+        const values = [];
+        if (!projection || projectedBurn === null) return { times, values };
+        projection.times.forEach((at, index) => {
+          const rate = projection.pool[index] > EPSILON ? projectedBurn : 0;
+          if (values.length && values[values.length - 1] !== rate) {
+            times.push(at);
+            values.push(values[values.length - 1]);
+          }
+          times.push(at);
+          values.push(rate);
+        });
+        return { times, values };
+      }
+
+      // Pixel geometry of one provider's chart.
+      function buildQuotaChart({
+        section,
+        mode,
+        start,
+        end,
+        now,
+        width,
+        showAccounts,
+      }) {
+        const plot = {
+          left: CHART_MARGIN.left,
+          right: Math.max(CHART_MARGIN.left + 1, width - CHART_MARGIN.right),
+          top: CHART_MARGIN.top,
+          bottom: CHART_HEIGHT - CHART_MARGIN.bottom,
+        };
+        const x = (at) =>
+          plot.left + ((at - start) / (end - start)) * (plot.right - plot.left);
+        const drainProjected = projectedDrain(section);
+        const recordedDrainMax = Math.max(
+          0,
+          ...section.drain.values.filter((value) => value !== null),
+        );
+        const yMax =
+          mode === "remaining"
+            ? section.capacity
+            : niceCeiling(
+                Math.max(recordedDrainMax, section.projectedBurn || 0) * 1.15,
+              );
+        const y = (value) =>
+          plot.bottom -
+          (Math.min(Math.max(value, 0), yMax) / yMax) *
+            (plot.bottom - plot.top);
+        const toPoints = (series) =>
+          series.map(([at, value]) => [x(at), y(value)]);
+
+        const recordedSegments = (
+          mode === "remaining"
+            ? runs(section.recorded.times, section.recorded.pool)
+            : runs(section.drain.times, section.drain.values)
+        ).map(toPoints);
+
+        const projection = section.projection;
+        let projectedSegments = [];
+        if (projection && now <= end) {
+          const source =
+            mode === "remaining"
+              ? { times: projection.times, values: projection.pool }
+              : drainProjected;
+          const range = visibleRange(source.times, start, end);
+          if (range) {
+            const series = [];
+            for (let index = range[0]; index <= range[1]; index++)
+              series.push([source.times[index], source.values[index]]);
+            projectedSegments = [toPoints(series)];
+          }
+        }
+
+        // Boundaries between stacked accounts.
+        const accountLines = [];
+        if (mode === "remaining" && showAccounts && section.names.length > 1) {
+          const projectedRange =
+            projection && now <= end
+              ? visibleRange(projection.times, start, end)
+              : null;
+          for (
+            let boundary = 0;
+            boundary < section.names.length - 1;
+            boundary++
+          ) {
+            const cumulative = (values) =>
+              values
+                .slice(0, boundary + 1)
+                .reduce((sum, value) => sum + (value || 0), 0);
+            const recorded = runs(
+              section.recorded.times,
+              section.recorded.accounts.map((values, index) =>
+                section.recorded.pool[index] === null
+                  ? null
+                  : cumulative(values),
+              ),
+            ).map(toPoints);
+            const projected = [];
+            if (projectedRange) {
+              for (
+                let index = projectedRange[0];
+                index <= projectedRange[1];
+                index++
+              )
+                projected.push([
+                  projection.times[index],
+                  cumulative(projection.values[index]),
+                ]);
+            }
+            accountLines.push({
+              recorded: linePath(recorded),
+              projected: linePath([toPoints(projected)]),
+            });
+          }
+        }
+
+        const yTicks = [0, yMax / 2, yMax].map((value) => ({
+          value,
+          y: y(value),
+        }));
+
+        const days = [];
+        const cursor = new Date(start);
+        while (cursor.getTime() < end) {
+          const at = cursor.getTime();
+          cursor.setDate(cursor.getDate() + 1);
+          const next = Math.min(cursor.getTime(), end);
+          days.push({
+            lineX: at === start ? null : x(at),
+            labelX: x((at + next) / 2),
+            at,
+            labelled: true,
+          });
+        }
+        const dayWidth = (plot.right - plot.left) / Math.max(1, days.length);
+        const every = Math.ceil(MIN_DAY_LABEL_WIDTH / Math.max(1, dayWidth));
+        days.forEach((day, index) => {
+          day.labelled = index % every === 0;
+        });
+
+        const nowValue =
+          mode === "remaining"
+            ? section.poolNow
+            : section.burn
+              ? section.burn.perHour
+              : null;
+        const nowMark =
+          now >= start && now <= end
+            ? { x: x(now), y: nowValue === null ? null : y(nowValue) }
+            : null;
+
+        const jumps = [];
+        if (mode === "remaining") {
+          const placed = [];
+          for (const jump of [...section.jumps].sort((a, b) => a.at - b.at)) {
+            const gain = Math.round(jump.gain);
+            const label = {
+              x: x(jump.at),
+              y: Math.max(12, y(jump.top) - 8),
+              width: (String(gain).length + 2) * JUMP_LABEL_CHAR_WIDTH,
+            };
+            if (label.x < plot.left || label.x > plot.right) continue;
+            const collides = placed.some(
+              (other) =>
+                Math.abs(other.x - label.x) <
+                  (other.width + label.width) / 2 + JUMP_LABEL_GAP &&
+                Math.abs(other.y - label.y) < JUMP_LABEL_HEIGHT,
+            );
+            if (collides) continue;
+            placed.push(label);
+            jumps.push({ x: label.x, y: label.y, gain });
+          }
+        }
+
+        const emptyAt = section.poolEmptyAt;
+        const empty =
+          mode === "remaining" &&
+          emptyAt !== null &&
+          emptyAt >= start &&
+          emptyAt <= end
+            ? { x: x(emptyAt), y: y(0), at: emptyAt }
+            : null;
+
+        return {
+          plot,
+          x,
+          y,
+          yMax,
+          yTicks,
+          days,
+          recordedLine: linePath(recordedSegments),
+          recordedArea: areaPath(recordedSegments, plot.bottom),
+          projectedLine: linePath(projectedSegments),
+          projectedArea: areaPath(projectedSegments, plot.bottom),
+          accountLines,
+          now: nowMark,
+          jumps,
+          empty,
+        };
+      }
+
+      // The instant under chart position `px`, snapped to the recorded grid,
+      // or to now when close.
+      function quotaInstantAt(px, plot, start, end, now) {
+        const ratio = Math.min(
+          1,
+          Math.max(0, (px - plot.left) / (plot.right - plot.left)),
+        );
+        const raw = start + ratio * (end - start);
+        if (Math.abs(raw - now) < QUOTA_STEP / 2) return now;
+        const snapped =
+          start + Math.round((raw - start) / QUOTA_STEP) * QUOTA_STEP;
+        return Math.min(end, Math.max(start, snapped));
+      }
+
+      // What the chart says at `t`: the recorded pool (or burn) up to now, the
+      // projection after, and each account's figure.
+      function quotaReadout(section, mode, t, now) {
+        const unknown = section.names.map(() => null);
+        if (t <= now) {
+          const index = indexAtOrBefore(section.recorded.times, t, timeOfValue);
+          const accounts =
+            index === -1 ? unknown : section.recorded.accounts[index];
+          if (mode === "drain") {
+            const drainIndex = indexAtOrBefore(
+              section.drain.times,
+              t,
+              timeOfValue,
+            );
+            const value =
+              t === now
+                ? section.burn
+                  ? section.burn.perHour
+                  : null
+                : drainIndex === -1
+                  ? null
+                  : section.drain.values[drainIndex];
+            return { kind: "recorded", value, accounts };
+          }
+          return {
+            kind: "recorded",
+            value: index === -1 ? null : section.recorded.pool[index],
+            accounts,
+          };
+        }
+        const values = section.projection
+          ? projectionAt(section.projection, t)
+          : null;
+        if (!values)
+          return { kind: "projected", value: null, accounts: unknown };
+        const pool = values.reduce((sum, value) => sum + value, 0);
+        const value =
+          mode === "remaining"
+            ? pool
+            : section.projectedBurn === null
+              ? null
+              : pool > EPSILON
+                ? section.projectedBurn
+                : 0;
+        return { kind: "projected", value, accounts: values };
+      }
+
+      const quotaWeekdayTime = new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const quotaDateTime = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const quotaPointTime = new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const quotaDate = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      const quotaWeekday = new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+      });
+
+      // "2d 18h", "15h 49m", "40m".
+      function formatQuotaDuration(ms) {
+        const minutes = Math.max(1, Math.round(ms / MINUTE));
+        const hours = Math.floor(minutes / 60);
+        if (hours >= 24)
+          return Math.floor(hours / 24) + "d " + (hours % 24) + "h";
+        if (hours >= 1) return hours + "h " + (minutes % 60) + "m";
+        return minutes + "m";
+      }
+
+      // "Sun 4:40 PM" within the coming week, "Nov 3, 4:40 PM" past it.
+      function formatQuotaInstant(ms, now) {
+        return (
+          Math.abs(ms - now) < 6 * DAY ? quotaWeekdayTime : quotaDateTime
+        ).format(ms);
+      }
+
+      // One decimal below ten points an hour, where it still changes the
+      // reading.
+      function formatQuotaRate(perHour) {
+        if (perHour === 0) return "0";
+        return perHour < 10 ? perHour.toFixed(1) : String(Math.round(perHour));
+      }
+
+      function quotaDayLabel(ms) {
+        return quotaWeekday.format(ms) + " " + new Date(ms).getDate();
+      }
+
+      // "7-day limit", "5-hour limit".
+      function quotaWindowLabel(minutes) {
+        if (minutes % (24 * 60) === 0)
+          return minutes / (24 * 60) + "-day limit";
+        if (minutes % 60 === 0) return minutes / 60 + "-hour limit";
+        return minutes + "-minute limit";
+      }
+    </script>
     <script>
       "use strict";
 
@@ -1283,7 +2581,16 @@
       // Preferences survive reloads; the range falls back to what retention
       // offers.
       const prefs = Object.assign(
-        { group: "family", metric: "tokens", range: "30d", breakdown: "model" },
+        {
+          group: "family",
+          metric: "tokens",
+          range: "30d",
+          breakdown: "model",
+          quotaMode: "remaining",
+          quotaLookback: 3,
+          quotaFuture: "same",
+          quotaAccounts: false,
+        },
         (() => {
           try {
             return JSON.parse(storageGet(localStorage, PREFS_KEY)) || {};
@@ -1427,6 +2734,7 @@
           $("content").hidden = false;
           renderControls();
           render();
+          loadQuota();
         } catch (err) {
           if (err instanceof AuthError) showAuth(err.message);
           else showNotice(err.message, true);
@@ -2209,7 +3517,622 @@
         }
       });
 
+      // Quota: each provider's pool across its accounts, as recorded from the
+      // rate-limit headers of the responses CLIProxyAPI served and as
+      // projected from the current burn.
+      const QUOTA_PROVIDERS = [
+        { key: "claude", name: "Claude", color: 2 },
+        { key: "codex", name: "Codex", color: 3 },
+      ];
+      const QUOTA_MODES = [
+        ["remaining", "Remaining"],
+        ["drain", "Drain rate"],
+      ];
+      const QUOTA_FUTURE = [
+        ["same", "Same as now", 1],
+        ["half", "Half", 0.5],
+        ["double", "Double", 2],
+        ["none", "None", 0],
+      ];
+      // An edge label this close to the plot edge anchors to that edge.
+      const EDGE_LABEL_SPACE = 90;
+
+      if (!QUOTA_MODES.some(([key]) => key === prefs.quotaMode))
+        prefs.quotaMode = "remaining";
+      if (!QUOTA_LOOKBACKS.includes(prefs.quotaLookback))
+        prefs.quotaLookback = 3;
+      if (!QUOTA_FUTURE.some(([key]) => key === prefs.quotaFuture))
+        prefs.quotaFuture = "same";
+      prefs.quotaAccounts = prefs.quotaAccounts === true;
+
+      const quota = { data: null, error: "", weeks: 0, panels: [] };
+
+      function quotaValue(value) {
+        return prefs.quotaMode === "remaining"
+          ? Math.round(value) + "%"
+          : formatQuotaRate(value) + "%/h";
+      }
+
+      function renderQuotaControls() {
+        const pick = (key, value) => {
+          prefs[key] = value;
+          savePrefs();
+          renderQuotaControls();
+          renderQuota();
+        };
+        segmented($("quota-mode"), QUOTA_MODES, prefs.quotaMode, (mode) =>
+          pick("quotaMode", mode),
+        );
+        segmented(
+          $("quota-lookback"),
+          QUOTA_LOOKBACKS.map((hours) => [hours, hours + "h"]),
+          prefs.quotaLookback,
+          (hours) => pick("quotaLookback", hours),
+        );
+        $("quota-future").value = prefs.quotaFuture;
+        $("quota-accounts").setAttribute(
+          "aria-pressed",
+          String(prefs.quotaAccounts),
+        );
+        const span = quotaSpan(quota.weeks, Date.now());
+        $("quota-range").textContent =
+          quotaDate.format(span.start) + " – " + quotaDate.format(span.end - 1);
+      }
+
+      $("quota-future").replaceChildren(
+        ...QUOTA_FUTURE.map(([key, label]) =>
+          h("option", { value: key }, label),
+        ),
+      );
+      $("quota-future").addEventListener("change", (event) => {
+        prefs.quotaFuture = event.target.value;
+        savePrefs();
+        renderQuota();
+      });
+      $("quota-accounts").addEventListener("click", () => {
+        prefs.quotaAccounts = !prefs.quotaAccounts;
+        savePrefs();
+        renderQuotaControls();
+        renderQuota();
+      });
+      for (const [id, move] of [
+        ["quota-previous", () => quota.weeks - 1],
+        ["quota-today", () => 0],
+        ["quota-next", () => quota.weeks + 1],
+      ]) {
+        $(id).addEventListener("click", () => {
+          quota.weeks = move();
+          renderQuotaControls();
+          loadQuota();
+        });
+      }
+
+      let quotaSeq = 0;
+
+      async function loadQuota() {
+        const seq = ++quotaSeq;
+        const now = Date.now();
+        const span = quotaSpan(quota.weeks, now);
+        // The burn and the drain series look back from the span's start.
+        const from =
+          Math.min(span.start, now) - Math.max(...QUOTA_LOOKBACKS) * HOUR;
+        try {
+          const data = await api(
+            "/quota?" +
+              new URLSearchParams({ from: new Date(from).toISOString() }),
+          );
+          if (seq !== quotaSeq) return;
+          quota.data = data;
+          quota.error = "";
+        } catch (err) {
+          if (seq !== quotaSeq) return;
+          if (err instanceof AuthError) {
+            showAuth(err.message);
+            return;
+          }
+          quota.error = "Quota did not load: " + err.message;
+        }
+        renderQuota();
+      }
+
+      function renderQuota() {
+        const accounts = quota.data ? quota.data.accounts : [];
+        $("quota").hidden = !accounts.length && !quota.error;
+        $("quota-error").textContent = quota.error;
+        $("quota-error").hidden = !quota.error;
+        // A clock behind CLIProxyAPI's would put its latest reading ahead of
+        // now.
+        let now = Date.now();
+        for (const account of accounts)
+          for (const sample of account.samples) now = Math.max(now, sample.at);
+        const span = quotaSpan(quota.weeks, now);
+        const factor = QUOTA_FUTURE.find(
+          ([key]) => key === prefs.quotaFuture,
+        )[2];
+        quota.panels = [];
+        const panels = [];
+        for (const provider of QUOTA_PROVIDERS) {
+          const members = accounts.filter(
+            (account) => account.provider === provider.key,
+          );
+          if (!members.length) continue;
+          const section = buildQuotaSection(members, {
+            now,
+            start: span.start,
+            end: span.end,
+            lookbackHours: prefs.quotaLookback,
+            usageFactor: factor,
+          });
+          panels.push(quotaPanel(provider, members, section, now, span));
+        }
+        $("quota-panels").replaceChildren(...panels);
+        for (const panel of quota.panels) drawQuotaChart(panel);
+      }
+
+      function quotaPanel(provider, members, section, now, span) {
+        const article = h("article", {
+          class: "quota-panel k" + provider.color,
+          "aria-label": provider.name,
+        });
+        const title = h(
+          "div",
+          { class: "quota-title" },
+          h("span", { class: "dot" }),
+          h("h3", {}, provider.name),
+        );
+        if (!section) {
+          title.append(h("span", {}, plural(members.length, "account")));
+          article.append(
+            title,
+            h("p", {}, "No response has reported quota yet."),
+          );
+          return article;
+        }
+        title.append(
+          h(
+            "span",
+            {},
+            plural(section.names.length, "account") +
+              " · " +
+              quotaWindowLabel(section.windowMinutes),
+            section.unseen.length
+              ? h(
+                  "span",
+                  { title: section.unseen.join(", ") },
+                  " · " + section.unseen.length + " not reported yet",
+                )
+              : null,
+          ),
+        );
+        const poolNow = Math.round(section.poolNow);
+        const hero = h(
+          "div",
+          { class: "quota-hero" },
+          h("strong", {}, poolNow + "%"),
+          h("span", {}, "of " + section.capacity + "%"),
+        );
+
+        const projected = section.projection !== null;
+        const notBy = "Not by " + quotaDate.format(now + QUOTA_HORIZON);
+        const when = (at) => formatQuotaInstant(at, now);
+        const { poolEmptyAt, firstEmpty, nextReset, burn } = section;
+        const lookback = prefs.quotaLookback + "h";
+        const stats = [
+          {
+            label: "Pool empty",
+            value:
+              poolEmptyAt !== null
+                ? poolEmptyAt <= now
+                  ? "Now"
+                  : when(poolEmptyAt)
+                : projected
+                  ? notBy
+                  : "—",
+          },
+          {
+            label: "First empty",
+            value: firstEmpty
+              ? firstEmpty.at <= now
+                ? firstEmpty.name + " now"
+                : firstEmpty.name +
+                  " in " +
+                  formatQuotaDuration(firstEmpty.at - now)
+              : projected
+                ? notBy
+                : "—",
+          },
+          {
+            label: "Next reset",
+            value: nextReset
+              ? "+" + Math.round(nextReset.gain) + "% " + when(nextReset.at)
+              : "—",
+          },
+          burn && burn.source === "window"
+            ? {
+                label: "Burn, window average",
+                hint:
+                  "Less than 15 minutes of the last " +
+                  lookback +
+                  " were recorded, so this is the average since each window opened.",
+                value: formatQuotaRate(burn.perHour) + "%/h",
+              }
+            : {
+                label:
+                  "Burn, last " +
+                  (burn && burn.coveredMs < prefs.quotaLookback * HOUR * 0.9
+                    ? formatQuotaDuration(burn.coveredMs)
+                    : lookback),
+                value: burn ? formatQuotaRate(burn.perHour) + "%/h" : "—",
+              },
+        ];
+        const dl = h(
+          "dl",
+          { class: "quota-stats" },
+          ...stats.map((stat) =>
+            h(
+              "div",
+              { title: stat.hint },
+              h("dt", {}, stat.label),
+              h("dd", { title: stat.value }, stat.value),
+            ),
+          ),
+        );
+
+        const svg = s("svg", { "aria-hidden": "true" });
+        const tooltip = h("div", {
+          class: "tooltip",
+          role: "status",
+          hidden: true,
+        });
+        const wrap = h(
+          "div",
+          {
+            class: "quota-chart",
+            tabindex: 0,
+            role: "group",
+            "aria-label":
+              provider.name +
+              ": " +
+              poolNow +
+              "% of " +
+              section.capacity +
+              "% left",
+          },
+          svg,
+          tooltip,
+        );
+        const legend = h(
+          "div",
+          { class: "quota-legend" },
+          h("b", {}, "Pool"),
+          h(
+            "span",
+            {
+              title:
+                "Read from the rate-limit headers of the responses CLIProxyAPI served.",
+            },
+            h("i", { class: "line-key" }),
+            "Recorded",
+          ),
+          projected
+            ? h(
+                "span",
+                {
+                  title:
+                    "The measured burn continues, spread evenly over the accounts with quota left; each reset restores its account to 100%.",
+                },
+                h("i", { class: "line-key dashed" }),
+                "Projected",
+              )
+            : null,
+          prefs.quotaMode === "remaining" &&
+            prefs.quotaAccounts &&
+            section.names.length > 1
+            ? h("span", {}, h("i", { class: "line-key thin" }), "Accounts")
+            : null,
+        );
+        article.append(
+          h("div", { class: "quota-head" }, h("div", {}, title, hero), dl),
+          wrap,
+          legend,
+        );
+
+        const panel = {
+          provider,
+          section,
+          now,
+          span,
+          wrap,
+          svg,
+          tooltip,
+          geometry: null,
+          cursor: null,
+          width: 0,
+          hoverAt: null,
+        };
+        quota.panels.push(panel);
+        const clamp = (at) => Math.min(span.end, Math.max(span.start, at));
+        svg.addEventListener("pointermove", (event) => {
+          if (!panel.geometry) return;
+          const rect = svg.getBoundingClientRect();
+          const px = ((event.clientX - rect.left) / rect.width) * panel.width;
+          showQuotaCursor(
+            panel,
+            quotaInstantAt(px, panel.geometry.plot, span.start, span.end, now),
+          );
+        });
+        svg.addEventListener("pointerleave", () => hideQuotaCursor(panel));
+        wrap.addEventListener("focus", () => {
+          if (panel.hoverAt === null) showQuotaCursor(panel, clamp(now));
+        });
+        wrap.addEventListener("blur", () => hideQuotaCursor(panel));
+        wrap.addEventListener("keydown", (event) => {
+          const step = event.shiftKey ? DAY : HOUR;
+          const from = panel.hoverAt === null ? clamp(now) : panel.hoverAt;
+          let next;
+          if (event.key === "ArrowLeft") next = clamp(from - step);
+          else if (event.key === "ArrowRight") next = clamp(from + step);
+          else if (event.key === "Home") next = span.start;
+          else if (event.key === "End") next = span.end;
+          else if (event.key === "Escape") next = null;
+          else return;
+          event.preventDefault();
+          if (next === null) hideQuotaCursor(panel);
+          else showQuotaCursor(panel, next);
+        });
+        return article;
+      }
+
+      function drawQuotaChart(panel) {
+        const { section, span, now, svg } = panel;
+        const width = Math.max(320, Math.round(panel.wrap.clientWidth));
+        const g = buildQuotaChart({
+          section,
+          mode: prefs.quotaMode,
+          start: span.start,
+          end: span.end,
+          now,
+          width,
+          showAccounts: prefs.quotaAccounts,
+        });
+        panel.geometry = g;
+        panel.width = width;
+        const { plot } = g;
+        const id = "quota-" + panel.provider.key;
+        const label = (x, y, content, anchor, cls) => {
+          const text = s("text", { x, y, "text-anchor": anchor });
+          if (cls) text.setAttribute("class", cls);
+          text.textContent = content;
+          return text;
+        };
+        svg.setAttribute("viewBox", "0 0 " + width + " " + CHART_HEIGHT);
+
+        const gradient = s("linearGradient", {
+          id: id + "-fill",
+          x1: 0,
+          y1: 0,
+          x2: 0,
+          y2: 1,
+        });
+        gradient.append(
+          s("stop", { offset: 0, class: "fill-top" }),
+          s("stop", { offset: 1, class: "fill-bottom" }),
+        );
+        const clip = s("clipPath", { id: id + "-clip" });
+        clip.append(
+          s("rect", {
+            x: plot.left,
+            y: plot.top - 2,
+            width: plot.right - plot.left,
+            height: plot.bottom - plot.top + 4,
+          }),
+        );
+        const defs = s("defs");
+        defs.append(gradient, clip);
+
+        const grid = s("g", { class: "grid" });
+        for (const tick of g.yTicks)
+          grid.append(
+            s("line", {
+              x1: plot.left,
+              x2: plot.right,
+              y1: tick.y,
+              y2: tick.y,
+            }),
+          );
+        for (const day of g.days)
+          if (day.lineX !== null)
+            grid.append(
+              s("line", {
+                x1: day.lineX,
+                x2: day.lineX,
+                y1: plot.top,
+                y2: plot.bottom,
+              }),
+            );
+
+        const axis = s("g");
+        for (const tick of g.yTicks) {
+          // A drain tick can be 1.25%/h, which one decimal would misstate.
+          const text = label(
+            plot.left - 10,
+            tick.y,
+            prefs.quotaMode === "remaining"
+              ? quotaValue(tick.value)
+              : +tick.value.toFixed(2) + "%/h",
+            "end",
+          );
+          text.setAttribute("dy", "0.32em");
+          axis.append(text);
+        }
+        for (const day of g.days)
+          if (day.labelled)
+            axis.append(
+              label(
+                day.labelX,
+                CHART_HEIGHT - 8,
+                quotaDayLabel(day.at),
+                "middle",
+              ),
+            );
+
+        const fill = "url(#" + id + "-fill)";
+        const series = s("g", { "clip-path": "url(#" + id + "-clip)" });
+        series.append(
+          s("path", { d: g.recordedArea, fill }),
+          s("path", { d: g.projectedArea, fill, opacity: 0.55 }),
+        );
+        for (const line of g.accountLines)
+          series.append(
+            s("path", { class: "accounts-line", d: line.recorded }),
+            s("path", { class: "accounts-line dashed", d: line.projected }),
+          );
+        series.append(
+          s("path", { class: "line", d: g.recordedLine }),
+          s("path", { class: "line dashed", d: g.projectedLine }),
+        );
+
+        const marks = s("g", { class: "mark" });
+        for (const jump of g.jumps)
+          marks.append(label(jump.x, jump.y, "+" + jump.gain + "%", "middle"));
+        if (g.now) {
+          marks.append(
+            s("line", {
+              class: "now-line",
+              x1: g.now.x,
+              x2: g.now.x,
+              y1: plot.top - 6,
+              y2: plot.bottom,
+            }),
+            label(g.now.x, plot.top - 12, "Now", "middle"),
+          );
+          if (g.now.y !== null)
+            marks.append(
+              s("circle", { class: "now-dot", cx: g.now.x, cy: g.now.y, r: 4 }),
+            );
+        }
+        if (g.empty) {
+          const anchor =
+            g.empty.x > plot.right - EDGE_LABEL_SPACE
+              ? "end"
+              : g.empty.x < plot.left + EDGE_LABEL_SPACE
+                ? "start"
+                : "middle";
+          marks.append(
+            label(
+              g.empty.x,
+              g.empty.y - 14,
+              "Empty " + formatQuotaInstant(g.empty.at, now),
+              anchor,
+              "empty-label",
+            ),
+            s("circle", {
+              class: "empty-dot",
+              cx: g.empty.x,
+              cy: g.empty.y,
+              r: 5,
+            }),
+          );
+        }
+
+        const cursor = s("g", { class: "cursor", visibility: "hidden" });
+        svg.replaceChildren(defs, grid, axis, series, marks, cursor);
+        panel.cursor = cursor;
+        if (panel.hoverAt !== null) showQuotaCursor(panel, panel.hoverAt);
+      }
+
+      function showQuotaCursor(panel, at) {
+        panel.hoverAt = at;
+        const { geometry: g, section, now, cursor, tooltip } = panel;
+        if (!g || !cursor) return;
+        const x = g.x(at);
+        const readout = quotaReadout(section, prefs.quotaMode, at, now);
+        cursor.replaceChildren(
+          s("line", { x1: x, x2: x, y1: g.plot.top, y2: g.plot.bottom }),
+        );
+        if (readout.value !== null)
+          cursor.append(s("circle", { cx: x, cy: g.y(readout.value), r: 4 }));
+        cursor.setAttribute("visibility", "visible");
+
+        const row = (key, value, name) =>
+          h(
+            "div",
+            { class: "tooltip-row" },
+            h("i", { class: key }),
+            h("strong", {}, value),
+            h("span", {}, name),
+          );
+        const rows = [
+          row(
+            readout.kind === "projected" ? "line-key dashed" : "line-key",
+            readout.value === null ? "—" : quotaValue(readout.value),
+            "Pool",
+          ),
+        ];
+        if (
+          prefs.quotaMode === "remaining" &&
+          prefs.quotaAccounts &&
+          section.names.length > 1
+        ) {
+          // Top band first, as the accounts stack on the chart.
+          for (let index = section.names.length - 1; index >= 0; index--) {
+            const value = readout.accounts[index];
+            rows.push(
+              row(
+                "line-key thin",
+                value === null ? "—" : Math.round(value) + "%",
+                section.names[index],
+              ),
+            );
+          }
+        }
+        tooltip.replaceChildren(
+          h(
+            "div",
+            { class: "tooltip-title" },
+            h("span", {}, quotaPointTime.format(at)),
+            h(
+              "span",
+              {},
+              readout.kind === "recorded" ? "Recorded" : "Projected",
+            ),
+          ),
+          ...rows,
+        );
+        tooltip.hidden = false;
+        const scale = panel.wrap.clientWidth / panel.width;
+        const px = x * scale;
+        const tw = tooltip.offsetWidth;
+        const left =
+          px + 14 + tw > panel.wrap.clientWidth ? px - 14 - tw : px + 14;
+        tooltip.style.setProperty(
+          "transform",
+          "translate(" + Math.max(0, left) + "px, " + g.plot.top + "px)",
+        );
+      }
+
+      function hideQuotaCursor(panel) {
+        panel.hoverAt = null;
+        if (panel.cursor) panel.cursor.setAttribute("visibility", "hidden");
+        panel.tooltip.hidden = true;
+      }
+
+      new ResizeObserver(() => {
+        for (const panel of quota.panels)
+          if (Math.max(320, Math.round(panel.wrap.clientWidth)) !== panel.width)
+            drawQuotaChart(panel);
+      }).observe($("quota-panels"));
+
+      // Keep "Now" current while the page stays open, but leave a chart that
+      // is being read alone.
+      setInterval(() => {
+        if (!auth.key || document.hidden || $("content").hidden) return;
+        if (quota.panels.some((panel) => panel.hoverAt !== null)) return;
+        loadQuota();
+      }, MINUTE);
+
       renderControls();
+      renderQuotaControls();
       load();
     </script>
   </body>

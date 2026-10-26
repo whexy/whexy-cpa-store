@@ -3,9 +3,9 @@
 A CLIProxyAPI usage plugin that adds a Usage page to Management Center:
 processed tokens and estimated cost over the past 24 hours, 7, 30 or 90 days,
 grouped by model family or by account, with sessions, cache savings and a
-per-model or per-day breakdown. CLIProxyAPI cannot tell which client sent a
-request, so the page groups by what it does know: the model and the
-credential that served it.
+per-model or per-day breakdown, and the quota left in your Claude and Codex
+accounts. CLIProxyAPI cannot tell which client sent a request, so the page
+groups by what it does know: the model and the credential that served it.
 
 ## Set up
 
@@ -32,6 +32,21 @@ characters. An account removed from CLIProxyAPI keeps the name it had.
 Each family or account keeps its colour across ranges. Past eight, the
 smallest fold into Other.
 
+## Quota
+
+Claude and Codex report each account's rate-limit windows in the headers of
+every response, and the plugin records them as requests pass. The Quota
+section draws one chart per provider: the pool of its longest window, usually
+the weekly limit, summed over its enabled accounts, as recorded and as
+projected. An account joins once a request through CLIProxyAPI has reported
+its quota. Other providers send no quota in their headers and are not shown.
+
+The projection continues the burn measured over the last 1, 3, 6 or 24
+hours, or the average since each window opened when less than 15 minutes of
+that was recorded. It spreads the burn evenly over the accounts with quota
+left, as round-robin routing does, and each reset restores its account to
+100%. Future usage scales the burn.
+
 ## Data
 
 Usage is kept as hourly totals per account and model, one file per UTC day
@@ -42,7 +57,9 @@ else `config.yaml` in its working directory). With `dir: /data/plugins`, that
 is `/data/data/usage-dashboard`. Set `data_dir` when CLIProxyAPI takes its
 config from elsewhere (`-home-jwt`, a Postgres, git or object store), or when
 only the plugins directory itself is a volume, as in CLIProxyAPI's
-`docker-compose.yml`. Days past `retention_days` are deleted. Prompts,
+`docker-compose.yml`. Days past `retention_days` are deleted. The day files
+also keep quota readings: one when a window of a day or longer changes or a
+window resets, and one at least every 30 minutes while requests flow. Prompts,
 responses and client API keys are never stored, and session IDs only as
 hashes.
 
@@ -91,6 +108,11 @@ All take the management key as `Authorization: Bearer <key>`.
 `GET /v0/management/usage-dashboard/summary?range=24h|7d|30d|90d&group=family|account&tz=<IANA zone>`
 answers the totals, one series per group, per-model rows and per-point rows
 for the range. Day ranges end with today in `tz`.
+
+`GET /v0/management/usage-dashboard/quota?from=<RFC 3339 time>` lists the
+Claude and Codex accounts CLIProxyAPI routes to, each with its quota readings
+since `from` (default 17 days ago) and the last one before it. A reading's
+`at` and a window's `reset_at` are Unix milliseconds.
 
 `GET /v0/management/usage-dashboard/prices` lists every model in the kept
 usage with its processed tokens, custom price and models.dev price.

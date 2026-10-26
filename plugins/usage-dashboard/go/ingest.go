@@ -142,6 +142,9 @@ func handleUsage(raw []byte) ([]byte, error) {
 		if event, ok := eventFromRecord(record, identities.lookup); ok {
 			active.add(event)
 		}
+		if sample, ok := quotaFromRecord(record); ok {
+			active.addQuota(sample)
+		}
 	}
 	return okEnvelope(struct{}{})
 }

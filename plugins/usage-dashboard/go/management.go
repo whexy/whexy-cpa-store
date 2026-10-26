@@ -24,6 +24,8 @@ const (
 	summaryPath = "/v0/management/" + pluginID + "/summary"
 	// pricesPath reads and replaces the prices set on the page.
 	pricesPath = "/v0/management/" + pluginID + "/prices"
+	// quotaPath reads the quota samples behind the page's Quota section.
+	quotaPath = "/v0/management/" + pluginID + "/quota"
 )
 
 //go:embed dashboard.html
@@ -73,13 +75,18 @@ func managementRegister(_ []byte) ([]byte, error) {
 				Description: "Every model in retained usage with its custom and models.dev price.",
 			},
 			{
+				Method:      http.MethodGet,
+				Path:        quotaPath,
+				Description: "Claude and Codex accounts with the quota their responses reported: ?from=<RFC 3339 time>.",
+			},
+			{
 				Method:      http.MethodPut,
 				Path:        pricesPath,
 				Description: `Replace the custom prices: {"models":{"<model>":{"input":..,"output":..,"cache_read":..,"cache_write":..}}}, USD per million tokens.`,
 			},
 		},
 		Resources: []resourceRoute{
-			{Path: pagePath, Menu: menuLabel, Description: "Token usage and estimated cost by model family or account."},
+			{Path: pagePath, Menu: menuLabel, Description: "Token usage and estimated cost by model family or account, and the quota left in each provider's accounts."},
 			{Path: logoPath, Description: displayName + " logo."},
 		},
 	})
@@ -125,6 +132,12 @@ func routeManagement(req pluginapi.ManagementRequest) pluginapi.ManagementRespon
 			GroupBy:  req.Query.Get("group"),
 			TimeZone: req.Query.Get("tz"),
 		})
+		if errReport != nil {
+			return managementJSON(http.StatusBadRequest, map[string]string{"error": errReport.Error()})
+		}
+		return managementJSON(http.StatusOK, report)
+	case method == http.MethodGet && req.Path == quotaPath:
+		report, errReport := quotaReport(req.Query.Get("from"))
 		if errReport != nil {
 			return managementJSON(http.StatusBadRequest, map[string]string{"error": errReport.Error()})
 		}
@@ -175,22 +188,36 @@ func managementJSON(status int, body any) pluginapi.ManagementResponse {
 	}
 }
 
-// pageCSP admits only the page's own inline script and style and requests
+// pageCSP admits only the page's own inline scripts and style and requests
 // to its own origin, so injected markup can neither run nor send the
 // management key elsewhere. It sets no frame-ancestors because Management
 // Center may be served from another origin than CLIProxyAPI.
 func pageCSP(page []byte) string {
-	return "default-src 'none'; script-src " + inlineHash(page, "script") +
-		"; style-src " + inlineHash(page, "style") +
+	return "default-src 'none'; script-src " + inlineHashes(page, "script") +
+		"; style-src " + inlineHashes(page, "style") +
 		"; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'"
 }
 
-func inlineHash(page []byte, tag string) string {
+// inlineHashes lists the hash of every <tag> block of the page.
+func inlineHashes(page []byte, tag string) string {
 	open, end := []byte("<"+tag+">"), []byte("</"+tag+">")
-	start, stop := bytes.Index(page, open), bytes.Index(page, end)
-	if start < 0 || stop < start {
+	var hashes []string
+	for {
+		start := bytes.Index(page, open)
+		if start < 0 {
+			break
+		}
+		page = page[start+len(open):]
+		stop := bytes.Index(page, end)
+		if stop < 0 {
+			break
+		}
+		sum := sha256.Sum256(page[:stop])
+		hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'")
+		page = page[stop+len(end):]
+	}
+	if len(hashes) == 0 {
 		return "'none'"
 	}
-	sum := sha256.Sum256(page[start+len(open) : stop])
-	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+	return strings.Join(hashes, " ")
 }

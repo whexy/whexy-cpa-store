@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"net/http"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
@@ -44,5 +47,28 @@ func TestLogo(t *testing.T) {
 	}
 	if pluginRegistration().Metadata.Logo != logoPath {
 		t.Fatalf("Metadata.Logo = %q", pluginRegistration().Metadata.Logo)
+	}
+}
+
+func TestPageAdmitsEveryScript(t *testing.T) {
+	resp := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: pagePath})
+	scripts := bytes.Count(dashboardPage, []byte("<script>"))
+	csp := resp.Headers.Get("Content-Security-Policy")
+	if scripts < 2 || strings.Count(csp, "'sha256-") != scripts+1 {
+		t.Fatalf("%d scripts, CSP %q", scripts, csp)
+	}
+}
+
+// TestQuotaPageModel runs the page's quota model under node, which the nix
+// build provides to the check phase.
+func TestQuotaPageModel(t *testing.T) {
+	node, errLook := exec.LookPath("node")
+	if errLook != nil {
+		t.Skip("node is not installed")
+	}
+	cmd := exec.Command(node, "--test", "testdata/page_test.mjs")
+	cmd.Env = append(os.Environ(), "TZ=UTC")
+	if out, errRun := cmd.CombinedOutput(); errRun != nil {
+		t.Fatalf("node --test: %v\n%s", errRun, out)
 	}
 }

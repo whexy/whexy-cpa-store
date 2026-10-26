@@ -38,10 +38,12 @@ type row struct {
 	sessions map[string]struct{}
 }
 
-// day holds one UTC day of hourly rows and the account names seen that day.
+// day holds one UTC day of hourly rows, the account names seen that day and
+// the quota samples taken that day.
 type day struct {
 	accounts map[string]accountInfo
 	rows     map[rowKey]*row
+	quota    []quotaSample
 }
 
 func newDay() *day {
@@ -68,6 +70,9 @@ type dayFile struct {
 	Date     string                 `json:"date"`
 	Accounts map[string]accountInfo `json:"accounts,omitempty"`
 	Rows     []rowFile              `json:"rows"`
+	// Quota is optional, so a library from before quota keeps reading the
+	// file.
+	Quota []quotaSample `json:"quota,omitempty"`
 }
 
 type rowFile struct {
@@ -104,6 +109,8 @@ type store struct {
 	lastPrune time.Time
 	// mergedSpills are spill files already in days, deleted once written.
 	mergedSpills map[string]bool
+	// lastQuota is each account's latest kept quota sample.
+	lastQuota map[string]quotaSample
 }
 
 func newStore(dir string, retentionDays int) *store {
@@ -117,6 +124,7 @@ func newStore(dir string, retentionDays int) *store {
 		days:         make(map[string]*day),
 		dirty:        make(map[string]bool),
 		mergedSpills: make(map[string]bool),
+		lastQuota:    make(map[string]quotaSample),
 	}
 }
 
@@ -188,6 +196,24 @@ func (s *store) add(event usageEvent) {
 		d.accounts[event.Account] = event.Identity
 	}
 	d.addRow(rowKey{Hour: event.At.Hour(), Account: event.Account, Provider: event.Provider, Model: event.Model}, event.Counters, event.Session)
+	s.dirty[date] = true
+}
+
+// addQuota keeps a sample when it adds to its account's history.
+func (s *store) addQuota(sample quotaSample) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prev, ok := s.lastQuota[sample.Account]; ok && !quotaSampleDue(&prev, sample) {
+		return
+	}
+	s.lastQuota[sample.Account] = sample
+	date := time.UnixMilli(sample.At).UTC().Format(dayLayout)
+	d := s.days[date]
+	if d == nil {
+		d = newDay()
+		s.days[date] = d
+	}
+	d.quota = append(d.quota, sample)
 	s.dirty[date] = true
 }
 
@@ -367,6 +393,13 @@ func (s *store) loadLocked() {
 		}
 		s.mergeLocked(date, loaded)
 	}
+	for _, d := range s.days {
+		for _, sample := range d.quota {
+			if prev, ok := s.lastQuota[sample.Account]; !ok || sample.At > prev.At {
+				s.lastQuota[sample.Account] = sample
+			}
+		}
+	}
 	s.lock = lock
 	s.loaded = true
 	// Loaded files may predate the retention window.
@@ -394,6 +427,7 @@ func (s *store) mergeLocked(date string, loaded *day) {
 		}
 		d.addRow(key, r.counters, sessions...)
 	}
+	d.quota = append(d.quota, loaded.quota...)
 	s.dirty[date] = true
 }
 
@@ -418,6 +452,11 @@ func readDayFile(path string) (*day, error) {
 			return nil, fmt.Errorf("row hour %d out of range", r.Hour)
 		}
 		d.addRow(rowKey{Hour: r.Hour, Account: r.Account, Provider: r.Provider, Model: r.Model}, r.counters, r.Sessions...)
+	}
+	for _, sample := range file.Quota {
+		if sample.Account != "" && sample.At > 0 && len(sample.Windows) > 0 {
+			d.quota = append(d.quota, sample)
+		}
 	}
 	return d, nil
 }
@@ -451,7 +490,8 @@ func (s *store) flushLocked() {
 }
 
 func writeDayFileAs(dir, name, date string, d *day) error {
-	file := dayFile{Version: dayFileVersion, Date: date, Accounts: d.accounts, Rows: make([]rowFile, 0, len(d.rows))}
+	d.quota = sortQuotaSamples(d.quota)
+	file := dayFile{Version: dayFileVersion, Date: date, Accounts: d.accounts, Rows: make([]rowFile, 0, len(d.rows)), Quota: d.quota}
 	for key, r := range d.rows {
 		sessions := make([]string, 0, len(r.sessions))
 		for session := range r.sessions {
@@ -585,6 +625,39 @@ func (s *store) snapshot(from, to time.Time) ([]storedRow, map[string]accountInf
 		}
 	}
 	return rows, accounts
+}
+
+// quotaSnapshot copies the quota samples from `from` on, with each account's
+// last sample before it, which still stands at `from`, and the latest saved
+// name of every account.
+func (s *store) quotaSnapshot(from int64) ([]quotaSample, map[string]accountInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	accounts := make(map[string]accountInfo)
+	dates := make([]string, 0, len(s.days))
+	for date := range s.days {
+		dates = append(dates, date)
+	}
+	sort.Strings(dates)
+	var samples []quotaSample
+	before := make(map[string]quotaSample)
+	for _, date := range dates {
+		d := s.days[date]
+		for account, info := range d.accounts {
+			accounts[account] = info
+		}
+		for _, sample := range d.quota {
+			if sample.At >= from {
+				samples = append(samples, sample)
+			} else if prev, ok := before[sample.Account]; !ok || sample.At > prev.At {
+				before[sample.Account] = sample
+			}
+		}
+	}
+	for _, sample := range before {
+		samples = append(samples, sample)
+	}
+	return sortQuotaSamples(samples), accounts
 }
 
 type storeStatus struct {
