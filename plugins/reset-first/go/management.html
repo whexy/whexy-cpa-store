@@ -1,0 +1,987 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Reset First</title>
+    <style>
+      :root {
+        --bg-page: #faf9f5;
+        --bg-subtle: #f0eee8;
+        --bg-card: #fffefb;
+        --bg-input: #faf9f5;
+        --text-primary: #2d2a26;
+        --text-secondary: #6d6760;
+        --text-tertiary: #a29c95;
+        --border: #e3e1db;
+        --border-strong: #2d2a26;
+        --track: #e9e6df;
+        --fill: #6d6760;
+        --error-text: #b04a3b;
+        --focus: #2a78d6;
+        --font-sans:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+          "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+          sans-serif;
+        --font-mono:
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        color-scheme: light;
+      }
+
+      [data-theme="white"] {
+        --bg-page: #ffffff;
+        --bg-subtle: #f4f4f4;
+        --bg-card: #ffffff;
+        --bg-input: #ffffff;
+        --border: #e5e5e5;
+        --track: #ececec;
+      }
+
+      [data-theme="dark"] {
+        --bg-page: #151412;
+        --bg-subtle: #23211e;
+        --bg-card: #1b1a17;
+        --bg-input: #151412;
+        --text-primary: #f6f4f1;
+        --text-secondary: #c9c3bb;
+        --text-tertiary: #8f8881;
+        --border: #3a3530;
+        --border-strong: #c9c3bb;
+        --track: #2c2925;
+        --fill: #a29c95;
+        --error-text: #f1b0a6;
+        --focus: #3987e5;
+        color-scheme: dark;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: var(--bg-page);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      /* Management Center floats its toolbar over the top 76px of the frame. */
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 84px clamp(16px, 3vw, 40px) 56px;
+      }
+
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .spacer {
+        flex: 1;
+      }
+
+      .icon-button {
+        display: inline-grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+
+      .icon-button:hover {
+        background: var(--bg-subtle);
+        color: var(--text-primary);
+      }
+
+      .icon-button svg {
+        width: 17px;
+        height: 17px;
+      }
+
+      .busy #refresh svg {
+        animation: spin 0.9s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      button:focus-visible,
+      input:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      .notice {
+        margin: 0 0 20px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--error-text) 12%, transparent);
+        color: var(--error-text);
+      }
+
+      .auth {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        max-width: 520px;
+        margin-bottom: 24px;
+      }
+
+      .auth input {
+        flex: 1;
+        min-width: 220px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-input);
+        color: var(--text-primary);
+        font: inherit;
+      }
+
+      .auth button {
+        padding: 8px 14px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--text-primary);
+        color: var(--bg-page);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .empty {
+        color: var(--text-secondary);
+      }
+
+      #cards {
+        display: grid;
+        gap: 16px;
+      }
+
+      .card {
+        padding: 16px 18px 14px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--bg-card);
+      }
+
+      .card-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 12px;
+        margin-bottom: 12px;
+      }
+
+      .model {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: 15px;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+
+      .reason {
+        color: var(--text-secondary);
+      }
+
+      .meta {
+        margin-left: auto;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .rows {
+        display: grid;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 14px minmax(0, 1fr) auto 10.5em;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 12px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+      }
+
+      .row.chosen {
+        border-color: var(--border-strong);
+      }
+
+      .row.absent {
+        opacity: 0.55;
+      }
+
+      .mark {
+        width: 9px;
+        height: 9px;
+        border: 1.5px solid var(--text-tertiary);
+        border-radius: 50%;
+      }
+
+      .chosen .mark {
+        border-color: var(--text-primary);
+        background: var(--text-primary);
+      }
+
+      .who {
+        display: flex;
+        align-items: baseline;
+        min-width: 0;
+        white-space: nowrap;
+      }
+
+      /* Only the name gives way: the tags after it say why a row lost. */
+      .label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .chosen .label {
+        font-weight: 600;
+      }
+
+      .sub,
+      .tag {
+        flex: none;
+        margin-left: 6px;
+        color: var(--text-secondary);
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      .meters {
+        display: flex;
+        gap: 14px;
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .meter {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .meter.decides .m-label {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .track {
+        position: relative;
+        width: 64px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--track);
+        overflow: hidden;
+      }
+
+      .fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: var(--used, 0%);
+        background: var(--fill);
+      }
+
+      .meter.spent .fill {
+        background: var(--error-text);
+      }
+
+      .meter.spent .m-value {
+        color: var(--error-text);
+      }
+
+      .m-value {
+        width: 3.2em;
+        text-align: right;
+      }
+
+      .when {
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .when.alert,
+      .tag.failed {
+        color: var(--error-text);
+      }
+
+      .meters.note {
+        max-width: 32em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      [title] {
+        cursor: default;
+      }
+
+      @media (max-width: 720px) {
+        .row {
+          grid-template-columns: 14px minmax(0, 1fr) auto;
+        }
+
+        .meters {
+          grid-column: 2 / -1;
+          grid-row: 2;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="bar">
+        <h1>Reset First</h1>
+        <span class="spacer"></span>
+        <button
+          class="icon-button"
+          id="refresh"
+          type="button"
+          aria-label="Refresh"
+          title="Refresh"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+            <path d="M20 4v7h-7" />
+          </svg>
+        </button>
+      </div>
+
+      <p class="notice" id="notice" hidden></p>
+
+      <form class="auth" id="auth" hidden>
+        <input
+          id="key"
+          type="password"
+          autocomplete="off"
+          placeholder="Management key"
+          aria-label="Management key"
+        />
+        <button type="submit">Open</button>
+      </form>
+
+      <p class="empty" id="empty" hidden>
+        No model was routed in the past 24 hours.
+      </p>
+      <div id="cards"></div>
+    </main>
+
+    <script>
+      "use strict";
+
+      // Card logic: turns the decisions route into what each card says. It
+      // touches no DOM, so testdata/page_test.mjs runs it under node.
+
+      const MINUTE = 60 * 1000;
+      const HOUR = 60 * MINUTE;
+      const DAY = 24 * HOUR;
+
+      const REASONS = {
+        trial: "Trial request to read its quota",
+        soonest: "Resets soonest",
+        kept: "Kept: resets within an hour of the soonest",
+        only_spare: "Only offered account known to have quota left",
+        only: "Only account offered",
+        no_quota: "No offered account known to have quota left, CPA chose",
+      };
+
+      // Providers whose accounts report quota; the plugin reads no other.
+      const QUOTA_PROVIDERS = new Set(["codex", "claude"]);
+
+      const PROVIDERS = {
+        aistudio: "AI Studio",
+        antigravity: "Antigravity",
+        claude: "Claude",
+        codex: "Codex",
+        gemini: "Gemini",
+        "gemini-cli": "Gemini CLI",
+        kimi: "Kimi",
+        openai: "OpenAI",
+        qwen: "Qwen",
+        vertex: "Vertex",
+        xai: "xAI",
+      };
+
+      function providerName(key) {
+        if (!key) return "";
+        if (PROVIDERS[key]) return PROVIDERS[key];
+        if (key.startsWith("openai-compatible-")) return "OpenAI-compatible";
+        return key;
+      }
+
+      function windowLabel(minutes) {
+        if (minutes % (24 * 60) === 0) return minutes / (24 * 60) + "d";
+        if (minutes % 60 === 0) return minutes / 60 + "h";
+        return minutes + "m";
+      }
+
+      // span names a duration in its two largest units: 4 d 3 h, 3 h 20 min.
+      function span(ms) {
+        if (ms < MINUTE) return "<1\u00a0min";
+        const days = Math.floor(ms / DAY);
+        const hours = Math.floor((ms % DAY) / HOUR);
+        const minutes = Math.floor((ms % HOUR) / MINUTE);
+        if (days > 0)
+          return hours > 0
+            ? days + "\u00a0d " + hours + "\u00a0h"
+            : days + "\u00a0d";
+        if (hours > 0)
+          return minutes > 0
+            ? hours + "\u00a0h " + minutes + "\u00a0min"
+            : hours + "\u00a0h";
+        return minutes + "\u00a0min";
+      }
+
+      function ago(ms) {
+        return ms < MINUTE ? "just now" : span(ms) + " ago";
+      }
+
+      function time(value) {
+        return value ? Date.parse(value) : 0;
+      }
+
+      // reset says when a reset happens, or happened: a card keeps the quota
+      // its decision saw, which can be up to a day old.
+      function reset(at, now, future) {
+        return at > now
+          ? future + " " + span(at - now)
+          : "reset " + ago(now - at);
+      }
+
+      // used rounds a percentage, but never up to 100 while some is left.
+      function used(value) {
+        const rounded = Math.round(value);
+        if (rounded < 100 || value >= 100) return rounded + "%";
+        return Math.min(Number(value.toFixed(1)), 99.9).toFixed(1) + "%";
+      }
+
+      // cardModel is everything one card shows, as text.
+      function cardModel(card, now) {
+        const counts = [card.served + " served"];
+        if (card.failed) counts.push(card.failed + " failed");
+        counts.push(ago(now - time(card.at)));
+        const rows = card.accounts.map((account) =>
+          rowModel(account, card, now),
+        );
+        return {
+          model: card.model,
+          reason: REASONS[card.reason] || "",
+          meta: counts.join(" · "),
+          since: card.chosen ? time(card.since) : 0,
+          rows,
+        };
+      }
+
+      function rowModel(account, card, now) {
+        const chosen = account.id === card.chosen;
+        const row = {
+          id: account.id,
+          label: account.label || account.id,
+          sub: [providerName(account.provider), account.plan]
+            .filter(Boolean)
+            .join(" · "),
+          chosen,
+          chosenText: chosen
+            ? card.by_cpa
+              ? "CPA's choice: "
+              : "Chosen: "
+            : "",
+          offered: account.offered,
+          kind: account.kind,
+          meters: [],
+          when: "",
+          whenTitle: "",
+          note: "",
+          failed: "",
+        };
+        if (account.kind === "unknown") {
+          row.note = account.problem
+            ? "quota unknown · " + account.problem
+            : "quota unknown";
+          row.noteTitle = account.problem
+            ? row.note
+            : QUOTA_PROVIDERS.has(account.provider)
+              ? "Not read yet"
+              : "Only Codex and Claude accounts report their quota.";
+        } else {
+          let read = "";
+          if (account.read_at) {
+            const before = time(card.at) - time(account.read_at);
+            read =
+              before < MINUTE
+                ? "read at this decision"
+                : "read " + span(before) + " before this decision";
+          }
+          // Spare accounts are ordered by their longest window's reset; spent
+          // ones by when they are back.
+          const ordersBy = account.kind === "spare" ? account.decides : 0;
+          for (const w of account.windows || []) {
+            const decides = w.minutes === ordersBy;
+            const parts = [
+              windowLabel(w.minutes) +
+                " window" +
+                (decides ? ", which orders accounts" : ""),
+            ];
+            if (w.renewed) parts.push("reset since it was read");
+            else {
+              parts.push(used(w.used) + " used");
+              if (w.reset_at)
+                parts.push(reset(time(w.reset_at), now, "resets in"));
+            }
+            if (read) parts.push(read);
+            row.meters.push({
+              label: windowLabel(w.minutes),
+              used: w.renewed ? 0 : Math.min(100, Math.max(0, w.used)),
+              value: w.renewed ? "—" : used(w.used),
+              usedText: w.renewed ? "" : " used",
+              decides,
+              spent: w.used >= 100,
+              title: parts.join(" · "),
+            });
+          }
+        }
+        if (account.kind === "spare") {
+          const decides = (account.windows || []).find(
+            (w) => w.minutes === account.decides,
+          );
+          if (decides && decides.renewed) {
+            row.when = "renewed";
+            row.whenTitle =
+              "The window reset since it was read; its next reset is not read yet.";
+          } else
+            row.when = account.reset_at
+              ? reset(time(account.reset_at), now, "resets in")
+              : "reset not reported";
+        } else if (account.kind === "spent") {
+          const back = time(account.back_at);
+          row.when = back ? reset(back, now, "back in") : "used up";
+          row.whenAlert = !back || back > now;
+        }
+        if (!account.offered) {
+          row.absent = "not offered";
+          row.absentTitle =
+            "CPA did not offer it for this request: it was tried already, is cooling down or is disabled.";
+        }
+        if (chosen && card.outcome && card.outcome.failed)
+          row.failed = card.outcome.status
+            ? "failed · HTTP " + card.outcome.status
+            : "failed";
+        return row;
+      }
+    </script>
+
+    <script>
+      "use strict";
+
+      // The page is served at <base>/v0/resource/plugins/reset-first/index.html,
+      // where <base> is empty unless a reverse proxy adds a path prefix.
+      const API =
+        location.pathname.replace(
+          /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
+          "",
+        ) + "/v0/management/reset-first";
+      const SESSION_KEY = "reset-first.management-key";
+      const REJECTED_KEY = "reset-first.rejected-mc-auth";
+      const MC_AUTH_KEY = "cli-proxy-auth";
+      const MC_THEME_KEY = "cli-proxy-theme";
+      const REFRESH_EVERY = 15 * 1000;
+
+      const $ = (id) => document.getElementById(id);
+
+      function storageGet(storage, key) {
+        try {
+          return storage.getItem(key);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function storageSet(storage, key, value) {
+        try {
+          storage.setItem(key, value);
+        } catch (_) {}
+      }
+
+      function storageRemove(storage, key) {
+        try {
+          storage.removeItem(key);
+        } catch (_) {}
+      }
+
+      // Theme: follow Management Center's own setting. Its document carries
+      // data-theme ("dark", "white", or none for its light theme); when the
+      // page cannot reach it, read the persisted setting instead.
+      function managementCenterTheme() {
+        try {
+          if (window.parent !== window) {
+            return (
+              window.parent.document.documentElement.getAttribute(
+                "data-theme",
+              ) || "light"
+            );
+          }
+        } catch (_) {}
+        let saved = "auto";
+        try {
+          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
+          if (persisted && persisted.state && persisted.state.theme)
+            saved = persisted.state.theme;
+        } catch (_) {}
+        if (saved === "auto") {
+          return matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "white";
+        }
+        return saved;
+      }
+
+      function applyTheme() {
+        document.documentElement.setAttribute(
+          "data-theme",
+          managementCenterTheme(),
+        );
+      }
+
+      applyTheme();
+      matchMedia("(prefers-color-scheme: dark)").addEventListener(
+        "change",
+        applyTheme,
+      );
+      window.addEventListener("storage", (event) => {
+        if (event.key === MC_THEME_KEY) applyTheme();
+      });
+      try {
+        if (window.parent !== window) {
+          new MutationObserver(applyTheme).observe(
+            window.parent.document.documentElement,
+            { attributes: true, attributeFilter: ["data-theme"] },
+          );
+        }
+      } catch (_) {}
+
+      // Management key: Management Center persists it, when "remember" is on,
+      // as zustand state {"state":{"managementKey":...}} obfuscated by
+      // src/utils/encryption.ts. A key typed here lives in sessionStorage.
+      function deobfuscate(payload) {
+        const prefix = "enc::v1::";
+        if (!payload.startsWith(prefix)) return payload;
+        const binary = atob(payload.slice(prefix.length));
+        const secret = new TextEncoder().encode(
+          "cli-proxy-api-webui::secure-storage|" +
+            location.host +
+            "|" +
+            navigator.userAgent,
+        );
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
+        }
+        return new TextDecoder().decode(bytes);
+      }
+
+      function managementCenterKey() {
+        const raw = storageGet(localStorage, MC_AUTH_KEY);
+        if (!raw || storageGet(sessionStorage, REJECTED_KEY) === raw) return "";
+        try {
+          const persisted = JSON.parse(deobfuscate(raw));
+          const key =
+            persisted && persisted.state && persisted.state.managementKey;
+          return typeof key === "string" ? key.trim() : "";
+        } catch (_) {
+          return "";
+        }
+      }
+
+      const auth = { key: "", source: "" };
+
+      function resolveKey() {
+        const typed = storageGet(sessionStorage, SESSION_KEY);
+        if (typed) return { key: typed, source: "session" };
+        const shared = managementCenterKey();
+        if (shared) return { key: shared, source: "mc" };
+        return { key: "", source: "" };
+      }
+
+      // A rejected key is never retried: five failures ban the address for
+      // 30 minutes.
+      function forgetKey() {
+        if (auth.source === "session")
+          storageRemove(sessionStorage, SESSION_KEY);
+        if (auth.source === "mc") {
+          storageSet(
+            sessionStorage,
+            REJECTED_KEY,
+            storageGet(localStorage, MC_AUTH_KEY) || "",
+          );
+        }
+        auth.key = "";
+        auth.source = "";
+      }
+
+      class AuthError extends Error {}
+
+      async function api(path) {
+        if (!auth.key) throw new AuthError("No management key.");
+        let response;
+        try {
+          response = await fetch(API + path, {
+            headers: { Authorization: "Bearer " + auth.key },
+            cache: "no-store",
+            credentials: "omit",
+          });
+        } catch (err) {
+          throw new Error("CLIProxyAPI did not answer: " + err.message);
+        }
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (_) {}
+        if (response.status === 401) {
+          forgetKey();
+          throw new AuthError(
+            "Management key rejected. Five wrong keys block this address for 30 minutes.",
+          );
+        }
+        if (!response.ok) {
+          throw new Error(
+            (data && typeof data.error === "string" && data.error) ||
+              "CLIProxyAPI answered HTTP " + response.status + ".",
+          );
+        }
+        return data;
+      }
+
+      function h(tag, props, ...children) {
+        const el = document.createElement(tag);
+        for (const [name, value] of Object.entries(props || {})) {
+          if (value === undefined || value === null || value === false)
+            continue;
+          if (name === "class") el.className = value;
+          else el.setAttribute(name, value === true ? "" : String(value));
+        }
+        for (const child of children.flat()) {
+          if (child === null || child === undefined || child === false)
+            continue;
+          el.append(
+            child instanceof Node ? child : document.createTextNode(child),
+          );
+        }
+        return el;
+      }
+
+      const clock = new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+
+      function renderCard(card, now) {
+        const m = cardModel(card, now);
+        const chosen = m.rows.find((row) => row.chosen);
+        const decided =
+          "Upstream attempts in the past 24 hours. Decided " +
+          clock.format(new Date(time(card.at)));
+        return h(
+          "section",
+          { class: "card" },
+          h(
+            "header",
+            { class: "card-head" },
+            h("h2", { class: "model" }, m.model),
+            h("span", { class: "reason" }, m.reason),
+            h(
+              "span",
+              {
+                class: "meta",
+                title:
+                  chosen && m.since
+                    ? decided +
+                      "; on " +
+                      chosen.label +
+                      " since " +
+                      clock.format(new Date(m.since))
+                    : decided,
+              },
+              m.meta,
+            ),
+          ),
+          h("ol", { class: "rows" }, m.rows.map(renderRow)),
+        );
+      }
+
+      function renderRow(row) {
+        const classes = ["row"];
+        if (row.chosen) classes.push("chosen");
+        if (!row.offered) classes.push("absent");
+        const meters = row.note
+          ? h("span", { class: "meters note", title: row.noteTitle }, row.note)
+          : h(
+              "span",
+              { class: "meters" },
+              row.meters.map((meter) => {
+                const fill = h("span", { class: "fill" });
+                fill.style.setProperty("--used", meter.used + "%");
+                const classes = ["meter"];
+                if (meter.decides) classes.push("decides");
+                if (meter.spent) classes.push("spent");
+                return h(
+                  "span",
+                  { class: classes.join(" "), title: meter.title },
+                  h("span", { class: "m-label" }, meter.label),
+                  h("span", { class: "track", "aria-hidden": "true" }, fill),
+                  h(
+                    "span",
+                    { class: "m-value" },
+                    meter.value,
+                    meter.usedText &&
+                      h("span", { class: "sr-only" }, meter.usedText),
+                  ),
+                );
+              }),
+            );
+        return h(
+          "li",
+          { class: classes.join(" ") },
+          h("span", { class: "mark", "aria-hidden": "true" }),
+          h(
+            "span",
+            { class: "who" },
+            row.chosenText && h("span", { class: "sr-only" }, row.chosenText),
+            h("span", { class: "label", title: row.label }, row.label),
+            row.sub && h("span", { class: "sub" }, row.sub),
+            row.absent &&
+              h("span", { class: "tag", title: row.absentTitle }, row.absent),
+            row.failed && h("span", { class: "tag failed" }, row.failed),
+          ),
+          meters,
+          h(
+            "span",
+            {
+              class: row.whenAlert ? "when alert" : "when",
+              title: row.whenTitle || null,
+            },
+            row.when,
+          ),
+        );
+      }
+
+      function showNotice(text) {
+        $("notice").textContent = text || "";
+        $("notice").hidden = !text;
+      }
+
+      function showAuth(message) {
+        $("auth").hidden = false;
+        $("cards").replaceChildren();
+        $("empty").hidden = true;
+        showNotice(message);
+        $("key").focus();
+      }
+
+      $("auth").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const key = $("key").value.trim();
+        if (!key) return;
+        storageSet(sessionStorage, SESSION_KEY, key);
+        $("key").value = "";
+        $("auth").hidden = true;
+        showNotice("");
+        load();
+      });
+
+      $("refresh").addEventListener("click", () => load());
+
+      let loadSeq = 0;
+
+      async function load() {
+        const seq = ++loadSeq;
+        if (!auth.key) Object.assign(auth, resolveKey());
+        if (!auth.key) {
+          showAuth("Enter the management key to read the decisions.");
+          return;
+        }
+        document.body.classList.add("busy");
+        try {
+          const data = await api("/decisions");
+          if (seq !== loadSeq) return;
+          const now = time(data.now);
+          $("auth").hidden = true;
+          showNotice("");
+          $("empty").hidden = data.cards.length > 0;
+          $("cards").replaceChildren(
+            ...data.cards.map((card) => renderCard(card, now)),
+          );
+        } catch (err) {
+          if (err instanceof AuthError) showAuth(err.message);
+          else showNotice(err.message);
+        } finally {
+          if (seq === loadSeq) document.body.classList.remove("busy");
+        }
+      }
+
+      setInterval(() => {
+        if (auth.key && !document.hidden) load();
+      }, REFRESH_EVERY);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && auth.key) load();
+      });
+
+      load();
+    </script>
+  </body>
+</html>

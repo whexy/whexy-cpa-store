@@ -1,0 +1,11 @@
+{
+  "id": "reset-first",
+  "name": "Reset First",
+  "description": "Sends each request to the account whose quota resets soonest among those serving the model, so what an account has left is spent before its reset loses it. Reads Codex and Claude quota from responses and their usage endpoints; a Management Center page shows each model's latest choice and why.",
+  "author": "Whexy",
+  "repository": "https://github.com/whexy/whexy-cpa-store",
+  "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/reset-first",
+  "logo": "https://raw.githubusercontent.com/whexy/whexy-cpa-store/main/plugins/reset-first/logo.svg",
+  "license": "MIT",
+  "tags": ["routing", "scheduler", "quota", "codex", "claude"]
+}

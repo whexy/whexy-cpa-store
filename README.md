@@ -10,6 +10,7 @@ plugins directly from this repo's GitHub release assets.
 - `extra-models` — adds model IDs to one built-in provider before CLIProxyAPI's model catalog lists them, so that provider's accounts serve a new model right away; entries use the catalog's format and are set in the plugin's settings.
 - `model-groups` — gives one model ID to a group of models, for example `auto-group/fast`, and routes each request to one of them by round robin, weighted round robin or fill first; groups are managed on a Management Center page and CLIProxyAPI keeps choosing the provider account.
 - `opencode-go` — serves an OpenCode Go subscription: the workspace's Go models under `opencode-go/<model>`, an OpenCode login from the OAuth Login page or keys managed on a Management Center page that also disables models, one setting that serves every model under its bare ID to share it with other providers, quota in the Plugin tab.
+- `reset-first` — sends each request to the account whose quota resets soonest among those serving the model, reading Codex and Claude quota from responses and usage endpoints; a Management Center page shows each model's latest choice and why.
 - `system-prompt` — appends your own text to the system prompt of requests for the models you choose, before CLIProxyAPI translates or cloaks them; rules pairing model IDs or patterns with a prompt are managed on a Management Center page.
 - `usage-dashboard` — adds a Usage page to Management Center: tokens, estimated cost and sessions over the past day to quarter, grouped by model family or account, kept on disk.
 
