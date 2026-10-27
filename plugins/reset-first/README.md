@@ -38,6 +38,11 @@ minutes and shortly after a window resets, so accounts that serve no requests,
 or that are used elsewhere, stay current. It reads the access token CLIProxyAPI
 keeps and never refreshes one itself.
 
+A usage endpoint that rejects a token is not read again until CLIProxyAPI
+stores another one, by refreshing it or by a new login. After a 429 the
+plugin waits two intervals before the next read, doubling with each further
+429 up to 16 intervals, or longer when the endpoint names a `Retry-After`.
+
 An account with its own `proxy_url` or `base_url` is never polled, because the
 plugin's requests would reach the provider from somewhere CLIProxyAPI never
 sends that account's traffic; its quota comes from its responses alone. The

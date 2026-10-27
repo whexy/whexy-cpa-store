@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,12 +28,18 @@ const (
 	// A reset is read back shortly after it passes, once the provider has
 	// opened the next window.
 	afterReset = 2 * time.Minute
+	// Each consecutive 429 doubles the wait before the next read, up to this
+	// many doublings of the poll interval.
+	maxRateLimitDoublings = 4
 )
 
 type pollTarget struct {
 	id        string
 	authIndex string
 	provider  string
+	// rejected fingerprints the access token the usage endpoint last
+	// rejected.
+	rejected string
 }
 
 // authFile is the part of a Codex or Claude auth file a poll needs.
@@ -45,6 +54,15 @@ type pollResult struct {
 	quota   *quota
 	plan    string
 	problem string
+	// held: the auth file still holds the rejected token, so the endpoint
+	// was not called.
+	held bool
+	// rejected fingerprints the access token the endpoint just rejected.
+	rejected string
+	// limited: the endpoint answered 429, asking to wait retryAfter when it
+	// said how long.
+	limited    bool
+	retryAfter time.Duration
 }
 
 // poll reads one account's usage endpoint. It never refreshes a token: CPA
@@ -64,8 +82,15 @@ func poll(ctx context.Context, target pollTarget, now time.Time) pollResult {
 	if strings.TrimSpace(file.ProxyURL) != "" || strings.TrimSpace(file.BaseURL) != "" {
 		return pollResult{problem: "own proxy or base URL, read from responses only"}
 	}
+	// A provider rejects the same token every time and may start answering
+	// 429 to the repeats, so only a token CPA stored since is sent.
+	token := strings.TrimSpace(file.AccessToken)
+	fingerprint := tokenFingerprint(token)
+	if fingerprint == target.rejected {
+		return pollResult{held: true}
+	}
 	headers := http.Header{
-		"Authorization": {"Bearer " + strings.TrimSpace(file.AccessToken)},
+		"Authorization": {"Bearer " + token},
 		"Accept":        {"application/json"},
 	}
 	url := claudeUsageURL
@@ -85,7 +110,9 @@ func poll(ctx context.Context, target pollTarget, now time.Time) pollResult {
 	}
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return pollResult{problem: fmt.Sprintf("token rejected (HTTP %d)", resp.StatusCode)}
+		return pollResult{problem: fmt.Sprintf("token rejected (HTTP %d)", resp.StatusCode), rejected: fingerprint}
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return pollResult{problem: "usage endpoint answered HTTP 429", limited: true, retryAfter: retryAfter(resp.Headers)}
 	case resp.StatusCode != http.StatusOK:
 		return pollResult{problem: fmt.Sprintf("usage endpoint answered HTTP %d", resp.StatusCode)}
 	}
@@ -99,14 +126,43 @@ func poll(ctx context.Context, target pollTarget, now time.Time) pollResult {
 	return pollResult{problem: "usage endpoint sent no quota"}
 }
 
+// tokenFingerprint identifies a token without keeping the secret in memory.
+func tokenFingerprint(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// retryAfter reads Retry-After in seconds, the form Anthropic and OpenAI
+// send; zero when it is absent.
+func retryAfter(headers http.Header) time.Duration {
+	seconds, errParse := strconv.Atoi(strings.TrimSpace(headers.Get("Retry-After")))
+	if errParse != nil || seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 // applyPoll stores a poll's outcome and schedules the next one: after the
-// interval, or soon after the next reset, whichever comes first.
+// interval, or soon after the next reset, whichever comes first. A 429 holds
+// off every read until a wait that doubles with each consecutive 429, or the
+// one the endpoint asked for if longer.
 func (s *state) applyPoll(target pollTarget, result pollResult, now time.Time, interval time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a := s.accounts[target.id]
 	if a == nil {
 		return
+	}
+	if result.held {
+		a.nextPoll = now.Add(interval)
+		return
+	}
+	a.rejected = result.rejected
+	if result.limited {
+		a.limited++
+		a.retryAt = now.Add(max(interval<<min(a.limited, maxRateLimitDoublings), result.retryAfter))
+	} else {
+		a.limited, a.retryAt = 0, time.Time{}
 	}
 	if a.Problem != result.problem {
 		a.Problem = result.problem

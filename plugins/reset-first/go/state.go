@@ -38,6 +38,13 @@ type account struct {
 	pollable bool
 	nextPoll time.Time
 	trialAt  time.Time
+	// rejected fingerprints the access token the usage endpoint rejected;
+	// the endpoint is read again only with another token.
+	rejected string
+	// limited counts the usage endpoint's consecutive 429 answers, and no
+	// read starts before retryAt, whatever responses do to nextPoll.
+	limited int
+	retryAt time.Time
 }
 
 // state is everything the scheduler answers from. scheduler.pick runs inside
@@ -112,8 +119,8 @@ func (s *state) pollDue(now time.Time) []pollTarget {
 	defer s.mu.Unlock()
 	var due []pollTarget
 	for _, a := range s.accounts {
-		if a.pollable && !now.Before(a.nextPoll) {
-			due = append(due, pollTarget{id: a.ID, authIndex: a.authIndex, provider: a.Provider})
+		if a.pollable && !now.Before(a.nextPoll) && !now.Before(a.retryAt) {
+			due = append(due, pollTarget{id: a.ID, authIndex: a.authIndex, provider: a.Provider, rejected: a.rejected})
 		}
 	}
 	return due
