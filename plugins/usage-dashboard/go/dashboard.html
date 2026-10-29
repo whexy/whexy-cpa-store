@@ -1325,7 +1325,7 @@
       const QUOTA_PAST_DAYS = 3;
       // Stats look this far ahead whatever range the chart shows.
       const QUOTA_HORIZON = 14 * DAY;
-      const QUOTA_LOOKBACKS = [1, 3, 6, 24];
+      const QUOTA_LOOKBACKS = [5, 24, 48, 72];
       // An account read for less of the lookback than this has no rate yet.
       const MIN_RATE_COVERAGE = 15 * MINUTE;
       // A window open for less than this has too little use behind it for an
@@ -2587,7 +2587,7 @@
           range: "30d",
           breakdown: "model",
           quotaMode: "remaining",
-          quotaLookback: 3,
+          quotaLookback: 24,
           quotaFuture: "same",
           quotaAccounts: false,
         },
@@ -3540,7 +3540,7 @@
       if (!QUOTA_MODES.some(([key]) => key === prefs.quotaMode))
         prefs.quotaMode = "remaining";
       if (!QUOTA_LOOKBACKS.includes(prefs.quotaLookback))
-        prefs.quotaLookback = 3;
+        prefs.quotaLookback = 24;
       if (!QUOTA_FUTURE.some(([key]) => key === prefs.quotaFuture))
         prefs.quotaFuture = "same";
       prefs.quotaAccounts = prefs.quotaAccounts === true;
