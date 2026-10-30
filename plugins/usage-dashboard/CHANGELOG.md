@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/whexy/whexy-cpa-store/compare/usage-dashboard-v0.5.0...usage-dashboard-v0.6.0) (2026-10-30)
+
+
+### Features
+
+* **usage-dashboard:** record Grok, Meta and OpenCode Go quota
+
 ## [0.5.0](https://github.com/whexy/whexy-cpa-store/compare/usage-dashboard-v0.4.0...usage-dashboard-v0.5.0) (2026-10-29)
 
 
