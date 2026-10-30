@@ -3,8 +3,8 @@
 A CLIProxyAPI usage plugin that adds a Usage page to Management Center:
 processed tokens and estimated cost over the past 24 hours, 7, 30 or 90 days,
 grouped by model family or by account, with sessions, cache savings and a
-per-model or per-day breakdown, and the quota left in your Claude and Codex
-accounts. CLIProxyAPI cannot tell which client sent a request, so the page
+per-model or per-day breakdown, and the quota left in your Claude, Codex,
+Grok, Meta and OpenCode Go accounts. CLIProxyAPI cannot tell which client sent a request, so the page
 groups by what it does know: the model and the credential that served it.
 
 ## Set up
@@ -35,11 +35,16 @@ smallest fold into Other.
 ## Quota
 
 Claude and Codex report each account's rate-limit windows in the headers of
-every response, and the plugin records them as requests pass. The Quota
-section draws one chart per provider: the pool of its longest window, usually
-the weekly limit, summed over its enabled accounts, as recorded and as
-projected. An account joins once a request through CLIProxyAPI has reported
-its quota. Other providers send no quota in their headers and are not shown.
+every response, and the plugin records them as requests pass. Grok, Meta and
+OpenCode Go send none, so every 15 minutes the plugin reads their quota from
+the same usage endpoints Management Center's Quota page reads, using the
+credential in each account's auth file; nothing read from an auth file is
+kept. Set `quota_poll_interval: off` to record only what responses carry. The
+Quota section draws one chart per provider: the pool of its longest window,
+usually the weekly limit, summed over its enabled accounts, as recorded and
+as projected. An account joins once a request through CLIProxyAPI has
+reported its quota, or once a poll has read it. A Grok account on the paid
+API has no subscription windows to read and stays unreported.
 
 The projection continues the burn measured over the last 1, 3, 6 or 24
 hours, or the average since each window opened when less than 15 minutes of
@@ -92,6 +97,9 @@ configuration form in Management Center:
 - `pricing`: `false` turns cost estimates off. Default `true`.
 - `pricing_url`: a models.dev-format catalog. Default
   `https://models.dev/api.json`.
+- `quota_poll_interval`: how often Grok, Meta and OpenCode Go quota is read
+  from their usage endpoints, as a duration such as `15m`. Default `15m`, at
+  least `1m`; `off` turns polling off.
 - `model_families`: globs over the model ID mapped to a family, checked
   before the built-in list:
 
@@ -110,7 +118,8 @@ answers the totals, one series per group, per-model rows and per-point rows
 for the range. Day ranges end with today in `tz`.
 
 `GET /v0/management/usage-dashboard/quota?from=<RFC 3339 time>` lists the
-Claude and Codex accounts CLIProxyAPI routes to, each with its quota readings
+accounts of every provider whose quota is recorded that CLIProxyAPI routes
+to, each with its quota readings
 since `from` (default 17 days ago) and the last one before it. A reading's
 `at` and a window's `reset_at` are Unix milliseconds.
 

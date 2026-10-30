@@ -200,6 +200,9 @@ func TestBuildQuotaReport(t *testing.T) {
 		{AuthIndex: "codex-new", Provider: "codex", Email: "new@example.com"},
 		{AuthIndex: "codex-off", Provider: "codex", Email: "off@example.com", Disabled: true},
 		{AuthIndex: "grok", Provider: "xai", Email: "grok@example.com"},
+		{AuthIndex: "meta", Provider: "meta", Email: "meta@example.com"},
+		{AuthIndex: "go", Provider: "opencode-go", Label: "workspace"},
+		{AuthIndex: "gemini", Provider: "gemini", Email: "gemini@example.com"},
 	}
 	saved := map[string]accountInfo{"removed": {Label: "gone@example.com", Provider: "claude"}}
 
@@ -208,7 +211,13 @@ func TestBuildQuotaReport(t *testing.T) {
 	for _, account := range view.Accounts {
 		got = append(got, account.Provider+" "+account.Label+" "+strings.Repeat("*", len(account.Samples)))
 	}
-	want := []string{"claude one@example.com *", "codex new@example.com "}
+	want := []string{
+		"claude one@example.com *",
+		"codex new@example.com ",
+		"meta meta@example.com ",
+		"opencode-go workspace ",
+		"xai grok@example.com ",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("listed accounts = %q, want %q", got, want)
 	}

@@ -77,7 +77,7 @@ func managementRegister(_ []byte) ([]byte, error) {
 			{
 				Method:      http.MethodGet,
 				Path:        quotaPath,
-				Description: "Claude and Codex accounts with the quota their responses reported: ?from=<RFC 3339 time>.",
+				Description: "Accounts of every provider whose quota is recorded, with their readings: ?from=<RFC 3339 time>.",
 			},
 			{
 				Method:      http.MethodPut,

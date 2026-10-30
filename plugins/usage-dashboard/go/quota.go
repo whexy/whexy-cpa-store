@@ -14,7 +14,8 @@ import (
 
 // Claude and Codex report each subscription window's use in the headers of
 // every response, and CLIProxyAPI hands those headers to usage plugins. No
-// other provider reports subscription quota there.
+// other provider reports subscription quota there; Grok, Meta and OpenCode
+// Go are read from their usage endpoints instead (poll.go).
 
 const (
 	// While requests flow, an unchanged reading is kept this often, so the
@@ -37,6 +38,16 @@ const (
 var quotaProviders = map[string]func(http.Header, time.Time) []quotaWindow{
 	"claude": claudeQuotaWindows,
 	"codex":  codexQuotaWindows,
+}
+
+// quotaProviderKnown reports whether an account of this provider can have
+// quota readings, from response headers or from polling.
+func quotaProviderKnown(provider string) bool {
+	if quotaProviders[provider] != nil {
+		return true
+	}
+	_, polled := pollProviders[provider]
+	return polled
 }
 
 // quotaWindow is one rate-limit window as a response reported it.
@@ -287,7 +298,7 @@ func buildQuotaReport(now time.Time, samples []quotaSample, saved map[string]acc
 	for _, entry := range entries {
 		key := strings.TrimSpace(entry.AuthIndex)
 		info := accountInfoFromEntry(entry)
-		if key == "" || entry.Disabled || quotaProviders[info.Provider] == nil {
+		if key == "" || entry.Disabled || !quotaProviderKnown(info.Provider) {
 			continue
 		}
 		live[key] = info

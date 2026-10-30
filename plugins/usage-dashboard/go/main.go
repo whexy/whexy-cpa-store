@@ -123,17 +123,21 @@ type settings struct {
 	DataDir       string
 	RetentionDays int
 	PricingURL    string
+	// QuotaPollInterval is how often the quota of providers that send none
+	// in response headers is read; zero turns polling off.
+	QuotaPollInterval time.Duration
 	// FamilyRules are the configured model_families overrides, matched in
 	// pattern order before the built-in rules.
 	FamilyRules []familyRule
 }
 
 type rawSettings struct {
-	DataDir       string            `yaml:"data_dir"`
-	RetentionDays int               `yaml:"retention_days"`
-	Pricing       *bool             `yaml:"pricing"`
-	PricingURL    string            `yaml:"pricing_url"`
-	ModelFamilies map[string]string `yaml:"model_families"`
+	DataDir           string            `yaml:"data_dir"`
+	RetentionDays     int               `yaml:"retention_days"`
+	Pricing           *bool             `yaml:"pricing"`
+	PricingURL        string            `yaml:"pricing_url"`
+	QuotaPollInterval string            `yaml:"quota_poll_interval"`
+	ModelFamilies     map[string]string `yaml:"model_families"`
 }
 
 var currentConfig atomic.Pointer[settings]
@@ -142,7 +146,7 @@ func currentSettings() settings {
 	if cfg := currentConfig.Load(); cfg != nil {
 		return *cfg
 	}
-	return settings{RetentionDays: defaultRetentionDays, PricingURL: defaultPricingURL}
+	return settings{RetentionDays: defaultRetentionDays, PricingURL: defaultPricingURL, QuotaPollInterval: defaultQuotaPollInterval}
 }
 
 func main() {}
@@ -249,6 +253,7 @@ func pluginRegistration() registration {
 				{Name: "retention_days", Type: pluginapi.ConfigFieldTypeInteger, Description: fmt.Sprintf("Days of usage to keep, 1 to %d. Default %d. The page offers the 90-day range only when this is at least 90.", maxRetentionDays, defaultRetentionDays)},
 				{Name: "pricing", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Estimate cost from models.dev prices. Default true."},
 				{Name: "pricing_url", Type: pluginapi.ConfigFieldTypeString, Description: "models.dev-format price catalog. Default " + defaultPricingURL + "."},
+				{Name: "quota_poll_interval", Type: pluginapi.ConfigFieldTypeString, Description: "How often to read quota from the usage endpoints of providers that send none in response headers (Grok, Meta, OpenCode Go), as a duration such as 15m. Default 15m, at least 1m; off records only the quota Claude and Codex send with responses."},
 				{Name: "model_families", Type: pluginapi.ConfigFieldTypeObject, Description: "Extra model family rules: a glob over the model ID (without any provider prefix) mapped to a family name, e.g. {\"my-coder-*\": \"Qwen\"}. Checked before the built-in rules."},
 			},
 		},
@@ -284,7 +289,7 @@ func parseSettings(configYAML []byte) (settings, error) {
 			return settings{}, fmt.Errorf("decode plugin config: %w", errUnmarshal)
 		}
 	}
-	cfg := settings{RetentionDays: defaultRetentionDays, PricingURL: defaultPricingURL}
+	cfg := settings{RetentionDays: defaultRetentionDays, PricingURL: defaultPricingURL, QuotaPollInterval: defaultQuotaPollInterval}
 	if dir := strings.TrimSpace(raw.DataDir); dir != "" {
 		abs, errAbs := filepath.Abs(dir)
 		if errAbs != nil {
@@ -306,6 +311,17 @@ func parseSettings(configYAML []byte) (settings, error) {
 			return settings{}, fmt.Errorf("pricing_url must be an absolute http(s) URL, got %q", value)
 		}
 		cfg.PricingURL = value
+	}
+	switch value := strings.ToLower(strings.TrimSpace(raw.QuotaPollInterval)); value {
+	case "":
+	case "off":
+		cfg.QuotaPollInterval = 0
+	default:
+		interval, errParse := time.ParseDuration(value)
+		if errParse != nil || interval < minQuotaPollInterval {
+			return settings{}, fmt.Errorf("quota_poll_interval must be off or a duration of at least %s, got %q", minQuotaPollInterval, raw.QuotaPollInterval)
+		}
+		cfg.QuotaPollInterval = interval
 	}
 	rules, errRules := parseFamilyRules(raw.ModelFamilies)
 	if errRules != nil {

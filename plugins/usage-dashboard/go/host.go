@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
@@ -87,19 +89,61 @@ func hostAuthList() ([]pluginapi.HostAuthFileEntry, error) {
 	return resp.Files, nil
 }
 
-type hostHTTPRequest struct {
-	Method  string      `json:"method"`
-	URL     string      `json:"url"`
-	Headers http.Header `json:"headers,omitempty"`
+type hostAuthGetResponse struct {
+	JSON json.RawMessage `json:"json"`
 }
+
+// hostAuthFile returns one credential's auth file as stored, secrets
+// included. Callers read the one field they need and drop the rest.
+func hostAuthFile(authIndex string) (json.RawMessage, error) {
+	var resp hostAuthGetResponse
+	if errCall := invokeHost(pluginabi.MethodHostAuthGet, hostAuthIndexRequest{AuthIndex: authIndex}, &resp); errCall != nil {
+		return nil, errCall
+	}
+	return resp.JSON, nil
+}
+
+type hostHTTPRequest struct {
+	OperationID string      `json:"operation_id,omitempty"`
+	Method      string      `json:"method"`
+	URL         string      `json:"url"`
+	Headers     http.Header `json:"headers,omitempty"`
+	Body        []byte      `json:"body,omitempty"`
+}
+
+type hostOperation struct {
+	OperationID string `json:"operation_id,omitempty"`
+}
+
+const hostHTTPTimeout = 20 * time.Second
 
 // hostHTTPGet fetches url through CLIProxyAPI, so its global proxy applies.
 func hostHTTPGet(url string) (pluginapi.HTTPResponse, error) {
+	return hostDo(context.Background(), http.MethodGet, url, http.Header{
+		"Accept":     {"application/json"},
+		"User-Agent": {"whexy-cpa-usage-dashboard/" + pluginVersion},
+	}, nil)
+}
+
+// hostDo sends one request through the host's HTTP client under a host
+// operation, because a blocked host.http.do can only be interrupted by
+// cancelling its operation. It applies only the global proxy, never a
+// credential's own proxy_url.
+func hostDo(ctx context.Context, method, url string, headers http.Header, body []byte) (pluginapi.HTTPResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, hostHTTPTimeout)
+	defer cancel()
+	var opened hostOperation
+	if errOpen := invokeHost(pluginabi.MethodHostHTTPOperationOpen, hostOperation{}, &opened); errOpen != nil {
+		return pluginapi.HTTPResponse{}, errOpen
+	}
+	stop := context.AfterFunc(ctx, func() {
+		_ = invokeHost(pluginabi.MethodHostHTTPCancel, opened, nil)
+	})
+	defer stop()
 	var resp pluginapi.HTTPResponse
-	errCall := invokeHost(pluginabi.MethodHostHTTPDo, hostHTTPRequest{
-		Method:  http.MethodGet,
-		URL:     url,
-		Headers: http.Header{"Accept": {"application/json"}, "User-Agent": {"whexy-cpa-usage-dashboard/" + pluginVersion}},
-	}, &resp)
+	errCall := invokeHost(pluginabi.MethodHostHTTPDo, hostHTTPRequest{OperationID: opened.OperationID, Method: method, URL: url, Headers: headers, Body: body}, &resp)
+	if errCtx := ctx.Err(); errCtx != nil {
+		return pluginapi.HTTPResponse{}, errCtx
+	}
 	return resp, errCall
 }

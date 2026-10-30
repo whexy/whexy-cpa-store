@@ -172,6 +172,7 @@ func startRuntime(cfg settings) error {
 			}
 		})
 		startBackground(prices.run)
+		startBackground(quotaPolls.run)
 	})
 	return nil
 }

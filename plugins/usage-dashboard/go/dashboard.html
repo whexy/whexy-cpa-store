@@ -3517,12 +3517,15 @@
         }
       });
 
-      // Quota: each provider's pool across its accounts, as recorded from the
-      // rate-limit headers of the responses CLIProxyAPI served and as
+      // Quota: each provider's pool across its accounts, as recorded from
+      // the responses CLIProxyAPI served and from usage endpoints, and as
       // projected from the current burn.
       const QUOTA_PROVIDERS = [
         { key: "claude", name: "Claude", color: 2 },
         { key: "codex", name: "Codex", color: 3 },
+        { key: "xai", name: "Grok", color: 4 },
+        { key: "meta", name: "Meta", color: 5 },
+        { key: "opencode-go", name: "OpenCode Go", color: 6 },
       ];
       const QUOTA_MODES = [
         ["remaining", "Remaining"],
@@ -3682,10 +3685,7 @@
         );
         if (!section) {
           title.append(h("span", {}, plural(members.length, "account")));
-          article.append(
-            title,
-            h("p", {}, "No response has reported quota yet."),
-          );
+          article.append(title, h("p", {}, "No quota reading yet."));
           return article;
         }
         title.append(
@@ -3809,7 +3809,7 @@
             "span",
             {
               title:
-                "Read from the rate-limit headers of the responses CLIProxyAPI served.",
+                "Read from the responses CLIProxyAPI served and from each provider's usage endpoint.",
             },
             h("i", { class: "line-key" }),
             "Recorded",
