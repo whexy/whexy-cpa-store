@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Zed</title>
+    <style>
+      :root {
+        --bg: #faf9f5;
+        --card: #ffffff;
+        --subtle: #f0eee8;
+        --text: #2d2a26;
+        --muted: #6d6760;
+        --border: #e3e1db;
+        --accent: #2563eb;
+        --accent-text: #ffffff;
+        --ok: #067647;
+        --bad: #b42318;
+        --warn: #92400e;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --sans:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu,
+          sans-serif;
+      }
+      [data-theme="dark"] {
+        --bg: #151412;
+        --card: #1d1b18;
+        --subtle: #262320;
+        --text: #ece9e4;
+        --muted: #a8a29a;
+        --border: #38342e;
+        --accent: #7aa2f7;
+        --accent-text: #10131a;
+        --ok: #6ee7b7;
+        --bad: #fca5a5;
+        --warn: #fcd34d;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      .wrap {
+        max-width: 1060px;
+        margin: 0 auto;
+        padding: 28px 22px 60px;
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 6px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0;
+        letter-spacing: -0.01em;
+      }
+      .sub {
+        color: var(--muted);
+        margin-bottom: 22px;
+      }
+      nav {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 22px;
+      }
+      nav button {
+        background: none;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        color: var(--muted);
+        padding: 9px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+      nav button.active {
+        color: var(--text);
+        border-bottom-color: var(--accent);
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 18px;
+        margin-bottom: 14px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .grow {
+        flex: 1;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .mono {
+        font-family: var(--mono);
+        font-size: 12.5px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--subtle);
+        font-size: 12px;
+      }
+      .badge.ok {
+        color: var(--ok);
+        border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+      }
+      .badge.bad {
+        color: var(--bad);
+        border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+      }
+      button.primary {
+        background: var(--accent);
+        color: var(--accent-text);
+        border: 0;
+        border-radius: 7px;
+        padding: 8px 14px;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.ghost {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        padding: 7px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      input[type="text"],
+      input[type="password"],
+      textarea {
+        width: 100%;
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        padding: 8px 10px;
+        font: inherit;
+      }
+      textarea {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        min-height: 62px;
+        resize: vertical;
+      }
+      label.field {
+        display: block;
+        margin: 12px 0 5px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      th {
+        color: var(--muted);
+        font-weight: 500;
+        font-size: 12.5px;
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      .switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        cursor: pointer;
+      }
+      .switch input {
+        width: 15px;
+        height: 15px;
+      }
+      .empty {
+        color: var(--muted);
+        padding: 12px 0;
+      }
+      #toast {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        max-width: 420px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 8px;
+        padding: 11px 14px;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+        display: none;
+      }
+      #toast.error {
+        border-left-color: var(--bad);
+      }
+      #toast.ok {
+        border-left-color: var(--ok);
+      }
+      .login-url {
+        word-break: break-all;
+        background: var(--subtle);
+        border-radius: 7px;
+        padding: 10px;
+        margin-top: 8px;
+      }
+      .stats {
+        display: flex;
+        gap: 26px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+      }
+      .stat b {
+        display: block;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .stat span {
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 12.5px;
+        margin-top: 8px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .toolbar input {
+        max-width: 260px;
+      }
+      code {
+        font-family: var(--mono);
+        background: var(--subtle);
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Zed</h1>
+        <span class="badge" id="planBadge" hidden></span>
+      </header>
+      <div class="sub">Zed-hosted models through CLIProxyAPI.</div>
+
+      <nav>
+        <button data-tab="accounts" class="active">Accounts</button>
+        <button data-tab="models">Models</button>
+        <button data-tab="settings">Settings</button>
+      </nav>
+
+      <section id="tab-accounts">
+        <div id="accounts"></div>
+
+        <div class="card">
+          <div class="row"><b class="grow">Add an account</b></div>
+          <div class="hint">
+            Click Start, then approve the sign-in in the browser. If CLIProxyAPI
+            runs on another machine, the final <code>127.0.0.1</code> page will
+            not load there: copy its address bar into the box below.
+          </div>
+          <div class="row" style="margin-top: 12px">
+            <button class="primary" id="startLogin">Start sign-in</button>
+            <button class="ghost" id="openLogin" hidden>Open page</button>
+            <span class="muted mono" id="loginState"></span>
+          </div>
+          <div id="loginURL" class="login-url mono" hidden></div>
+          <label class="field" for="callbackURL">Callback URL</label>
+          <textarea
+            id="callbackURL"
+            placeholder="http://127.0.0.1:41234/?user_id=...&access_token=..."
+          ></textarea>
+          <div class="row" style="margin-top: 10px">
+            <button class="ghost" id="completeLogin" disabled>
+              Finish sign-in
+            </button>
+          </div>
+        </div>
+
+        <details class="card">
+          <summary class="muted">
+            Add an account by importing its auth file
+          </summary>
+          <div class="hint" style="margin-top: 10px">
+            Put a file of type <code>zed</code> in the auth directory, or upload
+            it on the Auth Files page:
+          </div>
+          <pre class="mono" style="overflow: auto">
+{
+  "type": "zed",
+  "user_id": "12345",
+  "access_token": "…",
+  "system_id": "…",
+  "organization_id": "org_…"
+}</pre
+          >
+          <div class="hint">
+            The token is the one Zed receives at sign-in;
+            <code>system_id</code> is optional and derived from the token when
+            absent.
+          </div>
+        </details>
+      </section>
+
+      <section id="tab-models" hidden>
+        <div class="card">
+          <div class="toolbar">
+            <input id="modelSearch" type="text" placeholder="Filter models" />
+            <span class="muted grow" id="modelSummary"></span>
+            <button class="ghost" id="refreshModels">Refresh list</button>
+          </div>
+          <div id="models"></div>
+        </div>
+      </section>
+
+      <section id="tab-settings" hidden>
+        <div class="card">
+          <div class="row">
+            <b class="grow">Plugin settings</b
+            ><button class="primary" id="saveSettings">Save</button>
+          </div>
+          <label class="field" for="modelPrefix">Model prefix</label>
+          <input id="modelPrefix" type="text" placeholder="zed" />
+          <label class="row" style="margin-top: 12px"
+            ><span class="switch"
+              ><input id="disablePrefix" type="checkbox" /> Serve bare model
+              IDs</span
+            ></label
+          >
+          <div class="hint">
+            Bare IDs share routing with every other provider serving the same
+            ID.
+          </div>
+          <label class="field" for="baseURL">Cloud base URL</label>
+          <input id="baseURL" type="text" placeholder="https://cloud.zed.dev" />
+          <label class="field" for="signInURL">Sign-in page</label>
+          <input
+            id="signInURL"
+            type="text"
+            placeholder="https://zed.dev/native_app_signin"
+          />
+          <label class="field" for="userAgent">User-Agent</label>
+          <input
+            id="userAgent"
+            type="text"
+            placeholder="Zed/1.26.2 (linux; x86_64)"
+          />
+          <label class="field" for="dashboardCookie"
+            >Dashboard cookie (optional)</label
+          >
+          <textarea
+            id="dashboardCookie"
+            placeholder="Cookie header from a signed-in dashboard.zed.dev"
+          ></textarea>
+          <div class="hint">
+            Zed exposes plan usage only to the dashboard. With this cookie the
+            Plugin tab shows monthly spend and limit; it is never sent to the
+            LLM gateway.
+          </div>
+        </div>
+      </section>
+    </div>
+    <div id="toast"></div>
+
+    <script>
+      "use strict";
+      const PROVIDER = "zed";
+      const BASE = location.pathname.replace(
+        /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
+        "",
+      );
+      const API = BASE + "/v0/management/" + PROVIDER;
+      const CPA = BASE + "/v8/management";
+      const PLUGIN_CONFIG = "/config/plugins/configs/" + PROVIDER;
+      const SESSION_KEY = "zed.management-key";
+      const REJECTED_KEY = "zed.rejected-mc-auth";
+      const MC_AUTH_KEY = "cli-proxy-auth";
+      const MC_THEME_KEY = "cli-proxy-theme";
+
+      const $ = (id) => document.getElementById(id);
+      const state = {
+        accounts: [],
+        models: [],
+        config: {},
+        search: "",
+        login: null,
+      };
+
+      function storageGet(storage, key) {
+        try {
+          return storage.getItem(key);
+        } catch (_) {
+          return null;
+        }
+      }
+      function storageSet(storage, key, value) {
+        try {
+          storage.setItem(key, value);
+        } catch (_) {}
+      }
+      function storageRemove(storage, key) {
+        try {
+          storage.removeItem(key);
+        } catch (_) {}
+      }
+
+      function managementCenterTheme() {
+        try {
+          if (window.parent !== window) {
+            return (
+              window.parent.document.documentElement.getAttribute(
+                "data-theme",
+              ) || "light"
+            );
+          }
+        } catch (_) {}
+        let saved = "auto";
+        try {
+          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
+          if (persisted && persisted.state && persisted.state.theme)
+            saved = persisted.state.theme;
+        } catch (_) {}
+        if (saved === "auto")
+          return matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "white";
+        return saved;
+      }
+      function applyTheme() {
+        document.documentElement.setAttribute(
+          "data-theme",
+          managementCenterTheme(),
+        );
+      }
+      applyTheme();
+      matchMedia("(prefers-color-scheme: dark)").addEventListener(
+        "change",
+        applyTheme,
+      );
+      try {
+        if (window.parent !== window) {
+          new MutationObserver(applyTheme).observe(
+            window.parent.document.documentElement,
+            {
+              attributes: true,
+              attributeFilter: ["data-theme"],
+            },
+          );
+        }
+      } catch (_) {}
+
+      function deobfuscate(payload) {
+        const prefix = "enc::v1::";
+        if (!payload.startsWith(prefix)) return payload;
+        const binary = atob(payload.slice(prefix.length));
+        const secret = new TextEncoder().encode(
+          "cli-proxy-api-webui::secure-storage|" +
+            location.host +
+            "|" +
+            navigator.userAgent,
+        );
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++)
+          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
+        return new TextDecoder().decode(bytes);
+      }
+
+      function managementCenterKey() {
+        const raw = storageGet(localStorage, MC_AUTH_KEY);
+        if (!raw || storageGet(sessionStorage, REJECTED_KEY) === raw) return "";
+        try {
+          const persisted = JSON.parse(deobfuscate(raw));
+          const key =
+            persisted && persisted.state && persisted.state.managementKey;
+          return typeof key === "string" ? key.trim() : "";
+        } catch (_) {
+          return "";
+        }
+      }
+
+      const auth = { key: "", source: "" };
+      function resolveKey() {
+        const typed = storageGet(sessionStorage, SESSION_KEY);
+        if (typed) return { key: typed, source: "session" };
+        const shared = managementCenterKey();
+        if (shared) return { key: shared, source: "mc" };
+        return { key: "", source: "" };
+      }
+      function forgetKey() {
+        if (auth.source === "session")
+          storageRemove(sessionStorage, SESSION_KEY);
+        if (auth.source === "mc")
+          storageSet(
+            sessionStorage,
+            REJECTED_KEY,
+            storageGet(localStorage, MC_AUTH_KEY) || "",
+          );
+        auth.key = "";
+        auth.source = "";
+      }
+
+      class AuthError extends Error {}
+      async function request(base, method, path, body, missing) {
+        if (!auth.key) throw new AuthError("No management key.");
+        const headers = { Authorization: "Bearer " + auth.key };
+        if (body !== undefined) headers["Content-Type"] = "application/json";
+        let response;
+        try {
+          response = await fetch(base + path, {
+            method,
+            headers,
+            body: body === undefined ? undefined : JSON.stringify(body),
+            cache: "no-store",
+            credentials: "omit",
+          });
+        } catch (err) {
+          throw new Error("CLIProxyAPI did not answer: " + err.message);
+        }
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (_) {}
+        const message =
+          data && typeof data.error === "string" ? data.error : "";
+        if (response.status === 401) {
+          forgetKey();
+          showAuthPrompt("Management key rejected.");
+          throw new AuthError(message || "Management key rejected.");
+        }
+        if (response.status === 404 && missing !== undefined) return missing;
+        if (!response.ok) throw new Error(message || "HTTP " + response.status);
+        return data;
+      }
+      const api = (method, path, body, missing) =>
+        request(API, method, path, body, missing);
+      const cpa = (method, path, body, missing) =>
+        request(CPA, method, path, body, missing);
+
+      function toast(message, kind) {
+        const el = $("toast");
+        el.textContent = message;
+        el.className = kind || "";
+        el.style.display = "block";
+        clearTimeout(toast.timer);
+        toast.timer = setTimeout(() => {
+          el.style.display = "none";
+        }, 5000);
+      }
+
+      function showAuthPrompt(message) {
+        const panel = document.createElement("div");
+        panel.className = "card";
+        panel.innerHTML =
+          '<div class="row"><b class="grow">Management key</b></div><div class="hint"></div>' +
+          '<input type="password" id="typedKey" placeholder="Management key" style="margin-top:10px" />' +
+          '<div class="row" style="margin-top:10px"><button class="primary" id="useKey">Use key</button></div>';
+        panel.querySelector(".hint").textContent =
+          message || "Enter the management key to continue.";
+        const host = $("tab-accounts");
+        host.prepend(panel);
+        $("useKey").onclick = () => {
+          const key = $("typedKey").value.trim();
+          if (!key) return;
+          storageSet(sessionStorage, SESSION_KEY, key);
+          auth.key = key;
+          auth.source = "session";
+          panel.remove();
+          refreshAll();
+        };
+      }
+
+      function badge(text, kind) {
+        const span = document.createElement("span");
+        span.className = "badge " + (kind || "");
+        span.textContent = text;
+        return span;
+      }
+
+      function renderAccounts() {
+        const host = $("accounts");
+        host.textContent = "";
+        if (!state.accounts.length) {
+          host.innerHTML =
+            '<div class="card empty">No Zed account yet. Add one below, or upload an auth file.</div>';
+          $("planBadge").hidden = true;
+          return;
+        }
+        const account = state.accounts[0];
+        if (account.plan_label) {
+          $("planBadge").hidden = false;
+          $("planBadge").textContent = account.plan_label;
+        }
+        for (const entry of state.accounts) {
+          const card = document.createElement("div");
+          card.className = "card";
+          const row = document.createElement("div");
+          row.className = "row";
+          const title = document.createElement("b");
+          title.className = "grow";
+          title.textContent = entry.label || entry.username || entry.file_name;
+          row.appendChild(title);
+          row.appendChild(badge(entry.plan_label || entry.plan || "Zed", "ok"));
+          row.appendChild(
+            badge(
+              entry.disabled ? "disabled" : "active",
+              entry.disabled ? "bad" : "ok",
+            ),
+          );
+          card.appendChild(row);
+          const meta = document.createElement("div");
+          meta.className = "muted mono";
+          meta.style.marginTop = "6px";
+          meta.textContent = [
+            entry.username ? "@" + entry.username : "",
+            entry.user_id ? "id " + entry.user_id : "",
+            entry.file_name,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          card.appendChild(meta);
+          const actions = document.createElement("div");
+          actions.className = "row";
+          actions.style.marginTop = "12px";
+          const toggleLabel = document.createElement("label");
+          toggleLabel.className = "switch";
+          const toggle = document.createElement("input");
+          toggle.type = "checkbox";
+          toggle.checked = !entry.disabled;
+          toggle.onchange = async () => {
+            toggle.disabled = true;
+            try {
+              await api("PATCH", "/accounts", {
+                id: entry.auth_index,
+                disabled: !toggle.checked,
+              });
+              toast(
+                "Account " + (toggle.checked ? "enabled" : "disabled"),
+                "ok",
+              );
+              await loadAccounts();
+            } catch (err) {
+              toggle.checked = !toggle.checked;
+              toast(err.message, "error");
+            }
+            toggle.disabled = false;
+          };
+          toggleLabel.appendChild(toggle);
+          toggleLabel.appendChild(document.createTextNode("Enabled"));
+          actions.appendChild(toggleLabel);
+          card.appendChild(actions);
+          host.appendChild(card);
+        }
+      }
+
+      async function loadAccounts() {
+        const data = await api("GET", "/accounts");
+        state.accounts = (data && data.accounts) || [];
+        renderAccounts();
+      }
+
+      function renderModels() {
+        const host = $("models");
+        host.textContent = "";
+        const query = state.search.trim().toLowerCase();
+        const models = state.models.filter(
+          (model) =>
+            !query ||
+            model.id.toLowerCase().includes(query) ||
+            model.display_name.toLowerCase().includes(query),
+        );
+        $("modelSummary").textContent =
+          models.length +
+          " of " +
+          state.models.length +
+          " models" +
+          (state.prefix ? " · prefix " + state.prefix + "/" : " · bare IDs");
+        if (!models.length) {
+          host.innerHTML =
+            '<div class="empty">No models. Add an account or refresh the list.</div>';
+          return;
+        }
+        const table = document.createElement("table");
+        table.innerHTML =
+          "<thead><tr><th>Model</th><th>Provider</th><th>Context</th><th>Output</th><th>Served</th></tr></thead>";
+        const body = document.createElement("tbody");
+        for (const model of models) {
+          const tr = document.createElement("tr");
+          const name = document.createElement("td");
+          const id = document.createElement("div");
+          id.className = "mono";
+          id.textContent = model.id;
+          const display = document.createElement("div");
+          display.className = "muted";
+          display.textContent =
+            model.display_name + (model.thinking ? " · reasoning" : "");
+          name.appendChild(id);
+          name.appendChild(display);
+          tr.appendChild(name);
+          const provider = document.createElement("td");
+          provider.textContent = model.provider;
+          tr.appendChild(provider);
+          const context = document.createElement("td");
+          context.textContent = model.context_length
+            ? Math.round(model.context_length / 1000) + "k"
+            : "—";
+          tr.appendChild(context);
+          const output = document.createElement("td");
+          output.textContent = model.output_tokens
+            ? Math.round(model.output_tokens / 1000) + "k"
+            : "—";
+          tr.appendChild(output);
+          const served = document.createElement("td");
+          const label = document.createElement("label");
+          label.className = "switch";
+          const toggle = document.createElement("input");
+          toggle.type = "checkbox";
+          toggle.checked = !model.disabled;
+          toggle.onchange = () => toggleModel(model, toggle);
+          label.appendChild(toggle);
+          served.appendChild(label);
+          tr.appendChild(served);
+          body.appendChild(tr);
+        }
+        table.appendChild(body);
+        host.appendChild(table);
+      }
+
+      function configList(key) {
+        const value = state.config && state.config[key];
+        return Array.isArray(value)
+          ? value
+              .filter((item) => typeof item === "string" && item.trim())
+              .map((item) => item.trim())
+          : [];
+      }
+
+      async function saveConfig(patch) {
+        await cpa("PATCH", PLUGIN_CONFIG, patch);
+        state.config = Object.assign({}, state.config, patch);
+        // The plugin re-registers its models after a config save.
+        setTimeout(() => loadModels().catch(() => {}), 800);
+      }
+
+      async function toggleModel(model, input) {
+        input.disabled = true;
+        const disabled = configList("disabled_models").filter(
+          (id) => id.toLowerCase() !== model.upstream_id.toLowerCase(),
+        );
+        if (!input.checked) disabled.push(model.upstream_id);
+        try {
+          await saveConfig({ disabled_models: disabled });
+          model.disabled = !input.checked;
+          toast(model.id + (input.checked ? " enabled" : " disabled"), "ok");
+          renderModels();
+        } catch (err) {
+          input.checked = !input.checked;
+          toast(err.message, "error");
+        }
+        input.disabled = false;
+      }
+
+      async function loadModels() {
+        const data = await api("GET", "/models");
+        state.models = (data && data.models) || [];
+        state.prefix = (data && data.prefix) || "";
+        if (data && data.error) toast(data.error, "error");
+        state.config = (await cpa("GET", PLUGIN_CONFIG, undefined, {})) || {};
+        renderModels();
+      }
+
+      function fillSettings() {
+        const cfg = state.config || {};
+        $("modelPrefix").value = cfg.model_prefix || "";
+        $("disablePrefix").checked = Boolean(cfg.disable_prefix);
+        $("baseURL").value = cfg.base_url || "";
+        $("signInURL").value = cfg.sign_in_url || "";
+        $("userAgent").value = cfg.user_agent || "";
+        $("dashboardCookie").value = cfg.dashboard_cookie || "";
+      }
+
+      async function saveSettings() {
+        const patch = {
+          model_prefix: $("modelPrefix").value.trim(),
+          disable_prefix: $("disablePrefix").checked,
+          base_url: $("baseURL").value.trim(),
+          sign_in_url: $("signInURL").value.trim(),
+          user_agent: $("userAgent").value.trim(),
+          dashboard_cookie: $("dashboardCookie").value.trim(),
+        };
+        try {
+          await saveConfig(patch);
+          toast("Settings saved", "ok");
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      }
+
+      function renderLogin() {
+        const flow = state.login;
+        $("loginURL").hidden = !flow;
+        $("openLogin").hidden = !flow;
+        $("loginState").textContent = flow
+          ? "state " + flow.state.slice(0, 10) + "…"
+          : "";
+        if (flow) {
+          $("loginURL").textContent = flow.url;
+          $("openLogin").onclick = () =>
+            window.open(flow.url, "_blank", "noopener");
+        }
+        $("completeLogin").disabled = !flow;
+      }
+
+      async function startLogin() {
+        $("startLogin").disabled = true;
+        try {
+          const flow = await api("POST", "/login/start", {});
+          state.login = flow;
+          renderLogin();
+          window.open(flow.url, "_blank", "noopener");
+          toast(
+            "Approve the sign-in. If the browser cannot reach this host, paste the callback URL here.",
+            "ok",
+          );
+          pollLogin();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+        $("startLogin").disabled = false;
+      }
+
+      function stopLoginPoll() {
+        if (state.loginTimer) clearInterval(state.loginTimer);
+        state.loginTimer = null;
+      }
+
+      // pollLogin finishes a sign-in whose callback reached the listener on
+      // this host; a remote browser's failed redirect is finished by paste.
+      function pollLogin() {
+        stopLoginPoll();
+        if (!state.login) return;
+        state.loginTimer = setInterval(async () => {
+          if (!state.login) {
+            stopLoginPoll();
+            return;
+          }
+          try {
+            const result = await api("POST", "/login/finish", {
+              state: state.login.state,
+            });
+            if (result.status === "success") {
+              stopLoginPoll();
+              state.login = null;
+              renderLogin();
+              toast("Signed in as " + (result.saved || "account"), "ok");
+              await loadAccounts();
+              await loadModels();
+            } else if (result.status === "error") {
+              stopLoginPoll();
+              state.login = null;
+              renderLogin();
+              toast(result.message || "Sign-in failed", "error");
+            }
+          } catch (err) {
+            stopLoginPoll();
+            toast(err.message, "error");
+          }
+        }, 2000);
+      }
+
+      async function completeLogin() {
+        if (!state.login) return;
+        const callback = $("callbackURL").value.trim();
+        if (!callback) {
+          toast("Paste the callback URL first.", "error");
+          return;
+        }
+        $("completeLogin").disabled = true;
+        try {
+          const result = await api("POST", "/login/complete", {
+            state: state.login.state,
+            callback_url: callback,
+          });
+          toast(result.message || "Signed in", "ok");
+          stopLoginPoll();
+          state.login = null;
+          $("callbackURL").value = "";
+          renderLogin();
+          await loadAccounts();
+          await loadModels();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+        $("completeLogin").disabled = false;
+      }
+
+      function switchTab(name) {
+        for (const button of document.querySelectorAll("nav button")) {
+          button.classList.toggle("active", button.dataset.tab === name);
+        }
+        for (const id of ["accounts", "models", "settings"]) {
+          $("tab-" + id).hidden = id !== name;
+        }
+        if (name === "models" && !state.models.length)
+          loadModels().catch((err) => toast(err.message, "error"));
+        if (name === "settings") fillSettings();
+      }
+
+      async function refreshAll() {
+        try {
+          await loadAccounts();
+          if (!state.models.length) await loadModels();
+        } catch (err) {
+          if (err instanceof AuthError) return;
+          toast(err.message, "error");
+        }
+      }
+
+      for (const button of document.querySelectorAll("nav button")) {
+        button.onclick = () => switchTab(button.dataset.tab);
+      }
+      $("startLogin").onclick = startLogin;
+      $("completeLogin").onclick = completeLogin;
+      $("refreshModels").onclick = () =>
+        loadModels().catch((err) => toast(err.message, "error"));
+      $("modelSearch").oninput = (event) => {
+        state.search = event.target.value;
+        renderModels();
+      };
+      $("saveSettings").onclick = saveSettings;
+
+      const resolved = resolveKey();
+      auth.key = resolved.key;
+      auth.source = resolved.source;
+      if (!auth.key) {
+        showAuthPrompt(
+          "Management Center did not expose its key; paste it here.",
+        );
+      } else {
+        refreshAll();
+      }
+    </script>
+  </body>
+</html>

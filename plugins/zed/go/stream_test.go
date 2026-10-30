@@ -1,0 +1,129 @@
+package main
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
+)
+
+func claudeEvents() [][]byte {
+	return [][]byte{
+		[]byte(`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-5-5","content":[],"usage":{"input_tokens":10,"output_tokens":1}}}`),
+		[]byte(`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`),
+		[]byte(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"pong"}}`),
+		[]byte(`{"type":"content_block_stop","index":0}`),
+		[]byte(`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`),
+		[]byte(`{"type":"message_stop"}`),
+	}
+}
+
+func TestAssembleClaude(t *testing.T) {
+	out, errAssemble := assembleClaude(claudeEvents())
+	if errAssemble != nil {
+		t.Fatal(errAssemble)
+	}
+	var message map[string]any
+	if errUnmarshal := json.Unmarshal(out, &message); errUnmarshal != nil {
+		t.Fatal(errUnmarshal)
+	}
+	if message["type"] != "message" || message["stop_reason"] != "end_turn" {
+		t.Fatalf("message: %s", out)
+	}
+	content := message["content"].([]any)
+	if len(content) != 1 || content[0].(map[string]any)["text"] != "pong" {
+		t.Fatalf("content: %v", content)
+	}
+}
+
+func TestAssembleClaudeToolUse(t *testing.T) {
+	events := [][]byte{
+		[]byte(`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[]}}`),
+		[]byte(`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"Bash","input":{}}}`),
+		[]byte(`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"command\":"}}`),
+		[]byte(`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"ls\"}"}}`),
+		[]byte(`{"type":"content_block_stop","index":0}`),
+		[]byte(`{"type":"message_delta","delta":{"stop_reason":"tool_use"}}`),
+	}
+	out, errAssemble := assembleClaude(events)
+	if errAssemble != nil {
+		t.Fatal(errAssemble)
+	}
+	var message map[string]any
+	_ = json.Unmarshal(out, &message)
+	block := message["content"].([]any)[0].(map[string]any)
+	if block["type"] != "tool_use" || block["input"].(map[string]any)["command"] != "ls" {
+		t.Fatalf("tool block: %v", block)
+	}
+}
+
+func TestAssembleResponses(t *testing.T) {
+	events := [][]byte{
+		[]byte(`{"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}`),
+		[]byte(`{"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[]}}`),
+	}
+	out, errAssemble := assembleResponses(events)
+	if errAssemble != nil {
+		t.Fatal(errAssemble)
+	}
+	if !strings.Contains(string(out), `"status":"completed"`) {
+		t.Fatalf("response: %s", out)
+	}
+}
+
+func TestSSEFrame(t *testing.T) {
+	frame := sseFrame([]byte(`{"type":"message_stop"}`))
+	if string(frame) != "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n" {
+		t.Fatalf("frame = %q", frame)
+	}
+	gemini := sseFrame([]byte(`{"candidates":[]}`))
+	if string(gemini) != "data: {\"candidates\":[]}\n\n" {
+		t.Fatalf("gemini frame = %q", gemini)
+	}
+}
+
+func TestLineSplitter(t *testing.T) {
+	var splitter lineSplitter
+	lines := splitter.push([]byte("{\"a\":1}\n{\"b\":"))
+	if len(lines) != 1 || string(lines[0]) != `{"a":1}` {
+		t.Fatalf("lines = %q", lines)
+	}
+	lines = splitter.push([]byte("2}\n"))
+	if len(lines) != 1 || string(lines[0]) != `{"b":2}` {
+		t.Fatalf("lines = %q", lines)
+	}
+	if rest := splitter.flush(); len(rest) != 0 {
+		t.Fatalf("flush = %q", rest)
+	}
+}
+
+func TestStreamConverterPassthroughClaude(t *testing.T) {
+	plan, errPlan := planRoute(sdktranslator.FormatClaude, sdktranslator.FormatClaude, sdktranslator.FormatClaude)
+	if errPlan != nil {
+		t.Fatal(errPlan)
+	}
+	converter := newStreamConverter(nil, plan, "claude-sonnet-5-5", nil, nil)
+	chunks, errConvert := converter.convert([]byte(`{"type":"message_start","message":{}}`))
+	if errConvert != nil {
+		t.Fatal(errConvert)
+	}
+	if len(chunks) != 1 || !strings.HasPrefix(string(chunks[0]), "event: message_start\n") {
+		t.Fatalf("chunks = %q", chunks)
+	}
+}
+
+func TestStreamConverterPassthroughGeminiIsBareJSON(t *testing.T) {
+	plan, errPlan := planRoute(sdktranslator.FormatGemini, sdktranslator.FormatGemini, sdktranslator.FormatGemini)
+	if errPlan != nil {
+		t.Fatal(errPlan)
+	}
+	converter := newStreamConverter(nil, plan, "gemini-3-flash", nil, nil)
+	chunks, errConvert := converter.convert([]byte(`{"candidates":[{"content":{"parts":[{"text":"hi"}]}}]}`))
+	if errConvert != nil {
+		t.Fatal(errConvert)
+	}
+	if len(chunks) != 1 || strings.HasPrefix(string(chunks[0]), "data:") {
+		t.Fatalf("gemini chunk must be bare JSON: %q", chunks)
+	}
+}

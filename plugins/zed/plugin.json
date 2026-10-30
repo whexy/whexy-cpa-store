@@ -1,0 +1,11 @@
+{
+  "id": "zed",
+  "name": "Zed",
+  "description": "Serves a Zed account's hosted models through CLIProxyAPI. Claude, GPT and Gemini models come from the live Zed catalog with their own prefix, each in the protocol the client speaks, through a Zed sign-in from the OAuth Login page or an imported auth file, with a Management Center page that manages accounts and models, and plan and spend in the Plugin tab when a dashboard cookie is configured.",
+  "author": "Whexy",
+  "repository": "https://github.com/whexy/whexy-cpa-store",
+  "homepage": "https://github.com/whexy/whexy-cpa-store/tree/main/plugins/zed",
+  "logo": "https://raw.githubusercontent.com/whexy/whexy-cpa-store/main/plugins/zed/logo.svg",
+  "license": "MIT",
+  "tags": ["zed", "provider", "executor", "quota"]
+}
