@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
+	"github.com/tidwall/gjson"
 )
 
 func claudeEvents() [][]byte {
@@ -174,6 +175,50 @@ func TestAssembleClaudeRejectsErrorAndMissingStop(t *testing.T) {
 	}
 	if _, errAssemble := assembleClaude(partial); errAssemble == nil {
 		t.Fatal("a message without message_stop must fail")
+	}
+}
+
+func TestAssembleClaudeRejectsIncompleteToolInput(t *testing.T) {
+	events := [][]byte{
+		[]byte(`{"type":"message_start","message":{"id":"m","type":"message","role":"assistant","content":[]}}`),
+		[]byte(`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t","name":"Bash","input":{}}}`),
+		[]byte(`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"command\":"}}`),
+		[]byte(`{"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":5}}`),
+		[]byte(`{"type":"message_stop"}`),
+	}
+	if out, errAssemble := assembleClaude(events); errAssemble == nil {
+		t.Fatalf("cut-off tool input must fail instead of becoming {}: %s", out)
+	}
+}
+
+func TestAssembleGeminiKeepsResponseIdentity(t *testing.T) {
+	events := [][]byte{
+		[]byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]}}],"responseId":"gemini_1","modelVersion":"gemini-3-flash"}`),
+		[]byte(`{"candidates":[{"content":{"role":"model","parts":[]},"finishReason":"STOP"}],"responseId":"gemini_1","modelVersion":"gemini-3-flash"}`),
+	}
+	out, errAssemble := assembleGemini(events)
+	if errAssemble != nil {
+		t.Fatal(errAssemble)
+	}
+	if gjson.GetBytes(out, "responseId").String() != "gemini_1" || gjson.GetBytes(out, "modelVersion").String() != "gemini-3-flash" {
+		t.Fatalf("response identity dropped: %s", out)
+	}
+}
+
+func TestChatRequiresFinishReason(t *testing.T) {
+	events := [][]byte{
+		[]byte(`{"choices":[{"index":0,"delta":{"content":"hi"}}]}`),
+		[]byte(`[DONE]`),
+	}
+	if out, errAssemble := assembleChat(events); errAssemble == nil {
+		t.Fatalf("a Chat response without finish_reason must fail: %s", out)
+	}
+	converter := newStreamConverter(t.Context(), routePlan{Source: sdktranslator.FormatOpenAI, Response: sdktranslator.FormatOpenAI, Upstream: sdktranslator.FormatOpenAI}, "grok", nil, nil)
+	if _, errConvert := converter.convert(events[0]); errConvert != nil {
+		t.Fatal(errConvert)
+	}
+	if _, errFinish := converter.finish(); errFinish == nil {
+		t.Fatal("a Chat stream that ends without finish_reason must fail")
 	}
 }
 

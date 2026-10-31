@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
@@ -135,15 +136,6 @@ type streamConverter struct {
 	request  []byte
 	param    any
 	done     bool
-	usage    tokenUsage
-}
-
-type tokenUsage struct {
-	seen      bool
-	input     int64
-	cached    int64
-	output    int64
-	reasoning int64
 }
 
 func newStreamConverter(ctx context.Context, plan routePlan, model string, original, request []byte) *streamConverter {
@@ -192,14 +184,7 @@ func (c *streamConverter) observe(event []byte) error {
 	event = bytes.TrimSpace(event)
 	switch c.plan.Upstream {
 	case sdktranslator.FormatClaude:
-		root := gjson.ParseBytes(event)
-		if usage := root.Get("message.usage"); usage.IsObject() {
-			c.observeClaudeUsage(usage)
-		}
-		if usage := root.Get("usage"); usage.IsObject() {
-			c.observeClaudeUsage(usage)
-		}
-		switch root.Get("type").String() {
+		switch gjson.GetBytes(event, "type").String() {
 		case "message_stop":
 			c.done = true
 		case "error":
@@ -212,9 +197,6 @@ func (c *streamConverter) observe(event []byte) error {
 		switch gjson.GetBytes(event, "type").String() {
 		case "response.completed", "response.incomplete":
 			c.done = true
-			if usage := gjson.GetBytes(event, "response.usage"); usage.IsObject() {
-				c.observeResponsesUsage(usage)
-			}
 		case "response.failed", "error":
 			c.done = true
 			if c.plan.Response != sdktranslator.FormatOpenAIResponse {
@@ -222,18 +204,13 @@ func (c *streamConverter) observe(event []byte) error {
 			}
 		}
 	case sdktranslator.FormatGemini:
-		root := gjson.ParseBytes(event)
-		c.observeGeminiUsage(root.Get("usageMetadata"))
-		if len(root.Get("candidates").Array()) > 0 {
-			for _, candidate := range root.Get("candidates").Array() {
-				if candidate.Get("finishReason").Exists() {
-					c.done = true
-				}
+		for _, candidate := range gjson.GetBytes(event, "candidates").Array() {
+			if candidate.Get("finishReason").Exists() {
+				c.done = true
 			}
 		}
 	case sdktranslator.FormatOpenAI:
 		if bytes.Equal(event, []byte("[DONE]")) {
-			c.done = true
 			return nil
 		}
 		root := gjson.ParseBytes(event)
@@ -245,56 +222,14 @@ func (c *streamConverter) observe(event []byte) error {
 				c.done = true
 			}
 		}
-		if usage := root.Get("usage"); usage.IsObject() {
-			c.usage.seen = true
-			c.usage.input = usage.Get("prompt_tokens").Int()
-			c.usage.cached = usage.Get("prompt_tokens_details.cached_tokens").Int()
-			c.usage.output = usage.Get("completion_tokens").Int()
-			c.usage.reasoning = usage.Get("completion_tokens_details.reasoning_tokens").Int()
-		}
 	}
 	return nil
-}
-
-func (c *streamConverter) observeClaudeUsage(usage gjson.Result) {
-	if usage.Get("input_tokens").Exists() {
-		c.usage.seen = true
-		c.usage.cached = usage.Get("cache_read_input_tokens").Int()
-		c.usage.input = usage.Get("input_tokens").Int() + usage.Get("cache_read_input_tokens").Int() + usage.Get("cache_creation_input_tokens").Int()
-	}
-	if usage.Get("output_tokens").Exists() {
-		c.usage.seen = true
-		c.usage.output = usage.Get("output_tokens").Int()
-		c.usage.reasoning = usage.Get("output_tokens_details.thinking_tokens").Int()
-	}
-}
-
-func (c *streamConverter) observeResponsesUsage(usage gjson.Result) {
-	c.usage.seen = true
-	c.usage.input = usage.Get("input_tokens").Int()
-	c.usage.cached = usage.Get("input_tokens_details.cached_tokens").Int()
-	c.usage.output = usage.Get("output_tokens").Int()
-	c.usage.reasoning = usage.Get("output_tokens_details.reasoning_tokens").Int()
-}
-
-func (c *streamConverter) observeGeminiUsage(usage gjson.Result) {
-	if !usage.IsObject() {
-		return
-	}
-	c.usage.seen = true
-	c.usage.input = usage.Get("promptTokenCount").Int()
-	c.usage.cached = usage.Get("cachedContentTokenCount").Int()
-	c.usage.output = usage.Get("candidatesTokenCount").Int()
-	c.usage.reasoning = usage.Get("thoughtsTokenCount").Int()
 }
 
 // finish is called when the body or stream_ended ends the response.
 func (c *streamConverter) finish() ([][]byte, error) {
 	if !c.done {
-		if c.plan.Upstream != sdktranslator.FormatOpenAI {
-			return nil, errors.New("Zed closed the stream before the response completed")
-		}
-		c.done = true
+		return nil, errors.New("Zed closed the stream before the response completed")
 	}
 	if c.plan.ResponseFrom == "" {
 		return nil, nil
@@ -421,7 +356,9 @@ func assembleClaude(events [][]byte) ([]byte, error) {
 			delete(block, "_partial")
 			var input any = map[string]any{}
 			if partial != "" {
-				_ = json.Unmarshal([]byte(partial), &input)
+				if errUnmarshal := json.Unmarshal([]byte(partial), &input); errUnmarshal != nil {
+					return nil, fmt.Errorf("Zed sent incomplete input for tool %q", stringValue(block["name"]))
+				}
 			}
 			block["input"] = input
 		}
@@ -463,6 +400,11 @@ func assembleGemini(events [][]byte) ([]byte, error) {
 		if root.Get("error").Exists() {
 			return nil, streamFailure(event)
 		}
+		for _, field := range []string{"responseId", "modelVersion"} {
+			if value := root.Get(field).String(); value != "" {
+				merged[field] = value
+			}
+		}
 		for _, candidate := range root.Get("candidates").Array() {
 			for _, part := range candidate.Get("content.parts").Array() {
 				parts = append(parts, part.Value())
@@ -502,10 +444,8 @@ func assembleChat(events [][]byte) ([]byte, error) {
 	choices := map[int64]*choiceState{}
 	var order []int64
 	var usage map[string]any
-	sawDone := false
 	for _, event := range events {
 		if bytes.Equal(bytes.TrimSpace(event), []byte("[DONE]")) {
-			sawDone = true
 			continue
 		}
 		root := gjson.ParseBytes(event)
@@ -548,11 +488,9 @@ func assembleChat(events [][]byte) ([]byte, error) {
 			}
 		}
 	}
-	if !sawDone {
-		for _, index := range order {
-			if choices[index].finish == "" {
-				return nil, errors.New("Zed closed the Chat Completions response before a finish_reason")
-			}
+	for _, index := range order {
+		if choices[index].finish == "" {
+			return nil, errors.New("Zed closed the Chat Completions response before a finish_reason")
 		}
 	}
 	if len(order) == 0 {
