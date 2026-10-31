@@ -911,13 +911,14 @@
           return;
         }
         $("completeLogin").disabled = true;
+        // The poll would otherwise race this request to save the account.
+        stopLoginPoll();
         try {
           const result = await api("POST", "/login/complete", {
             state: state.login.state,
             callback_url: callback,
           });
           toast(result.message || "Signed in", "ok");
-          stopLoginPoll();
           state.login = null;
           $("callbackURL").value = "";
           renderLogin();
@@ -925,6 +926,7 @@
           await loadModels();
         } catch (err) {
           toast(err.message, "error");
+          pollLogin();
         }
         $("completeLogin").disabled = false;
       }

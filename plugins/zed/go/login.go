@@ -51,8 +51,9 @@ type loginFlow struct {
 	systemID  string
 	expiresAt time.Time
 	result    *signInResult
-	failure   string
-	finished  time.Time
+	// signedIn is the finished sign-in, kept for finishedLoginGrace so a
+	// repeated poll, or a retry after a failed save, gets the same account.
+	signedIn *pluginapi.AuthLoginPollResponse
 }
 
 // close stops the callback listener and any connection it already accepted.
@@ -128,13 +129,19 @@ func (f *loginFlows) start(cfg settings) (pluginapi.AuthLoginStartResponse, erro
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Location", "https://zed.dev/native_app_signin_succeeded")
-		w.WriteHeader(http.StatusFound)
 		result, errCallback := decryptCallback(flow.key, query)
 		if errCallback != nil {
 			// Keep waiting: a bad callback must not poison the legitimate one.
 			http.Error(w, "invalid Zed callback", http.StatusBadRequest)
 			return
+		}
+		// The redirect must reach the browser before anything closes this
+		// connection, including a poll that sees the result.
+		w.Header().Set("Location", "https://zed.dev/native_app_signin_succeeded")
+		w.Header().Set("Content-Length", "0")
+		w.WriteHeader(http.StatusFound)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
 		}
 		flow.mu.Lock()
 		if flow.result == nil {
@@ -233,11 +240,10 @@ func (f *loginFlows) poll(ctx context.Context, h host, cfg settings, state strin
 		return pluginapi.AuthLoginPollResponse{Status: pluginapi.AuthLoginStatusError, Message: "the Zed sign-in expired or was never started"}
 	}
 	flow.mu.Lock()
-	result := flow.result
-	failure := flow.failure
+	result, signedIn := flow.result, flow.signedIn
 	flow.mu.Unlock()
-	if failure != "" {
-		return pluginapi.AuthLoginPollResponse{Status: pluginapi.AuthLoginStatusError, Message: "Zed sign-in failed: " + failure}
+	if signedIn != nil {
+		return *signedIn
 	}
 	if result == nil {
 		if f.now().After(flow.expiresAt.Add(finishedLoginGrace)) {
@@ -269,22 +275,21 @@ func (f *loginFlows) poll(ctx context.Context, h host, cfg settings, state strin
 		return pluginapi.AuthLoginPollResponse{Status: pluginapi.AuthLoginStatusError, Message: "store the Zed login: " + errMarshal.Error()}
 	}
 	flow.close()
-	f.finish(state, flow)
-	return pluginapi.AuthLoginPollResponse{Status: pluginapi.AuthLoginStatusSuccess, Auth: file.authData(fileNameFor("", file), storage)}
+	resp := pluginapi.AuthLoginPollResponse{Status: pluginapi.AuthLoginStatusSuccess, Auth: file.authData(fileNameFor("", file), storage)}
+	f.finish(state, flow, resp)
+	return resp
 }
 
-func (f *loginFlows) finish(state string, flow *loginFlow) {
+// finish keeps the signed-in account for finishedLoginGrace, then drops the
+// flow.
+func (f *loginFlows) finish(state string, flow *loginFlow, resp pluginapi.AuthLoginPollResponse) {
 	flow.mu.Lock()
-	flow.finished = f.now()
+	flow.signedIn = &resp
 	flow.mu.Unlock()
-	f.mu.Lock()
-	if f.flows[state] == flow {
-		delete(f.flows, state)
-	}
-	f.mu.Unlock()
+	time.AfterFunc(finishedLoginGrace, func() { f.expire(state, flow) })
 }
 
-// expire drops one flow if it is still pending and stops its listener.
+// expire drops one flow and stops its listener.
 func (f *loginFlows) expire(state string, flow *loginFlow) {
 	flow.close()
 	f.mu.Lock()

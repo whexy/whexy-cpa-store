@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -49,7 +50,8 @@ func TestDecryptCallbackRejectsMissingToken(t *testing.T) {
 	}
 }
 
-func TestLoginFlowFromCallback(t *testing.T) {
+func installAccountHost(t *testing.T) {
+	t.Helper()
 	fake := installFakeHost(t)
 	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
 		return map[string]any{"operation_id": "op"}, nil
@@ -67,12 +69,12 @@ func TestLoginFlowFromCallback(t *testing.T) {
 		}
 		return pluginapi.HTTPResponse{StatusCode: 404}, nil
 	})
-	useSettings(t, defaultSettings())
-	flow, errStart := logins.start(currentSettings())
-	if errStart != nil {
-		t.Fatal(errStart)
-	}
-	parsed, errParse := url.Parse(flow.URL)
+}
+
+// encryptedCallback is the URL Zed's sign-in page redirects the browser to.
+func encryptedCallback(t *testing.T, signInURL, token string) string {
+	t.Helper()
+	parsed, errParse := url.Parse(signInURL)
 	if errParse != nil {
 		t.Fatal(errParse)
 	}
@@ -84,13 +86,65 @@ func TestLoginFlowFromCallback(t *testing.T) {
 	if errKey != nil {
 		t.Fatal(errKey)
 	}
-	ciphertext, errEncrypt := rsa.EncryptOAEP(sha256.New(), rand.Reader, publicKey, []byte("token-value"), nil)
+	ciphertext, errEncrypt := rsa.EncryptOAEP(sha256.New(), rand.Reader, publicKey, []byte(token), nil)
 	if errEncrypt != nil {
 		t.Fatal(errEncrypt)
 	}
-	callback := "http://127.0.0.1:" + parsed.Query().Get("native_app_port") +
+	return "http://127.0.0.1:" + parsed.Query().Get("native_app_port") +
 		"/?user_id=42&access_token=" + base64.RawURLEncoding.EncodeToString(ciphertext)
-	if errComplete := logins.completeFromCallback(flow.State, callback); errComplete != nil {
+}
+
+func TestLoginListenerRedirectsOnlyAValidCallback(t *testing.T) {
+	installAccountHost(t)
+	useSettings(t, defaultSettings())
+	flow, errStart := logins.start(currentSettings())
+	if errStart != nil {
+		t.Fatal(errStart)
+	}
+	t.Cleanup(logins.closeAll)
+	callback := encryptedCallback(t, flow.URL, "token-value")
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+	forged, _ := url.Parse(callback)
+	query := forged.Query()
+	query.Set("access_token", base64.RawURLEncoding.EncodeToString([]byte("forged")))
+	forged.RawQuery = query.Encode()
+	resp, errGet := client.Get(forged.String())
+	if errGet != nil {
+		t.Fatal(errGet)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || resp.Header.Get("Location") != "" {
+		t.Fatalf("forged callback answered %d %q, want a 400 without the success redirect", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if pending := logins.poll(t.Context(), newHost(""), currentSettings(), flow.State); pending.Status != pluginapi.AuthLoginStatusPending {
+		t.Fatalf("a forged callback ended the sign-in: %+v", pending)
+	}
+
+	resp, errGet = client.Get(callback)
+	if errGet != nil {
+		t.Fatalf("the success redirect must reach the browser: %v", errGet)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusFound || !strings.Contains(resp.Header.Get("Location"), "native_app_signin_succeeded") {
+		t.Fatalf("valid callback answered %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		// A repeated poll, as after a failed save, gets the same account.
+		if done := logins.poll(t.Context(), newHost(""), currentSettings(), flow.State); done.Status != pluginapi.AuthLoginStatusSuccess {
+			t.Fatalf("poll %d: %+v", attempt, done)
+		}
+	}
+}
+
+func TestLoginFlowFromCallback(t *testing.T) {
+	installAccountHost(t)
+	useSettings(t, defaultSettings())
+	flow, errStart := logins.start(currentSettings())
+	if errStart != nil {
+		t.Fatal(errStart)
+	}
+	if errComplete := logins.completeFromCallback(flow.State, encryptedCallback(t, flow.URL, "token-value")); errComplete != nil {
 		t.Fatal(errComplete)
 	}
 	resp := logins.poll(t.Context(), newHost(""), currentSettings(), flow.State)
