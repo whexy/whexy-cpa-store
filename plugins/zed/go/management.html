@@ -931,6 +931,21 @@
         $("completeLogin").disabled = false;
       }
 
+      // refreshModels reads every account's catalog again, which also makes
+      // CLIProxyAPI register the new model lists.
+      async function refreshModels() {
+        $("refreshModels").disabled = true;
+        try {
+          const result = await api("POST", "/models/refresh", {});
+          if (result && result.errors && result.errors.length)
+            toast(result.errors.join("; "), "error");
+          await loadModels();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+        $("refreshModels").disabled = false;
+      }
+
       function switchTab(name) {
         for (const button of document.querySelectorAll("nav button")) {
           button.classList.toggle("active", button.dataset.tab === name);
@@ -958,8 +973,7 @@
       }
       $("startLogin").onclick = startLogin;
       $("completeLogin").onclick = completeLogin;
-      $("refreshModels").onclick = () =>
-        loadModels().catch((err) => toast(err.message, "error"));
+      $("refreshModels").onclick = refreshModels;
       $("modelSearch").oninput = (event) => {
         state.search = event.target.value;
         renderModels();
