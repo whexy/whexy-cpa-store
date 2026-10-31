@@ -108,6 +108,31 @@ func TestNormalizeClaudeKeepsSamplingOnOlderModel(t *testing.T) {
 	}
 }
 
+func TestBuildUpstreamBodyCarriesGeminiLimitsToGPT(t *testing.T) {
+	plan, errPlan := planRoute(sdktranslator.FormatGemini, sdktranslator.FormatGemini, sdktranslator.FormatOpenAIResponse)
+	if errPlan != nil {
+		t.Fatal(errPlan)
+	}
+	model := zedModel{ID: "gpt-6-luna", Provider: "open_ai", OutputTokens: 128000}
+	payload := mustJSON(t, map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "hi"}}}},
+		"generationConfig": map[string]any{
+			"maxOutputTokens": 32,
+			"thinkingConfig":  map[string]any{"thinkingLevel": "high"},
+		},
+	})
+	out, errBuild := buildUpstreamBody(t.Context(), plan, payload, model, true)
+	if errBuild != nil {
+		t.Fatal(errBuild)
+	}
+	if got := gjson.GetBytes(out, "max_output_tokens").Int(); got != 32 {
+		t.Errorf("max_output_tokens = %d: %s", got, out)
+	}
+	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "high" {
+		t.Errorf("reasoning.effort = %q: %s", got, out)
+	}
+}
+
 func TestParseZedLine(t *testing.T) {
 	wrapped := []byte(`{"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}}`)
 	line, errLine := parseZedLine(wrapped)

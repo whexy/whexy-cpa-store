@@ -207,15 +207,29 @@ func adaptCodexBody(body, source []byte, sourceFormat sdktranslator.Format) []by
 }
 
 func sourceMaxTokens(root gjson.Result, format sdktranslator.Format) int64 {
-	if limit := root.Get("max_completion_tokens"); format == sdktranslator.FormatOpenAI && limit.Exists() {
-		return limit.Int()
+	switch format {
+	case sdktranslator.FormatOpenAI:
+		if limit := root.Get("max_completion_tokens"); limit.Exists() {
+			return limit.Int()
+		}
+	case sdktranslator.FormatGemini:
+		if limit := root.Get("generationConfig.maxOutputTokens"); limit.Exists() {
+			return limit.Int()
+		}
+		return root.Get("generationConfig.max_output_tokens").Int()
 	}
 	return root.Get("max_tokens").Int()
 }
 
+// sourceAsksReasoning reports whether the client asked for reasoning in a
+// field the translator maps to reasoning.effort.
 func sourceAsksReasoning(root gjson.Result, format sdktranslator.Format) bool {
-	if format == sdktranslator.FormatClaude {
+	switch format {
+	case sdktranslator.FormatClaude:
 		return root.Get("thinking").IsObject() || root.Get("output_config.effort").Exists()
+	case sdktranslator.FormatGemini:
+		config := root.Get("generationConfig")
+		return config.Get("thinkingConfig").IsObject() || config.Get("thinkingLevel").Exists() || config.Get("thinking_level").Exists()
 	}
 	return root.Get("reasoning_effort").Exists()
 }
