@@ -56,8 +56,10 @@ func applyRequestedEffort(upstream sdktranslator.Format, body []byte, suffix str
 		effort = "medium"
 	case "high":
 		effort = "high"
-	case "xhigh", "max", "ultra":
+	case "xhigh":
 		effort = "xhigh"
+	case "max", "ultra":
+		effort = "max"
 	default:
 		return body
 	}
@@ -65,12 +67,12 @@ func applyRequestedEffort(upstream sdktranslator.Format, body []byte, suffix str
 	case sdktranslator.FormatClaude:
 		body, _ = sjson.SetBytes(body, "output_config.effort", effort)
 	case sdktranslator.FormatOpenAIResponse:
-		if effort == "xhigh" {
+		if effort == "xhigh" || effort == "max" {
 			effort = "high"
 		}
 		body, _ = sjson.SetBytes(body, "reasoning.effort", effort)
 	case sdktranslator.FormatOpenAI:
-		if effort == "xhigh" {
+		if effort == "xhigh" || effort == "max" {
 			effort = "high"
 		}
 		body, _ = sjson.SetBytes(body, "reasoning_effort", effort)
