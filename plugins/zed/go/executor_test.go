@@ -289,7 +289,10 @@ func TestExecutorAppliesThinkingSuffix(t *testing.T) {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
 		case strings.HasSuffix(req.URL, "/models"):
-			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"models": []any{map[string]any{"id": "claude-sonnet-5-5", "provider": "anthropic"}}})}, nil
+			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"models": []any{map[string]any{
+				"id": "claude-sonnet-5-5", "provider": "anthropic", "supports_thinking": true,
+				"supported_effort_levels": []any{map[string]any{"value": "low"}, map[string]any{"value": "medium"}, map[string]any{"value": "high"}},
+			}}})}, nil
 		case strings.HasSuffix(req.URL, "/completions"):
 			completions = gjson.ParseBytes(req.Body)
 			return pluginapi.HTTPResponse{StatusCode: 500, Body: []byte("stop")}, nil
@@ -305,6 +308,9 @@ func TestExecutorAppliesThinkingSuffix(t *testing.T) {
 	_, _ = executorExecute(mustJSON(t, req))
 	if got := completions.Get("provider_request.output_config.effort").String(); got != "high" {
 		t.Fatalf("effort = %q; request was %s", got, completions.Raw)
+	}
+	if got := completions.Get("provider_request.thinking.type").String(); got != "adaptive" {
+		t.Fatalf("thinking = %q; request was %s", got, completions.Raw)
 	}
 }
 

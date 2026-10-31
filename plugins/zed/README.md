@@ -75,11 +75,18 @@ Zed no longer lists xAI models, but the route stays for a future return.
 Conversions use CLIProxyAPI's own translators in process. Non-streaming
 clients are served by folding Zed's event stream:
 
-- Claude requests have block content, no `temperature`/`top_p`/`top_k` on
-  Sonnet 5 and later, and `thinking.type: adaptive` with `output_config.effort`
-  in place of the removed `thinking.type: enabled`.
+- Claude requests have block content and no `temperature`/`top_p`/`top_k` on
+  Sonnet 5 and later. On models that list effort levels,
+  `thinking.type: enabled` becomes `thinking.type: adaptive` with
+  `output_config.effort`; the others keep their token budget.
 - Responses requests get `type: message` on input items the client left bare.
 - Gemini requests drop `safetySettings`, which Zed's parser rejects.
+
+A thinking suffix such as `zed/claude-sonnet-5-5(high)` asks for that effort
+the way Zed's editor does: adaptive thinking and `output_config.effort` for
+Claude, `reasoning.effort` for GPT and `thinkingLevel` for Gemini. A level the
+model does not list becomes the closest one it does, rounding down. A number is
+a token budget, and `(0)` or `(none)` drops the request's thinking.
 
 ## Settings
 

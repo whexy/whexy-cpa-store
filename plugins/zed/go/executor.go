@@ -115,7 +115,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 		return nil, errorEnvelope("invalid_request", fmt.Sprintf("build %s request for %s: %v", upstream, model.ID, errBody), http.StatusBadRequest)
 	}
 	if effort != "" {
-		body = applyRequestedEffort(upstream, body, effort)
+		body = applyRequestedEffort(upstream, body, effort, model)
 	}
 	return &executorCall{req: req, host: h, cfg: cfg, cred: cred, model: model, plan: plan, payload: payload, body: body}, nil
 }

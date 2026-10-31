@@ -42,42 +42,110 @@ func splitModelSuffix(model string) (string, string) {
 	return strings.TrimSpace(model[:open]), strings.TrimSpace(model[open+1 : len(model)-1])
 }
 
-// applyRequestedEffort writes a thinking suffix into the model's native
-// effort field. A numeric suffix is a token budget.
-func applyRequestedEffort(upstream sdktranslator.Format, body []byte, suffix string) []byte {
-	effort := suffix
-	if budget, errAtoi := strconv.Atoi(suffix); errAtoi == nil {
-		effort = effortForBudget(int64(budget))
+// applyRequestedEffort writes a CPA thinking suffix into the model's native
+// thinking fields, the way Zed's own client asks for an effort. A number is a
+// token budget, 0 or none drops the request's thinking, and auto or -1 keeps
+// the model's default. Models Zed lists without thinking ignore any other
+// suffix.
+func applyRequestedEffort(upstream sdktranslator.Format, body []byte, suffix string, model zedModel) []byte {
+	requested := strings.ToLower(suffix)
+	budget, errAtoi := strconv.Atoi(suffix)
+	if errAtoi == nil {
+		switch {
+		case budget == 0:
+			requested = "none"
+		case budget > 0:
+			requested = effortForBudget(int64(budget))
+		default:
+			requested = "auto"
+		}
 	}
-	switch strings.ToLower(effort) {
-	case "minimal", "low":
-		effort = "low"
-	case "medium":
-		effort = "medium"
-	case "high":
-		effort = "high"
-	case "xhigh":
-		effort = "xhigh"
-	case "max", "ultra":
-		effort = "max"
-	default:
+	if requested == "none" {
+		for _, field := range thinkingFields(upstream) {
+			body, _ = sjson.DeleteBytes(body, field)
+		}
+		return body
+	}
+	if !model.SupportsThinking {
+		return body
+	}
+	if requested == "ultra" {
+		requested = "max"
+	}
+	effort := supportedEffort(requested, model)
+	if effort == "" {
 		return body
 	}
 	switch upstream {
 	case sdktranslator.FormatClaude:
+		if len(model.EffortLevels) == 0 {
+			// A Claude model without effort levels thinks on a token budget,
+			// so only a numeric suffix applies.
+			if errAtoi == nil && budget > 0 {
+				body, _ = sjson.SetBytes(body, "thinking", map[string]any{"type": "enabled", "budget_tokens": budget})
+				body = fitThinkingBudget(body)
+			}
+			return body
+		}
+		body, _ = sjson.SetBytes(body, "thinking", map[string]any{"type": "adaptive"})
 		body, _ = sjson.SetBytes(body, "output_config.effort", effort)
 	case sdktranslator.FormatOpenAIResponse:
-		if effort == "xhigh" || effort == "max" {
-			effort = "high"
-		}
 		body, _ = sjson.SetBytes(body, "reasoning.effort", effort)
 	case sdktranslator.FormatOpenAI:
-		if effort == "xhigh" || effort == "max" {
-			effort = "high"
-		}
 		body, _ = sjson.SetBytes(body, "reasoning_effort", effort)
+	case sdktranslator.FormatGemini:
+		body, _ = sjson.SetBytes(body, "generationConfig.thinkingConfig", map[string]any{"thinkingLevel": strings.ToUpper(effort), "includeThoughts": true})
 	}
 	return body
+}
+
+// thinkingFields are the request fields that ask an upstream protocol for
+// thinking.
+func thinkingFields(upstream sdktranslator.Format) []string {
+	switch upstream {
+	case sdktranslator.FormatClaude:
+		return []string{"thinking", "output_config.effort"}
+	case sdktranslator.FormatOpenAIResponse:
+		return []string{"reasoning"}
+	case sdktranslator.FormatOpenAI:
+		return []string{"reasoning_effort"}
+	case sdktranslator.FormatGemini:
+		return []string{"generationConfig.thinkingConfig"}
+	}
+	return nil
+}
+
+var effortRanks = map[string]int{"minimal": 0, "low": 1, "medium": 2, "high": 3, "xhigh": 4, "max": 5}
+
+// supportedEffort returns the strongest effort the model lists at or below
+// the requested one, or its weakest when every level is stronger, so the
+// upstream never sees a level it rejects. A model that lists no levels gets
+// the request unchanged.
+func supportedEffort(requested string, model zedModel) string {
+	rank, known := effortRanks[requested]
+	if !known {
+		return ""
+	}
+	if len(model.EffortLevels) == 0 {
+		return requested
+	}
+	best, weakest := "", ""
+	for _, level := range model.EffortLevels {
+		levelRank, okLevel := effortRanks[strings.ToLower(level)]
+		if !okLevel {
+			continue
+		}
+		if weakest == "" || levelRank < effortRanks[weakest] {
+			weakest = strings.ToLower(level)
+		}
+		if levelRank <= rank && (best == "" || levelRank > effortRanks[best]) {
+			best = strings.ToLower(level)
+		}
+	}
+	if best == "" {
+		return weakest
+	}
+	return best
 }
 
 func normalizeFormat(name string) sdktranslator.Format {
@@ -281,11 +349,16 @@ func normalizeClaudeBody(body []byte, model zedModel) ([]byte, error) {
 	if thinking := gjson.GetBytes(body, "thinking"); thinking.IsObject() {
 		switch thinking.Get("type").String() {
 		case "enabled":
+			// Models with effort levels take adaptive thinking only; the
+			// others keep the budget, as Zed's client sends them.
+			if len(model.EffortLevels) == 0 {
+				break
+			}
 			budget := thinking.Get("budget_tokens").Int()
 			body, _ = sjson.SetBytes(body, "thinking.type", "adaptive")
 			body, _ = sjson.DeleteBytes(body, "thinking.budget_tokens")
-			if !gjson.GetBytes(body, "output_config.effort").Exists() {
-				body, _ = sjson.SetBytes(body, "output_config.effort", effortForBudget(budget))
+			if effort := supportedEffort(effortForBudget(budget), model); effort != "" && !gjson.GetBytes(body, "output_config.effort").Exists() {
+				body, _ = sjson.SetBytes(body, "output_config.effort", effort)
 			}
 		case "disabled":
 			body, _ = sjson.DeleteBytes(body, "thinking")
@@ -294,7 +367,30 @@ func normalizeClaudeBody(body []byte, model zedModel) ([]byte, error) {
 	if limit := root.Get("max_tokens").Int(); model.OutputTokens > 0 && (limit <= 0 || limit > model.OutputTokens) {
 		body, _ = sjson.SetBytes(body, "max_tokens", model.OutputTokens)
 	}
-	return body, nil
+	return fitThinkingBudget(body), nil
+}
+
+// minThinkingBudget is the smallest budget_tokens Anthropic accepts.
+const minThinkingBudget = 1024
+
+// fitThinkingBudget keeps a thinking budget within what Anthropic accepts:
+// at least minThinkingBudget and below max_tokens, which the model's output
+// limit may have lowered. Thinking with no room for the minimum is dropped.
+func fitThinkingBudget(body []byte) []byte {
+	thinking := gjson.GetBytes(body, "thinking")
+	if thinking.Get("type").String() != "enabled" {
+		return body
+	}
+	budget := max(thinking.Get("budget_tokens").Int(), minThinkingBudget)
+	if limit := gjson.GetBytes(body, "max_tokens").Int(); limit > 0 {
+		budget = min(budget, limit-1)
+	}
+	if budget < minThinkingBudget {
+		body, _ = sjson.DeleteBytes(body, "thinking")
+		return body
+	}
+	body, _ = sjson.SetBytes(body, "thinking.budget_tokens", budget)
+	return body
 }
 
 func effortForBudget(budget int64) string {

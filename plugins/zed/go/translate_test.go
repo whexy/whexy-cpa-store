@@ -45,7 +45,7 @@ func TestPlanRouteMatrix(t *testing.T) {
 }
 
 func TestNormalizeClaudeBody(t *testing.T) {
-	model := zedModel{ID: "claude-sonnet-5-5", OutputTokens: 64000}
+	model := zedModel{ID: "claude-sonnet-5-5", OutputTokens: 64000, SupportsThinking: true, EffortLevels: []string{"low", "medium", "high", "xhigh", "max"}}
 	body := mustJSON(t, map[string]any{
 		"model":       "claude-sonnet-5-5",
 		"max_tokens":  200000,
@@ -89,12 +89,14 @@ func TestNormalizeClaudeBody(t *testing.T) {
 	}
 }
 
-func TestNormalizeClaudeKeepsSamplingOnOlderModel(t *testing.T) {
-	model := zedModel{ID: "claude-sonnet-4-5", OutputTokens: 8192}
+func TestNormalizeClaudeKeepsOlderModelParameters(t *testing.T) {
+	// Zed lists claude-sonnet-4-5 with thinking but no effort levels.
+	model := zedModel{ID: "claude-sonnet-4-5", OutputTokens: 8192, SupportsThinking: true}
 	body := mustJSON(t, map[string]any{
 		"model":       "claude-sonnet-4-5",
-		"max_tokens":  100,
+		"max_tokens":  4096,
 		"temperature": 0.2,
+		"thinking":    map[string]any{"type": "enabled", "budget_tokens": 2048},
 		"messages":    []any{map[string]any{"role": "user", "content": "hi"}},
 	})
 	out, errNormalize := normalizeClaudeBody(body, model)
@@ -105,6 +107,88 @@ func TestNormalizeClaudeKeepsSamplingOnOlderModel(t *testing.T) {
 	_ = json.Unmarshal(out, &parsed)
 	if parsed["temperature"] != 0.2 {
 		t.Fatalf("temperature dropped on an older model: %s", out)
+	}
+	if gjson.GetBytes(out, "thinking.type").String() != "enabled" || gjson.GetBytes(out, "thinking.budget_tokens").Int() != 2048 {
+		t.Fatalf("budget thinking rewritten on a model without effort levels: %s", out)
+	}
+	if gjson.GetBytes(out, "output_config.effort").Exists() {
+		t.Fatalf("effort set on a model without effort levels: %s", out)
+	}
+}
+
+func TestNormalizeClaudeFitsBudgetUnderOutputLimit(t *testing.T) {
+	// Claude Code's thinking request, sent to a model whose output limit is
+	// below its max_tokens.
+	model := zedModel{ID: "claude-sonnet-4-5", OutputTokens: 8192, SupportsThinking: true}
+	body := []byte(`{"max_tokens":32000,"thinking":{"type":"enabled","budget_tokens":31999},"messages":[{"role":"user","content":"hi"}]}`)
+	out, errNormalize := normalizeClaudeBody(body, model)
+	if errNormalize != nil {
+		t.Fatal(errNormalize)
+	}
+	if gjson.GetBytes(out, "max_tokens").Int() != 8192 || gjson.GetBytes(out, "thinking.budget_tokens").Int() != 8191 {
+		t.Fatalf("budget not fitted under max_tokens: %s", out)
+	}
+}
+
+func TestNormalizeClaudeSkipsUnknownEffortLevels(t *testing.T) {
+	model := zedModel{ID: "claude-future", OutputTokens: 8192, SupportsThinking: true, EffortLevels: []string{"turbo"}}
+	body := []byte(`{"max_tokens":4096,"thinking":{"type":"enabled","budget_tokens":2048},"messages":[{"role":"user","content":"hi"}]}`)
+	out, errNormalize := normalizeClaudeBody(body, model)
+	if errNormalize != nil {
+		t.Fatal(errNormalize)
+	}
+	if gjson.GetBytes(out, "output_config.effort").Exists() {
+		t.Fatalf("an effort no level matches was written: %s", out)
+	}
+}
+
+func TestApplyRequestedEffort(t *testing.T) {
+	sonnet46 := zedModel{ID: "claude-sonnet-4-6", SupportsThinking: true, EffortLevels: []string{"low", "medium", "high", "max"}}
+	sonnet45 := zedModel{ID: "claude-sonnet-4-5", SupportsThinking: true}
+	sol61 := zedModel{ID: "gpt-6.1-sol", SupportsThinking: true, EffortLevels: []string{"low", "medium", "high", "xhigh", "max"}}
+	sol6 := zedModel{ID: "gpt-6-sol", SupportsThinking: true, EffortLevels: []string{"low", "medium", "high", "xhigh"}}
+	gpt52 := zedModel{ID: "gpt-5.2"}
+	argon := zedModel{ID: "gemini-4-argon", SupportsThinking: true, EffortLevels: []string{"LOW", "MEDIUM", "HIGH"}}
+	claudeBody := []byte(`{"max_tokens":8192,"thinking":{"type":"adaptive"},"output_config":{"effort":"high"}}`)
+	cases := []struct {
+		name     string
+		upstream sdktranslator.Format
+		model    zedModel
+		suffix   string
+		body     []byte
+		want     map[string]string
+		absent   []string
+	}{
+		{"level turns on adaptive thinking", sdktranslator.FormatClaude, sonnet46, "medium", []byte(`{}`), map[string]string{"thinking.type": "adaptive", "output_config.effort": "medium"}, nil},
+		{"unlisted level rounds down", sdktranslator.FormatClaude, sonnet46, "xhigh", []byte(`{}`), map[string]string{"output_config.effort": "high"}, nil},
+		{"weaker than every level", sdktranslator.FormatClaude, sonnet46, "minimal", []byte(`{}`), map[string]string{"output_config.effort": "low"}, nil},
+		{"budget maps to a level", sdktranslator.FormatClaude, sonnet46, "16384", []byte(`{}`), map[string]string{"output_config.effort": "medium"}, nil},
+		{"zero turns thinking off", sdktranslator.FormatClaude, sonnet46, "0", claudeBody, nil, []string{"thinking", "output_config.effort"}},
+		{"none turns thinking off", sdktranslator.FormatClaude, sonnet46, "none", claudeBody, nil, []string{"thinking", "output_config.effort"}},
+		{"auto keeps the request", sdktranslator.FormatClaude, sonnet46, "auto", claudeBody, map[string]string{"thinking.type": "adaptive", "output_config.effort": "high"}, nil},
+		{"budget model takes a number", sdktranslator.FormatClaude, sonnet45, "4096", []byte(`{}`), map[string]string{"thinking.type": "enabled", "thinking.budget_tokens": "4096"}, []string{"output_config"}},
+		{"budget model ignores a level", sdktranslator.FormatClaude, sonnet45, "high", []byte(`{}`), nil, []string{"thinking", "output_config"}},
+		{"budget stays below max_tokens", sdktranslator.FormatClaude, sonnet45, "16384", []byte(`{"max_tokens":8192}`), map[string]string{"thinking.budget_tokens": "8191"}, nil},
+		{"budget rises to the minimum", sdktranslator.FormatClaude, sonnet45, "500", []byte(`{"max_tokens":8192}`), map[string]string{"thinking.budget_tokens": "1024"}, nil},
+		{"no room for a budget", sdktranslator.FormatClaude, sonnet45, "4096", []byte(`{"max_tokens":1024}`), nil, []string{"thinking"}},
+		{"none on a model without thinking", sdktranslator.FormatOpenAIResponse, gpt52, "none", []byte(`{"reasoning":{"effort":"high"}}`), nil, []string{"reasoning"}},
+		{"max where listed", sdktranslator.FormatOpenAIResponse, sol61, "max", []byte(`{}`), map[string]string{"reasoning.effort": "max"}, nil},
+		{"max rounds down", sdktranslator.FormatOpenAIResponse, sol6, "ultra", []byte(`{}`), map[string]string{"reasoning.effort": "xhigh"}, nil},
+		{"model without thinking", sdktranslator.FormatOpenAIResponse, gpt52, "high", []byte(`{}`), nil, []string{"reasoning"}},
+		{"gemini level", sdktranslator.FormatGemini, argon, "max", []byte(`{}`), map[string]string{"generationConfig.thinkingConfig.thinkingLevel": "HIGH", "generationConfig.thinkingConfig.includeThoughts": "true"}, nil},
+	}
+	for _, tc := range cases {
+		out := applyRequestedEffort(tc.upstream, tc.body, tc.suffix, tc.model)
+		for path, want := range tc.want {
+			if got := gjson.GetBytes(out, path).String(); got != want {
+				t.Errorf("%s: %s = %q, want %q: %s", tc.name, path, got, want, out)
+			}
+		}
+		for _, path := range tc.absent {
+			if gjson.GetBytes(out, path).Exists() {
+				t.Errorf("%s: %s survived: %s", tc.name, path, out)
+			}
+		}
 	}
 }
 
