@@ -315,14 +315,6 @@ func resolveCredential(storageJSON []byte, attributes map[string]string, metadat
 			}
 			return credential{}, errParse
 		}
-		// A login token store may persist the account fields directly.
-		var file authFile
-		if errUnmarshal := json.Unmarshal(storageJSON, &file); errUnmarshal == nil && file.UserID != "" && file.AccessToken != "" {
-			if file.SystemID == "" {
-				file.SystemID = derivedSystemID(file.UserID, file.AccessToken)
-			}
-			return file.credential(), nil
-		}
 	}
 	userID := strings.TrimSpace(attributes[userIDAttribute])
 	token := metadataString(metadata, "access_token")
@@ -355,8 +347,13 @@ func metadataString(metadata map[string]any, name string) string {
 // handleAuthRefresh validates a stored account and refreshes its plan and
 // organization. A Zed access token does not rotate, so this is a health
 // check rather than a token exchange.
+type rpcAuthRefreshRequest struct {
+	pluginapi.AuthRefreshRequest
+	HostCallbackID string `json:"host_callback_id,omitempty"`
+}
+
 func handleAuthRefresh(raw []byte) ([]byte, error) {
-	var req pluginapi.AuthRefreshRequest
+	var req rpcAuthRefreshRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode auth refresh request: %w", errUnmarshal)
 	}
@@ -364,7 +361,7 @@ func handleAuthRefresh(raw []byte) ([]byte, error) {
 	if errCred != nil {
 		return errorEnvelope("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), http.StatusUnauthorized), nil
 	}
-	h := newHost("")
+	h := newHost(req.HostCallbackID)
 	cfg := currentSettings()
 	info, errInfo := fetchAccountInfo(context.Background(), h, cfg, cred)
 	if errInfo != nil {
@@ -444,6 +441,12 @@ func (c *modelCache) put(key string, models []zedModel) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[key] = modelCacheEntry{models: models, expires: c.now().Add(modelCacheTTL)}
+}
+
+func (c *modelCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = make(map[string]modelCacheEntry)
 }
 
 func (c *modelCache) drop(key string) {

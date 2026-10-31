@@ -9,6 +9,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/tidwall/gjson"
 )
 
 func fakeJWTExpiring(t *testing.T, lifetime time.Duration) string {
@@ -143,5 +144,138 @@ func TestExecutorPlanRestrictionIsNotAuthFailure(t *testing.T) {
 	}
 	if env.Error.HTTPStatus != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 so the account is not cooled down: %s", env.Error.HTTPStatus, raw)
+	}
+}
+
+func claudeModelHost(t *testing.T, completions string) *fakeHost {
+	t.Helper()
+	fake := installFakeHost(t)
+	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
+		return map[string]any{"operation_id": "op"}, nil
+	})
+	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
+	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req hostHTTPRequest
+		_ = json.Unmarshal(payload, &req)
+		switch {
+		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
+			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
+		case strings.HasSuffix(req.URL, "/models"):
+			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"models": []any{map[string]any{"id": "claude-sonnet-5-5", "provider": "anthropic", "max_output_tokens": 64000}}})}, nil
+		case strings.HasSuffix(req.URL, "/completions"):
+			return pluginapi.HTTPResponse{StatusCode: 200, Body: []byte(completions)}, nil
+		}
+		return pluginapi.HTTPResponse{StatusCode: 404}, nil
+	})
+	return fake
+}
+
+func TestExecutorRejectsFailedNonStreamingGeneration(t *testing.T) {
+	claudeModelHost(t, "{\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}}\n"+
+		"{\"event\":{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"busy\"}}}\n"+
+		"{\"status\":\"stream_ended\"}")
+	useSettings(t, defaultSettings())
+	payload := mustJSON(t, map[string]any{"model": "claude-sonnet-5-5", "max_tokens": 10, "messages": []any{map[string]any{"role": "user", "content": "hi"}}})
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		AuthID: "a", Model: "zed/claude-sonnet-5-5", Format: "claude", SourceFormat: "claude",
+		Payload: payload, StorageJSON: testAuthJSON(t),
+	}}
+	raw, _ := executorExecute(mustJSON(t, req))
+	env := decodeEnvelope(t, raw)
+	if env.OK || env.Error == nil {
+		t.Fatalf("a failed generation must not be a success: %s", raw)
+	}
+}
+
+func TestExecutorRejectsTruncatedNonStreamingGeneration(t *testing.T) {
+	claudeModelHost(t, "{\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}}\n"+
+		"{\"status\":\"stream_ended\"}")
+	useSettings(t, defaultSettings())
+	payload := mustJSON(t, map[string]any{"model": "claude-sonnet-5-5", "max_tokens": 10, "messages": []any{map[string]any{"role": "user", "content": "hi"}}})
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		AuthID: "a", Model: "zed/claude-sonnet-5-5", Format: "claude", SourceFormat: "claude",
+		Payload: payload, StorageJSON: testAuthJSON(t),
+	}}
+	raw, _ := executorExecute(mustJSON(t, req))
+	env := decodeEnvelope(t, raw)
+	if env.OK || env.Error == nil {
+		t.Fatalf("a truncated generation must not be a success: %s", raw)
+	}
+}
+
+func TestExecutorCatalogFailureKeepsStatus(t *testing.T) {
+	fake := installFakeHost(t)
+	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
+		return map[string]any{"operation_id": "op"}, nil
+	})
+	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
+	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req hostHTTPRequest
+		_ = json.Unmarshal(payload, &req)
+		switch {
+		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
+			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
+		case strings.HasSuffix(req.URL, "/models"):
+			return pluginapi.HTTPResponse{StatusCode: 503, Body: []byte("catalog down")}, nil
+		}
+		return pluginapi.HTTPResponse{StatusCode: 404}, nil
+	})
+	useSettings(t, defaultSettings())
+	payload := mustJSON(t, map[string]any{"model": "claude-sonnet-5-5", "max_tokens": 10, "messages": []any{map[string]any{"role": "user", "content": "hi"}}})
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		AuthID: "a", Model: "zed/claude-sonnet-5-5", Format: "claude", SourceFormat: "claude",
+		Payload: payload, StorageJSON: testAuthJSON(t),
+	}}
+	raw, _ := executorExecute(mustJSON(t, req))
+	env := decodeEnvelope(t, raw)
+	if env.OK || env.Error == nil {
+		t.Fatalf("catalog failure must fail: %s", raw)
+	}
+	if env.Error.HTTPStatus != http.StatusBadGateway {
+		t.Fatalf("catalog failure status = %d, want 502: %s", env.Error.HTTPStatus, raw)
+	}
+}
+
+func TestExecutorAppliesThinkingSuffix(t *testing.T) {
+	fake := installFakeHost(t)
+	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
+		return map[string]any{"operation_id": "op"}, nil
+	})
+	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
+	var completions gjson.Result
+	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req hostHTTPRequest
+		_ = json.Unmarshal(payload, &req)
+		switch {
+		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
+			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
+		case strings.HasSuffix(req.URL, "/models"):
+			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"models": []any{map[string]any{"id": "claude-sonnet-5-5", "provider": "anthropic"}}})}, nil
+		case strings.HasSuffix(req.URL, "/completions"):
+			completions = gjson.ParseBytes(req.Body)
+			return pluginapi.HTTPResponse{StatusCode: 500, Body: []byte("stop")}, nil
+		}
+		return pluginapi.HTTPResponse{StatusCode: 404}, nil
+	})
+	useSettings(t, defaultSettings())
+	payload := mustJSON(t, map[string]any{"model": "claude-sonnet-5-5", "max_tokens": 10, "messages": []any{map[string]any{"role": "user", "content": "hi"}}})
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		AuthID: "a", Model: "zed/claude-sonnet-5-5(high)", Format: "claude", SourceFormat: "claude",
+		Payload: payload, StorageJSON: testAuthJSON(t),
+	}}
+	_, _ = executorExecute(mustJSON(t, req))
+	if got := completions.Get("provider_request.output_config.effort").String(); got != "high" {
+		t.Fatalf("effort = %q; request was %s", got, completions.Raw)
+	}
+}
+
+func TestSplitModelSuffix(t *testing.T) {
+	model, suffix := splitModelSuffix("zed/claude-sonnet-5-5(16384)")
+	if model != "zed/claude-sonnet-5-5" || suffix != "16384" {
+		t.Fatalf("split = %q %q", model, suffix)
+	}
+	model, suffix = splitModelSuffix("zed/gpt-6-luna")
+	if model != "zed/gpt-6-luna" || suffix != "" {
+		t.Fatalf("split = %q %q", model, suffix)
 	}
 }

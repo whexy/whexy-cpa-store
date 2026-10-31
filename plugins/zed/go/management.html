@@ -809,6 +809,7 @@
         $("baseURL").value = cfg.base_url || "";
         $("signInURL").value = cfg.sign_in_url || "";
         $("userAgent").value = cfg.user_agent || "";
+        $("dashboardAccount").value = cfg.dashboard_account || "";
         $("dashboardCookie").value = cfg.dashboard_cookie || "";
       }
 
@@ -819,6 +820,7 @@
           base_url: $("baseURL").value.trim(),
           sign_in_url: $("signInURL").value.trim(),
           user_agent: $("userAgent").value.trim(),
+          dashboard_account: $("dashboardAccount").value.trim(),
           dashboard_cookie: $("dashboardCookie").value.trim(),
         };
         try {

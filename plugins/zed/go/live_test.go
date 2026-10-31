@@ -478,3 +478,45 @@ func TestLiveZedClaudeToGPTStream(t *testing.T) {
 		}
 	}
 }
+
+func TestLiveZedGeminiToClaudeStream(t *testing.T) {
+	stream := installLiveStreamHost(t)
+	useSettings(t, defaultSettings())
+	storage := liveAuth(t)
+	payload := mustJSON(t, map[string]any{
+		"model":      "gemini-3-flash",
+		"max_tokens": 32,
+		"messages": []any{map[string]any{"role": "user", "content": []any{
+			map[string]any{"type": "text", "text": "Reply with exactly: pong"},
+		}}},
+	})
+	req := rpcExecutorRequest{StreamID: "s1", ExecutorRequest: pluginapi.ExecutorRequest{
+		AuthID:       "live",
+		Model:        "zed/gemini-3-flash",
+		Format:       "claude",
+		SourceFormat: "claude",
+		Payload:      payload,
+		StorageJSON:  storage,
+	}}
+	raw, _ := executorExecuteStream(mustJSON(t, req))
+	if env := decodeEnvelope(t, raw); !env.OK {
+		t.Fatalf("stream start failed: %+v", env.Error)
+	}
+	select {
+	case <-stream.done:
+	case <-time.After(60 * time.Second):
+		t.Fatal("stream did not close")
+	}
+	stream.mu.Lock()
+	closeErr := stream.closeErr
+	stream.mu.Unlock()
+	if closeErr != "" {
+		t.Fatalf("stream error: %s", closeErr)
+	}
+	out := stream.output()
+	for _, want := range []string{"event: message_start", "pong", "event: message_stop"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stream missing %q:\n%s", want, out)
+		}
+	}
+}

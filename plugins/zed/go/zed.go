@@ -130,9 +130,22 @@ func compareVersions(left, right string) int {
 
 // refreshZedVersion reads the latest stable Zed release from GitHub. It is
 // best effort: a failure keeps the current value. Background callers only.
+// versionLoop keeps the client version current for the life of the plugin.
+// The edge rejects stale clients, so a one-time startup fetch is not enough.
+func versionLoop(ctx context.Context) {
+	for {
+		refreshZedVersion(ctx, newHost(""))
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(clientVersionTTL):
+		}
+	}
+}
+
 func refreshZedVersion(ctx context.Context, h host) {
 	versionMu.Lock()
-	fresh := time.Since(versionFetched) < clientVersionTTL
+	fresh := time.Since(versionFetched) < clientVersionTTL/2
 	versionMu.Unlock()
 	if fresh {
 		return
@@ -266,6 +279,12 @@ func (c *llmTokenCache) put(key, token string, expiresAt time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.tokens[key] = cachedLLMToken{token: token, expiresAt: expiresAt}
+}
+
+func (c *llmTokenCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.tokens = make(map[string]cachedLLMToken)
 }
 
 func (c *llmTokenCache) drop(key string) {
@@ -404,6 +423,9 @@ func fetchModels(ctx context.Context, h host, cfg settings, cred credential) ([]
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, upstreamErrorFrom(resp, "list Zed models")
+	}
+	if minimum := resp.Headers.Get("x-zed-minimum-required-version"); minimum != "" {
+		raiseZedVersion(minimum)
 	}
 	root := gjson.ParseBytes(resp.Body)
 	models := make([]zedModel, 0, len(root.Get("models").Array()))

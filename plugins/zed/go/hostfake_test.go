@@ -31,6 +31,8 @@ func installFakeHost(t *testing.T) *fakeHost {
 	fake := &fakeHost{handlers: make(map[string]func(json.RawMessage) (any, error))}
 	previous := callHost
 	callHost = fake.call
+	modelsByAuth.clear()
+	llmTokens.clear()
 	t.Cleanup(func() { callHost = previous })
 	return fake
 }

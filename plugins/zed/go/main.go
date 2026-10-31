@@ -143,17 +143,22 @@ type settings struct {
 	// DashboardCookie is a dashboard.zed.dev Cookie header value. Zed has no
 	// API for plan usage; this cookie is the only way to read it.
 	DashboardCookie string
-	UserAgent       string
+	// DashboardAccount is the Zed username the cookie belongs to. Usage is
+	// never shown for another auth, since the dashboard endpoint has no
+	// parameter naming the account.
+	DashboardAccount string
+	UserAgent        string
 }
 
 type rawSettings struct {
-	BaseURL         string   `yaml:"base_url"`
-	SignInURL       string   `yaml:"sign_in_url"`
-	ModelPrefix     string   `yaml:"model_prefix"`
-	DisablePrefix   bool     `yaml:"disable_prefix"`
-	DisabledModels  []string `yaml:"disabled_models"`
-	DashboardCookie string   `yaml:"dashboard_cookie"`
-	UserAgent       string   `yaml:"user_agent"`
+	BaseURL          string   `yaml:"base_url"`
+	SignInURL        string   `yaml:"sign_in_url"`
+	ModelPrefix      string   `yaml:"model_prefix"`
+	DisablePrefix    bool     `yaml:"disable_prefix"`
+	DisabledModels   []string `yaml:"disabled_models"`
+	DashboardCookie  string   `yaml:"dashboard_cookie"`
+	DashboardAccount string   `yaml:"dashboard_account"`
+	UserAgent        string   `yaml:"user_agent"`
 }
 
 var currentConfig atomic.Pointer[settings]
@@ -204,6 +209,13 @@ func (s settings) upstreamID(model string) string {
 		return trimmed
 	}
 	return model
+}
+
+// dashboardApplies reports whether the dashboard cookie belongs to this
+// auth. The dashboard endpoint has no account parameter, so a cookie must be
+// pinned to one username.
+func (s settings) dashboardApplies(cred credential) bool {
+	return s.DashboardCookie != "" && s.DashboardAccount != "" && strings.EqualFold(s.DashboardAccount, cred.Username)
 }
 
 func (s settings) modelDisabled(upstreamID string) bool {
@@ -286,6 +298,7 @@ func cliproxyPluginFree(ptr unsafe.Pointer, _ C.size_t) {
 
 //export cliproxyPluginShutdown
 func cliproxyPluginShutdown() {
+	logins.closeAll()
 	stopBackground(shutdownGrace)
 }
 
@@ -354,7 +367,8 @@ func pluginRegistration() registration {
 				{Name: "sign_in_url", Type: pluginapi.ConfigFieldTypeString, Description: "The Zed sign-in page the OAuth Login tile opens. Default " + defaultSignInURL + "."},
 				{Name: "model_prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every Zed model ID, as in " + defaultModelPrefix + "/claude-sonnet-5-5. Default " + defaultModelPrefix + ". disable_prefix overrides this setting."},
 				{Name: "disable_prefix", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Serve every Zed model under its bare ID only, as in claude-sonnet-5-5, and ignore model_prefix. A bare ID then shares routing by priority and weight with every other provider that serves the same ID."},
-				{Name: "dashboard_cookie", Type: pluginapi.ConfigFieldTypeString, Description: "The Cookie header of a signed-in dashboard.zed.dev session. Zed exposes plan usage only to the dashboard, so the Plugin tab shows spend and limit only when this is set. It is never sent to the LLM gateway."},
+				{Name: "dashboard_cookie", Type: pluginapi.ConfigFieldTypeString, Description: "The Cookie header of a signed-in dashboard.zed.dev session. Zed exposes plan usage only to the dashboard, so the Plugin tab shows spend and limit only when this and dashboard_account are set. It is sent only to the dashboard usage endpoint, not to /completions."},
+				{Name: "dashboard_account", Type: pluginapi.ConfigFieldTypeString, Description: "The Zed username the dashboard cookie belongs to. Usage meters are shown only for that account; the dashboard endpoint does not name an account, so another auth would otherwise see this account's spend."},
 				{Name: "user_agent", Type: pluginapi.ConfigFieldTypeString, Description: "User-Agent sent to Zed. Default Zed/" + clientVersion + " (linux; x86_64); the edge identifies the client from it."},
 			},
 		},
@@ -384,9 +398,15 @@ func configure(raw []byte) error {
 	if errParse != nil {
 		return errParse
 	}
+	previous := currentSettings()
+	if previous.BaseURL != cfg.BaseURL {
+		// A JWT and a catalog are only valid for the cloud that issued them.
+		llmTokens.clear()
+		modelsByAuth.clear()
+	}
 	currentConfig.Store(&cfg)
 	versionOnce.Do(func() {
-		startBackground(func(ctx context.Context) { refreshZedVersion(ctx, newHost("")) })
+		startBackground(versionLoop)
 	})
 	return nil
 }
@@ -421,6 +441,7 @@ func parseSettings(configYAML []byte) (settings, error) {
 		}
 	}
 	cfg.DashboardCookie = strings.TrimSpace(raw.DashboardCookie)
+	cfg.DashboardAccount = strings.TrimSpace(raw.DashboardAccount)
 	cfg.UserAgent = strings.TrimSpace(raw.UserAgent)
 	return cfg, nil
 }
@@ -518,6 +539,17 @@ func errorEnvelope(code, message string, httpStatus ...int) []byte {
 		status = httpStatus[0]
 	}
 	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: redactSecrets(message), HTTPStatus: status}})
+	return raw
+}
+
+// errorEnvelopeWithRetryAfter is errorEnvelope plus the cooldown CPA should
+// apply to the failed (auth, model) instead of its generic status backoff.
+func errorEnvelopeWithRetryAfter(code, message string, httpStatus int, retryAfter time.Duration) []byte {
+	seconds := 0.0
+	if retryAfter > 0 {
+		seconds = retryAfter.Seconds()
+	}
+	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: redactSecrets(message), HTTPStatus: httpStatus, RetryAfterSeconds: seconds}})
 	return raw
 }
 

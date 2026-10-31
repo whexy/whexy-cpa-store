@@ -108,6 +108,11 @@ func modelInfo(cfg settings, model zedModel) pluginapi.ModelInfo {
 	return info
 }
 
+var (
+	errModelNotFound = errors.New("model not found in the Zed catalog")
+	errModelDisabled = errors.New("model is disabled")
+)
+
 // modelRoute resolves one requested ID to the upstream model and protocol.
 func modelRouteFor(ctx context.Context, h host, cfg settings, cred credential, requested string) (zedModel, error) {
 	models, errCatalog := catalogFor(ctx, h, cfg, cred, false)
@@ -118,10 +123,10 @@ func modelRouteFor(ctx context.Context, h host, cfg settings, cred credential, r
 	for _, model := range models {
 		if strings.EqualFold(model.ID, upstream) {
 			if model.IsDisabled {
-				return zedModel{}, fmt.Errorf("the Zed account has disabled %s: %s", model.ID, model.DisabledReason)
+				return zedModel{}, fmt.Errorf("%w: the Zed account has disabled %s: %s", errModelDisabled, model.ID, model.DisabledReason)
 			}
 			if cfg.modelDisabled(model.ID) {
-				return zedModel{}, fmt.Errorf("Zed model %s is disabled in the plugin settings", model.ID)
+				return zedModel{}, fmt.Errorf("%w: Zed model %s is disabled in the plugin settings", errModelDisabled, model.ID)
 			}
 			return model, nil
 		}
@@ -136,5 +141,5 @@ func modelRouteFor(ctx context.Context, h host, cfg settings, cred credential, r
 			return model, nil
 		}
 	}
-	return zedModel{}, fmt.Errorf("%s is not in this Zed account's model list", requested)
+	return zedModel{}, fmt.Errorf("%w: %s is not in this Zed account's model list", errModelNotFound, requested)
 }

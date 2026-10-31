@@ -101,3 +101,22 @@ func TestLoginFlowFromCallback(t *testing.T) {
 		t.Fatalf("auth metadata: %+v", resp.Auth.Metadata)
 	}
 }
+
+func TestLoginCloseAllIsIdempotent(t *testing.T) {
+	useSettings(t, defaultSettings())
+	flow, errStart := logins.start(currentSettings())
+	if errStart != nil {
+		t.Fatal(errStart)
+	}
+	entry := logins.find(flow.State)
+	if entry == nil {
+		t.Fatal("flow not registered")
+	}
+	entry.close()
+	entry.close()
+	logins.closeAll()
+	logins.closeAll()
+	if logins.find(flow.State) != nil {
+		t.Fatal("closeAll left a flow behind")
+	}
+}

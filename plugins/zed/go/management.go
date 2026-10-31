@@ -341,6 +341,7 @@ func handleRefreshModels(h host, req pluginapi.ManagementRequest) (int, any, err
 		return 0, nil, errList
 	}
 	refreshed := 0
+	var failures []string
 	for _, entry := range files {
 		if entry.RuntimeOnly || (!strings.EqualFold(entry.Type, providerKey) && !strings.EqualFold(entry.Provider, providerKey)) {
 			continue
@@ -351,13 +352,15 @@ func handleRefreshModels(h host, req pluginapi.ManagementRequest) (int, any, err
 		}
 		file, errParse := parseAuthFile(raw.JSON)
 		if errParse != nil {
+			failures = append(failures, raw.Name+": "+errParse.Error())
 			continue
 		}
 		cred := file.credential()
 		modelsByAuth.drop(llmTokens.key(cred))
 		llmTokens.drop(llmTokens.key(cred))
 		if _, errCatalog := catalogFor(context.Background(), h, currentSettings(), cred, true); errCatalog != nil {
-			return 0, nil, errCatalog
+			failures = append(failures, raw.Name+": "+errCatalog.Error())
+			continue
 		}
 		// CPA re-reads an auth's models only when the auth changes; a save
 		// with a new catalog mark makes it ask again.
@@ -369,7 +372,11 @@ func handleRefreshModels(h host, req pluginapi.ManagementRequest) (int, any, err
 		}
 		refreshed++
 	}
-	return http.StatusOK, map[string]any{"accounts": refreshed}, nil
+	out := map[string]any{"accounts": refreshed}
+	if len(failures) > 0 {
+		out["errors"] = failures
+	}
+	return http.StatusOK, out, nil
 }
 
 func handleStartLogin(h host, req pluginapi.ManagementRequest) (int, any, error) {

@@ -166,7 +166,12 @@ func (c *streamConverter) convert(event []byte) ([][]byte, error) {
 		}
 		return [][]byte{sseFrame(event)}, nil
 	}
-	line := append([]byte("data: "), event...)
+	// Gemini's translators read bare JSON and bare [DONE]; the others take a
+	// data: frame.
+	line := event
+	if c.plan.Upstream != sdktranslator.FormatGemini {
+		line = append([]byte("data: "), event...)
+	}
 	chunks := sdktranslator.TranslateStream(c.ctx, c.plan.ResponseFrom, c.plan.Response, c.model, c.original, c.request, line, &c.param)
 	return chunks, nil
 }
@@ -290,9 +295,16 @@ func (c *streamConverter) finish() ([][]byte, error) {
 			return nil, errors.New("Zed closed the stream before the response completed")
 		}
 		c.done = true
-		if c.plan.ResponseFrom != "" {
-			return sdktranslator.TranslateStream(c.ctx, c.plan.ResponseFrom, c.plan.Response, c.model, c.original, c.request, []byte("data: [DONE]"), &c.param), nil
-		}
+	}
+	if c.plan.ResponseFrom == "" {
+		return nil, nil
+	}
+	switch c.plan.Upstream {
+	case sdktranslator.FormatGemini:
+		// Gemini's translators emit message_stop only on the bare marker.
+		return sdktranslator.TranslateStream(c.ctx, c.plan.ResponseFrom, c.plan.Response, c.model, c.original, c.request, []byte("[DONE]"), &c.param), nil
+	case sdktranslator.FormatOpenAI:
+		return sdktranslator.TranslateStream(c.ctx, c.plan.ResponseFrom, c.plan.Response, c.model, c.original, c.request, []byte("data: [DONE]"), &c.param), nil
 	}
 	return nil, nil
 }
@@ -337,14 +349,22 @@ func assembleClaude(events [][]byte) ([]byte, error) {
 	var message map[string]any
 	blocks := map[int64]map[string]any{}
 	var order []int64
+	sawStop := false
 	for _, event := range events {
 		root := gjson.ParseBytes(event)
 		switch root.Get("type").String() {
+		case "error":
+			return nil, streamFailure(event)
 		case "message_start":
-			message = gjson.Parse(root.Get("message").Raw).Value().(map[string]any)
+			if value, ok := gjson.Parse(root.Get("message").Raw).Value().(map[string]any); ok {
+				message = value
+			}
 		case "content_block_start":
 			index := root.Get("index").Int()
-			block := root.Get("content_block").Value().(map[string]any)
+			block, ok := root.Get("content_block").Value().(map[string]any)
+			if !ok {
+				return nil, errors.New("Zed sent a Claude content_block_start without a block")
+			}
 			if _, ok := blocks[index]; !ok {
 				order = append(order, index)
 			}
@@ -368,6 +388,8 @@ func assembleClaude(events [][]byte) ([]byte, error) {
 			case "input_json_delta":
 				block["_partial"] = stringValue(block["_partial"]) + delta.Get("partial_json").String()
 			}
+		case "message_stop":
+			sawStop = true
 		case "message_delta":
 			if message == nil {
 				message = map[string]any{}
@@ -388,6 +410,9 @@ func assembleClaude(events [][]byte) ([]byte, error) {
 	}
 	if message == nil {
 		return nil, errors.New("Zed sent no Claude message_start")
+	}
+	if !sawStop {
+		return nil, errors.New("Zed closed the Claude response before message_stop")
 	}
 	content := make([]any, 0, len(order))
 	for _, index := range order {
@@ -435,6 +460,9 @@ func assembleGemini(events [][]byte) ([]byte, error) {
 	finish := ""
 	for _, event := range events {
 		root := gjson.ParseBytes(event)
+		if root.Get("error").Exists() {
+			return nil, streamFailure(event)
+		}
 		for _, candidate := range root.Get("candidates").Array() {
 			for _, part := range candidate.Get("content.parts").Array() {
 				parts = append(parts, part.Value())
@@ -444,16 +472,19 @@ func assembleGemini(events [][]byte) ([]byte, error) {
 			}
 		}
 		if value := root.Get("usageMetadata"); value.IsObject() {
-			usage = value.Value().(map[string]any)
+			if object, ok := value.Value().(map[string]any); ok {
+				usage = object
+			}
 		}
 	}
 	candidates := merged["candidates"].([]any)
 	candidate := candidates[0].(map[string]any)
 	content := candidate["content"].(map[string]any)
 	content["parts"] = parts
-	if finish != "" {
-		candidate["finishReason"] = finish
+	if finish == "" {
+		return nil, errors.New("Zed closed the Gemini response before a finishReason")
 	}
+	candidate["finishReason"] = finish
 	if usage != nil {
 		merged["usageMetadata"] = usage
 	}
@@ -461,34 +492,106 @@ func assembleGemini(events [][]byte) ([]byte, error) {
 }
 
 func assembleChat(events [][]byte) ([]byte, error) {
-	var content strings.Builder
-	var reasoning strings.Builder
-	finish := ""
+	type choiceState struct {
+		content   strings.Builder
+		reasoning strings.Builder
+		tools     map[int64]*chatToolCall
+		order     []int64
+		finish    string
+	}
+	choices := map[int64]*choiceState{}
+	var order []int64
 	var usage map[string]any
+	sawDone := false
 	for _, event := range events {
 		if bytes.Equal(bytes.TrimSpace(event), []byte("[DONE]")) {
+			sawDone = true
 			continue
 		}
 		root := gjson.ParseBytes(event)
+		if root.Get("error").Exists() && !root.Get("choices").Exists() {
+			return nil, streamFailure(event)
+		}
 		if usageValue := root.Get("usage"); usageValue.IsObject() {
-			usage = usageValue.Value().(map[string]any)
+			if object, ok := usageValue.Value().(map[string]any); ok {
+				usage = object
+			}
 		}
 		for _, choice := range root.Get("choices").Array() {
-			content.WriteString(choice.Get("delta.content").String())
-			reasoning.WriteString(choice.Get("delta.reasoning_content").String())
+			index := choice.Get("index").Int()
+			state, ok := choices[index]
+			if !ok {
+				state = &choiceState{tools: map[int64]*chatToolCall{}}
+				choices[index] = state
+				order = append(order, index)
+			}
+			state.content.WriteString(choice.Get("delta.content").String())
+			state.reasoning.WriteString(choice.Get("delta.reasoning_content").String())
+			for _, call := range choice.Get("delta.tool_calls").Array() {
+				toolIndex := call.Get("index").Int()
+				tool, okTool := state.tools[toolIndex]
+				if !okTool {
+					tool = &chatToolCall{}
+					state.tools[toolIndex] = tool
+					state.order = append(state.order, toolIndex)
+				}
+				if id := call.Get("id").String(); id != "" {
+					tool.id = id
+				}
+				if name := call.Get("function.name").String(); name != "" {
+					tool.name = name
+				}
+				tool.arguments.WriteString(call.Get("function.arguments").String())
+			}
 			if reason := choice.Get("finish_reason").String(); reason != "" {
-				finish = reason
+				state.finish = reason
 			}
 		}
 	}
-	message := map[string]any{"role": "assistant", "content": content.String()}
-	if reasoning.Len() > 0 {
-		message["reasoning_content"] = reasoning.String()
+	if !sawDone {
+		for _, index := range order {
+			if choices[index].finish == "" {
+				return nil, errors.New("Zed closed the Chat Completions response before a finish_reason")
+			}
+		}
 	}
-	choice := map[string]any{"index": 0, "message": message, "finish_reason": finish}
-	response := map[string]any{"object": "chat.completion", "choices": []any{choice}}
+	if len(order) == 0 {
+		return nil, errors.New("Zed sent no Chat Completions choices")
+	}
+	out := make([]any, 0, len(order))
+	for _, index := range order {
+		state := choices[index]
+		message := map[string]any{"role": "assistant", "content": state.content.String()}
+		if state.reasoning.Len() > 0 {
+			message["reasoning_content"] = state.reasoning.String()
+		}
+		if len(state.order) > 0 {
+			calls := make([]any, 0, len(state.order))
+			for _, toolIndex := range state.order {
+				tool := state.tools[toolIndex]
+				arguments := tool.arguments.String()
+				if arguments == "" {
+					arguments = "{}"
+				}
+				calls = append(calls, map[string]any{
+					"id":       tool.id,
+					"type":     "function",
+					"function": map[string]any{"name": tool.name, "arguments": arguments},
+				})
+			}
+			message["tool_calls"] = calls
+		}
+		out = append(out, map[string]any{"index": index, "message": message, "finish_reason": state.finish})
+	}
+	response := map[string]any{"object": "chat.completion", "choices": out}
 	if usage != nil {
 		response["usage"] = usage
 	}
 	return json.Marshal(response)
+}
+
+type chatToolCall struct {
+	id        string
+	name      string
+	arguments strings.Builder
 }

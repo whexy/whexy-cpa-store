@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	// Registers CPA's protocol translators for in-process conversion between
@@ -60,8 +62,8 @@ func executorExecuteStream(raw []byte) ([]byte, error) {
 	return call.executeStream(backgroundCtx), nil
 }
 
-// executorCountTokens calls Zed's /count_tokens endpoint for the two
-// protocols it supports.
+// executorCountTokens declines counting. A 404 that does not name the model
+// is availability-neutral to CPA.
 func executorCountTokens(raw []byte) ([]byte, error) {
 	return errorEnvelope("unsupported", "Zed does not count tokens for this model", http.StatusNotFound), nil
 }
@@ -83,9 +85,16 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	if errCred != nil {
 		return nil, errorEnvelope("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), http.StatusUnauthorized)
 	}
-	model, errModel := modelRouteFor(ctx, h, cfg, cred, req.Model)
+	requested, effort := splitModelSuffix(req.Model)
+	model, errModel := modelRouteFor(ctx, h, cfg, cred, requested)
 	if errModel != nil {
-		return nil, errorEnvelope("model_not_found", errModel.Error(), http.StatusNotFound)
+		if errors.Is(errModel, errModelNotFound) {
+			return nil, errorEnvelope("model_not_found", errModel.Error(), http.StatusNotFound)
+		}
+		if errors.Is(errModel, errModelDisabled) {
+			return nil, errorEnvelope("model_disabled", errModel.Error(), http.StatusBadRequest)
+		}
+		return nil, failureEnvelope(errModel)
 	}
 	upstream := nativeFormat(model)
 	source := normalizeFormat(req.SourceFormat)
@@ -104,6 +113,9 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	body, errBody := buildUpstreamBody(ctx, plan, payload, model, stream)
 	if errBody != nil {
 		return nil, errorEnvelope("invalid_request", fmt.Sprintf("build %s request for %s: %v", upstream, model.ID, errBody), http.StatusBadRequest)
+	}
+	if effort != "" {
+		body = applyRequestedEffort(upstream, body, effort)
 	}
 	return &executorCall{req: req, host: h, cfg: cfg, cred: cred, model: model, plan: plan, payload: payload, body: body}, nil
 }
@@ -221,7 +233,7 @@ func (c *executorCall) executeStream(ctx context.Context) []byte {
 		llmTokens.drop(llmTokens.key(c.cred))
 		upstream, errStart = c.sendCompletionStream(ctx)
 		if errStart != nil {
-			return c.transportFailure(errStart)
+			return c.failureEnvelope(errStart)
 		}
 	}
 	if upstream.StatusCode < 200 || upstream.StatusCode > 299 {
@@ -336,34 +348,55 @@ func (c *executorCall) transportFailure(err error) []byte {
 // restriction is a 400 so it never cools the account down: the model is
 // unavailable, the login is fine.
 func (c *executorCall) upstreamFailure(status int, headers http.Header, body []byte) []byte {
+	if minimum := headers.Get("x-zed-minimum-required-version"); minimum != "" {
+		raiseZedVersion(minimum)
+	}
 	message := firstLine(string(body))
 	if message == "" {
 		message = http.StatusText(status)
 	}
-	planRestricted := status == http.StatusForbidden && strings.Contains(strings.ToLower(message), "plan")
-	if planRestricted {
-		return errorEnvelope("plan_restricted", message, http.StatusBadRequest)
+	failure := &zedFailure{Status: status, Message: message}
+	if status == http.StatusForbidden && strings.Contains(strings.ToLower(message), "not included in your plan") {
+		failure.PlanRestricted = true
 	}
-	switch {
-	case status == http.StatusUnauthorized:
-		return errorEnvelope("invalid_auth", message, http.StatusUnauthorized)
-	case status == http.StatusTooManyRequests:
-		return errorEnvelope("rate_limited", message, http.StatusTooManyRequests)
-	case status >= 500:
-		return errorEnvelope("upstream_error", message, http.StatusBadGateway)
-	case status >= 400:
-		return errorEnvelope("upstream_error", message, status)
-	default:
-		return errorEnvelope("upstream_error", message, http.StatusBadGateway)
+	if seconds, errAtoi := strconv.Atoi(strings.TrimSpace(headers.Get("Retry-After"))); errAtoi == nil && seconds > 0 {
+		failure.RetryAfter = time.Duration(seconds) * time.Second
 	}
+	return upstreamFailureEnvelope(failure)
 }
 
 func (c *executorCall) failureEnvelope(err error) []byte {
+	return failureEnvelope(err)
+}
+
+// failureEnvelope maps an error that did not start a stream. A catalog or
+// token failure must keep its status so CPA can refresh or cool down instead
+// of reporting a missing model.
+func failureEnvelope(err error) []byte {
 	var failure *zedFailure
 	if errors.As(err, &failure) {
-		return c.upstreamFailure(failure.Status, nil, []byte(failure.Message))
+		return upstreamFailureEnvelope(failure)
 	}
 	return errorEnvelope("upstream_error", err.Error(), http.StatusBadGateway)
+}
+
+func upstreamFailureEnvelope(failure *zedFailure) []byte {
+	message := failure.Message
+	if failure.PlanRestricted {
+		return errorEnvelope("plan_restricted", message, http.StatusBadRequest)
+	}
+	switch {
+	case failure.Status == http.StatusUnauthorized:
+		return errorEnvelope("invalid_auth", message, http.StatusUnauthorized)
+	case failure.Status == http.StatusTooManyRequests:
+		return errorEnvelopeWithRetryAfter("rate_limited", message, http.StatusTooManyRequests, failure.RetryAfter)
+	case failure.Status >= 500:
+		return errorEnvelope("upstream_error", message, http.StatusBadGateway)
+	case failure.Status >= 400:
+		return errorEnvelope("upstream_error", message, failure.Status)
+	default:
+		return errorEnvelope("upstream_error", message, http.StatusBadGateway)
+	}
 }
 
 func (c *executorCall) failureMessage(failure *zedFailure) string {

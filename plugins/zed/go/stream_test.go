@@ -45,6 +45,7 @@ func TestAssembleClaudeToolUse(t *testing.T) {
 		[]byte(`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"ls\"}"}}`),
 		[]byte(`{"type":"content_block_stop","index":0}`),
 		[]byte(`{"type":"message_delta","delta":{"stop_reason":"tool_use"}}`),
+		[]byte(`{"type":"message_stop"}`),
 	}
 	out, errAssemble := assembleClaude(events)
 	if errAssemble != nil {
@@ -125,5 +126,77 @@ func TestStreamConverterPassthroughGeminiIsBareJSON(t *testing.T) {
 	}
 	if len(chunks) != 1 || strings.HasPrefix(string(chunks[0]), "data:") {
 		t.Fatalf("gemini chunk must be bare JSON: %q", chunks)
+	}
+}
+
+func TestGeminiTranslatedStreamFlushesTerminal(t *testing.T) {
+	plan, errPlan := planRoute(sdktranslator.FormatClaude, sdktranslator.FormatClaude, sdktranslator.FormatGemini)
+	if errPlan != nil {
+		t.Fatal(errPlan)
+	}
+	converter := newStreamConverter(nil, plan, "gemini-3-flash", nil, nil)
+	event := []byte(`{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":1,"totalTokenCount":6}}`)
+	chunks, errConvert := converter.convert(event)
+	if errConvert != nil {
+		t.Fatal(errConvert)
+	}
+	var combined strings.Builder
+	for _, chunk := range chunks {
+		combined.Write(chunk)
+	}
+	terminal, errFinish := converter.finish()
+	if errFinish != nil {
+		t.Fatal(errFinish)
+	}
+	for _, chunk := range terminal {
+		combined.Write(chunk)
+	}
+	out := combined.String()
+	if !strings.Contains(out, "pong") {
+		t.Fatalf("translated stream lost the text:\n%s", out)
+	}
+	if !strings.Contains(out, "message_stop") {
+		t.Fatalf("translated stream has no terminal event:\n%s", out)
+	}
+}
+
+func TestAssembleClaudeRejectsErrorAndMissingStop(t *testing.T) {
+	events := [][]byte{
+		[]byte(`{"type":"message_start","message":{"id":"m","type":"message","role":"assistant","content":[]}}`),
+		[]byte(`{"type":"error","error":{"type":"overloaded_error","message":"busy"}}`),
+	}
+	if _, errAssemble := assembleClaude(events); errAssemble == nil {
+		t.Fatal("an error event must fail the folded response")
+	}
+	partial := [][]byte{
+		[]byte(`{"type":"message_start","message":{"id":"m","type":"message","role":"assistant","content":[]}}`),
+		[]byte(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}`),
+	}
+	if _, errAssemble := assembleClaude(partial); errAssemble == nil {
+		t.Fatal("a message without message_stop must fail")
+	}
+}
+
+func TestAssembleChatToolCalls(t *testing.T) {
+	events := [][]byte{
+		[]byte(`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"Bash","arguments":"{\"command\":"}}]}}]}`),
+		[]byte(`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"ls\"}"}}]},"finish_reason":"tool_calls"}]}`),
+		[]byte(`[DONE]`),
+	}
+	out, errAssemble := assembleChat(events)
+	if errAssemble != nil {
+		t.Fatal(errAssemble)
+	}
+	var response map[string]any
+	_ = json.Unmarshal(out, &response)
+	choice := response["choices"].([]any)[0].(map[string]any)
+	message := choice["message"].(map[string]any)
+	calls := message["tool_calls"].([]any)
+	call := calls[0].(map[string]any)
+	if call["id"] != "call_1" || call["function"].(map[string]any)["name"] != "Bash" {
+		t.Fatalf("tool call: %v", call)
+	}
+	if call["function"].(map[string]any)["arguments"] != `{"command":"ls"}` {
+		t.Fatalf("arguments: %v", call["function"])
 	}
 }

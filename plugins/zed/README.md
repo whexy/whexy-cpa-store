@@ -91,16 +91,20 @@ clients are served by folding Zed's event stream:
 - `disabled_models` — upstream model IDs kept out of CLIProxyAPI.
 - `user_agent` — sent to Zed; the default is the current Zed release string
   the edge identifies.
+- `dashboard_account` — the Zed username the dashboard cookie belongs to.
 - `dashboard_cookie` — optional `Cookie` header from a signed-in
   `dashboard.zed.dev` session, used only for the Plugin tab.
 
 ## Quota
 
 Zed has no usage API for the account token: plan spend is visible only to the
-dashboard. With `dashboard_cookie` set, the Plugin tab shows monthly token
-spend, the spend limit and edit-prediction usage from
-`/frontend/billing/usage`. Without it the plan card still renders, with no
-meters. The plugin never sends the cookie to the model gateway.
+dashboard. With both `dashboard_cookie` and `dashboard_account` set, the Plugin
+tab shows monthly token spend, the spend limit and edit-prediction usage from
+`/frontend/billing/usage`. The dashboard endpoint does not name an account, so
+the meters are shown only for the auth whose username matches
+`dashboard_account`; otherwise another auth would see this account's spend.
+Without the pair the plan card still renders, with no meters. The plugin never
+sends the cookie to the model gateway.
 
 ## Management API
 

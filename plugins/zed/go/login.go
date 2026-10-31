@@ -46,7 +46,8 @@ type signInResult struct {
 type loginFlow struct {
 	mu        sync.Mutex
 	key       *rsa.PrivateKey
-	listener  net.Listener
+	server    *http.Server
+	closeOnce sync.Once
 	systemID  string
 	expiresAt time.Time
 	result    *signInResult
@@ -54,11 +55,14 @@ type loginFlow struct {
 	finished  time.Time
 }
 
+// close stops the callback listener and any connection it already accepted.
+// sync.Once makes callback, poll, paste and expiry safe to race.
 func (f *loginFlow) close() {
-	if f.listener != nil {
-		_ = f.listener.Close()
-		f.listener = nil
-	}
+	f.closeOnce.Do(func() {
+		if f.server != nil {
+			_ = f.server.Close()
+		}
+	})
 }
 
 type loginFlows struct {
@@ -116,27 +120,35 @@ func (f *loginFlows) start(cfg settings) (pluginapi.AuthLoginStartResponse, erro
 		_ = listener.Close()
 		return pluginapi.AuthLoginStartResponse{}, errState
 	}
-	flow := &loginFlow{key: key, listener: listener, systemID: systemID, expiresAt: f.now().Add(loginLifetime)}
-	f.mu.Lock()
-	f.pruneLocked(f.now())
-	f.flows[state] = flow
-	f.mu.Unlock()
-
+	flow := &loginFlow{key: key, systemID: systemID, expiresAt: f.now().Add(loginLifetime)}
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		if strings.TrimSpace(query.Get("user_id")) == "" || strings.TrimSpace(query.Get("access_token")) == "" {
+			// A probe or a stray request must not end the pending sign-in.
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Location", "https://zed.dev/native_app_signin_succeeded")
 		w.WriteHeader(http.StatusFound)
+		result, errCallback := decryptCallback(flow.key, query)
+		if errCallback != nil {
+			// Keep waiting: a bad callback must not poison the legitimate one.
+			http.Error(w, "invalid Zed callback", http.StatusBadRequest)
+			return
+		}
 		flow.mu.Lock()
-		if flow.result == nil && flow.failure == "" {
-			result, errCallback := decryptCallback(flow.key, r.URL.Query())
-			if errCallback != nil {
-				flow.failure = errCallback.Error()
-			} else {
-				flow.result = &result
-			}
+		if flow.result == nil {
+			flow.result = &result
 		}
 		flow.mu.Unlock()
 		flow.close()
 	})}
+	flow.server = server
+	f.mu.Lock()
+	f.pruneLocked(f.now())
+	f.flows[state] = flow
+	f.mu.Unlock()
+	time.AfterFunc(loginLifetime+finishedLoginGrace, func() { f.expire(state, flow) })
 	go func() { _ = server.Serve(listener) }()
 
 	return pluginapi.AuthLoginStartResponse{
@@ -270,6 +282,28 @@ func (f *loginFlows) finish(state string, flow *loginFlow) {
 		delete(f.flows, state)
 	}
 	f.mu.Unlock()
+}
+
+// expire drops one flow if it is still pending and stops its listener.
+func (f *loginFlows) expire(state string, flow *loginFlow) {
+	flow.close()
+	f.mu.Lock()
+	if f.flows[state] == flow {
+		delete(f.flows, state)
+	}
+	f.mu.Unlock()
+}
+
+// closeAll stops every pending listener; plugin shutdown calls it so no
+// login server outlives the library.
+func (f *loginFlows) closeAll() {
+	f.mu.Lock()
+	flows := f.flows
+	f.flows = make(map[string]*loginFlow)
+	f.mu.Unlock()
+	for _, flow := range flows {
+		flow.close()
+	}
 }
 
 // pruneLocked removes flows past their grace period.

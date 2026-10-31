@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
@@ -25,6 +26,56 @@ type routePlan struct {
 	// ResponseFrom is the translator source for the response, empty when the
 	// upstream response is already in the Response format.
 	ResponseFrom sdktranslator.Format
+}
+
+// splitModelSuffix removes a CPA thinking suffix such as (high) from a model
+// ID. The suffix is applied after the native request is built.
+func splitModelSuffix(model string) (string, string) {
+	model = strings.TrimSpace(model)
+	if !strings.HasSuffix(model, ")") {
+		return model, ""
+	}
+	open := strings.LastIndexByte(model, '(')
+	if open < 0 {
+		return model, ""
+	}
+	return strings.TrimSpace(model[:open]), strings.TrimSpace(model[open+1 : len(model)-1])
+}
+
+// applyRequestedEffort writes a thinking suffix into the model's native
+// effort field. A numeric suffix is a token budget.
+func applyRequestedEffort(upstream sdktranslator.Format, body []byte, suffix string) []byte {
+	effort := suffix
+	if budget, errAtoi := strconv.Atoi(suffix); errAtoi == nil {
+		effort = effortForBudget(int64(budget))
+	}
+	switch strings.ToLower(effort) {
+	case "minimal", "low":
+		effort = "low"
+	case "medium":
+		effort = "medium"
+	case "high":
+		effort = "high"
+	case "xhigh", "max", "ultra":
+		effort = "xhigh"
+	default:
+		return body
+	}
+	switch upstream {
+	case sdktranslator.FormatClaude:
+		body, _ = sjson.SetBytes(body, "output_config.effort", effort)
+	case sdktranslator.FormatOpenAIResponse:
+		if effort == "xhigh" {
+			effort = "high"
+		}
+		body, _ = sjson.SetBytes(body, "reasoning.effort", effort)
+	case sdktranslator.FormatOpenAI:
+		if effort == "xhigh" {
+			effort = "high"
+		}
+		body, _ = sjson.SetBytes(body, "reasoning_effort", effort)
+	}
+	return body
 }
 
 func normalizeFormat(name string) sdktranslator.Format {

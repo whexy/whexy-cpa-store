@@ -32,9 +32,10 @@ func handleQuotaFetch(raw []byte) ([]byte, error) {
 			TierID:   cred.UserID,
 		},
 	}
-	if cfg.DashboardCookie == "" {
-		// Zed exposes plan usage only to dashboard.zed.dev. Without the
-		// cookie there is nothing to meter; the plan card still renders.
+	if !cfg.dashboardApplies(cred) {
+		// Zed exposes plan usage only to dashboard.zed.dev, and the cookie is
+		// for one account. Without a matching pair there is nothing to meter;
+		// the plan card still renders.
 		return okEnvelope(response)
 	}
 	usage, errUsage := fetchDashboardUsage(context.Background(), newHost(req.HostCallbackID), cfg)
