@@ -219,10 +219,6 @@ func (c *executorCall) collectEvents(body []byte) ([][]byte, error) {
 func (c *executorCall) executeStream(ctx context.Context) []byte {
 	upstream, errStart := c.sendCompletionStream(ctx)
 	if errStart != nil {
-		var failure *zedFailure
-		if errors.As(errStart, &failure) {
-			return c.upstreamFailure(failure.Status, nil, []byte(failure.Message))
-		}
 		return c.transportFailure(errStart)
 	}
 	if upstream.StatusCode == http.StatusUnauthorized {
@@ -233,7 +229,7 @@ func (c *executorCall) executeStream(ctx context.Context) []byte {
 		llmTokens.drop(llmTokens.key(c.cred))
 		upstream, errStart = c.sendCompletionStream(ctx)
 		if errStart != nil {
-			return c.failureEnvelope(errStart)
+			return c.transportFailure(errStart)
 		}
 	}
 	if upstream.StatusCode < 200 || upstream.StatusCode > 299 {
@@ -337,7 +333,14 @@ func (c *executorCall) pumpStream(ctx context.Context, upstream *hostHTTPStream,
 	}
 }
 
+// transportFailure maps an error from before Zed answered. A token failure
+// keeps Zed's status, so a revoked login is a 401 CPA refreshes rather than an
+// unreachable upstream.
 func (c *executorCall) transportFailure(err error) []byte {
+	var failure *zedFailure
+	if errors.As(err, &failure) {
+		return upstreamFailureEnvelope(failure)
+	}
 	if errors.Is(err, context.Canceled) {
 		return errorEnvelope("canceled", "Zed request canceled", http.StatusRequestTimeout)
 	}

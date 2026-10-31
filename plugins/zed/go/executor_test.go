@@ -236,6 +236,45 @@ func TestExecutorCatalogFailureKeepsStatus(t *testing.T) {
 	}
 }
 
+func TestExecutorRevokedLoginIsUnauthorized(t *testing.T) {
+	fake := installFakeHost(t)
+	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
+		return map[string]any{"operation_id": "op"}, nil
+	})
+	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
+	mints := 0
+	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req hostHTTPRequest
+		_ = json.Unmarshal(payload, &req)
+		switch {
+		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
+			// The first JWT serves the catalog; the login is revoked before
+			// the retry mints another.
+			mints++
+			if mints > 1 {
+				return pluginapi.HTTPResponse{StatusCode: 401, Body: []byte("invalid access token")}, nil
+			}
+			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
+		case strings.HasSuffix(req.URL, "/models"):
+			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"models": []any{map[string]any{"id": "claude-sonnet-5-5", "provider": "anthropic"}}})}, nil
+		case strings.HasSuffix(req.URL, "/completions"):
+			return pluginapi.HTTPResponse{StatusCode: 401, Body: []byte("expired token")}, nil
+		}
+		return pluginapi.HTTPResponse{StatusCode: 404}, nil
+	})
+	useSettings(t, defaultSettings())
+	payload := mustJSON(t, map[string]any{"model": "claude-sonnet-5-5", "max_tokens": 10, "messages": []any{map[string]any{"role": "user", "content": "hi"}}})
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		AuthID: "a", Model: "zed/claude-sonnet-5-5", Format: "claude", SourceFormat: "claude",
+		Payload: payload, StorageJSON: testAuthJSON(t),
+	}}
+	raw, _ := executorExecute(mustJSON(t, req))
+	env := decodeEnvelope(t, raw)
+	if env.OK || env.Error == nil || env.Error.HTTPStatus != http.StatusUnauthorized {
+		t.Fatalf("a revoked login must be a 401 CPA refreshes: %s", raw)
+	}
+}
+
 func TestExecutorAppliesThinkingSuffix(t *testing.T) {
 	fake := installFakeHost(t)
 	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
