@@ -86,11 +86,15 @@ send to fit:
   becomes `adaptive` with `output_config.effort` (the others keep their token
   budget), and `disabled` or `between_tools` is dropped because Zed accepts
   neither.
-- Responses: bare input items get `type: message`.
+- Responses: `developer` messages become `system` messages, bare input items
+  get `type: message`, and a forced tool choice becomes that tool alone with
+  `tool_choice: required`.
+- Codex: the namespaced tools it declares in an `additional_tools` input item
+  become top-level tools, and calls in the response get their namespace back.
 - Gemini: `safetySettings` is dropped.
 
-Claude server tools such as web search run on Anthropic's side, which Zed does
-not offer, so the plugin drops them and the model answers without them.
+Hosted tools such as web search run on the provider's side, which Zed does not
+offer, so the plugin drops them and the model answers without them.
 
 A thinking suffix such as `zed/claude-sonnet-5-5(high)` asks for that effort
 the way Zed's editor does: adaptive thinking and `output_config.effort` for

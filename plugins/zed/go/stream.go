@@ -129,17 +129,18 @@ func (s *lineSplitter) flush() [][]byte {
 // streamConverter turns Zed's native events into the chunks the client's
 // handler writes.
 type streamConverter struct {
-	ctx      context.Context
-	plan     routePlan
-	model    string
-	original []byte
-	request  []byte
-	param    any
-	done     bool
+	ctx        context.Context
+	plan       routePlan
+	model      string
+	original   []byte
+	request    []byte
+	namespaced map[string]namespacedTool
+	param      any
+	done       bool
 }
 
-func newStreamConverter(ctx context.Context, plan routePlan, model string, original, request []byte) *streamConverter {
-	return &streamConverter{ctx: ctx, plan: plan, model: model, original: original, request: request}
+func newStreamConverter(ctx context.Context, plan routePlan, model string, original, request []byte, namespaced map[string]namespacedTool) *streamConverter {
+	return &streamConverter{ctx: ctx, plan: plan, model: model, original: original, request: request, namespaced: namespaced}
 }
 
 // convert returns the client chunks for one event.
@@ -156,7 +157,7 @@ func (c *streamConverter) convert(event []byte) ([][]byte, error) {
 			}
 			return [][]byte{event}, nil
 		}
-		return [][]byte{sseFrame(event)}, nil
+		return [][]byte{sseFrame(restoreToolNamespaces(event, c.namespaced))}, nil
 	}
 	// Gemini's translators read bare JSON and bare [DONE]; the others take a
 	// data: frame.

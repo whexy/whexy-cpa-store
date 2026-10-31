@@ -212,10 +212,11 @@ func planRoute(source, response, upstream sdktranslator.Format) (routePlan, erro
 }
 
 // buildUpstreamBody turns the client's request into the model's native
-// request, without the Zed envelope.
-func buildUpstreamBody(ctx context.Context, plan routePlan, payload []byte, model zedModel, stream bool) ([]byte, error) {
+// request, without the Zed envelope. It also returns the namespaced tools
+// whose names were flattened, which the response must restore.
+func buildUpstreamBody(ctx context.Context, plan routePlan, payload []byte, model zedModel, stream bool) ([]byte, map[string]namespacedTool, error) {
 	if !gjson.ValidBytes(payload) || !gjson.ParseBytes(payload).IsObject() {
-		return nil, errors.New("request body is not a JSON object")
+		return nil, nil, errors.New("request body is not a JSON object")
 	}
 	body := payload
 	if plan.RequestTo != "" {
@@ -226,7 +227,7 @@ func buildUpstreamBody(ctx context.Context, plan routePlan, payload []byte, mode
 			Body:   payload,
 		})
 		if translated.Err != nil {
-			return nil, translated.Err
+			return nil, nil, translated.Err
 		}
 		body = translated.Body
 		if plan.RequestTo == sdktranslator.FormatCodex {
@@ -235,16 +236,24 @@ func buildUpstreamBody(ctx context.Context, plan routePlan, payload []byte, mode
 	}
 	body, errSet := setJSON(body, "model", model.ID)
 	if errSet != nil {
-		return nil, errSet
+		return nil, nil, errSet
+	}
+	var namespaced map[string]namespacedTool
+	if plan.Upstream == sdktranslator.FormatOpenAIResponse {
+		body, namespaced = flattenResponsesTools(body)
 	}
 	body, errSet = normalizeNativeBody(plan.Upstream, body, model)
 	if errSet != nil {
-		return nil, errSet
+		return nil, nil, errSet
 	}
 	// Zed's own client always streams provider events; a Responses model
 	// answers an empty 200 body to stream:false, so non-streaming clients are
 	// served by folding the stream instead.
-	return setStream(body, true)
+	body, errSet = setStream(body, true)
+	if errSet != nil {
+		return nil, nil, errSet
+	}
+	return body, namespaced, nil
 }
 
 // minResponsesOutputTokens is the lowest max_output_tokens the Responses
@@ -515,8 +524,162 @@ func rejectsSamplingParameters(id string) bool {
 	return false
 }
 
+// namespacedTool names a tool a Responses client declared inside a
+// namespace other than the default one.
+type namespacedTool struct {
+	Namespace string
+	Name      string
+}
+
+// defaultToolNamespace is the namespace Codex gives a call that names none.
+const defaultToolNamespace = "functions"
+
+// flattenResponsesTools turns a Responses client's tools into the top-level
+// function and custom tools Zed's parser accepts. Codex declares its tools
+// in an additional_tools input item and groups them into namespaces; a
+// flattened tool keeps its bare name unless another tool has it, then takes
+// Codex's flat form, the namespace followed by the name. Hosted tools such as
+// web search run on OpenAI's side, which Zed does not offer, and are dropped.
+// It returns the flattened names whose calls must get their namespace back.
+func flattenResponsesTools(body []byte) ([]byte, map[string]namespacedTool) {
+	type entry struct {
+		namespace string
+		name      string
+		raw       []byte
+	}
+	var entries []entry
+	collect := func(tools gjson.Result) {
+		for _, tool := range tools.Array() {
+			switch tool.Get("type").String() {
+			case "function", "custom":
+				entries = append(entries, entry{name: tool.Get("name").String(), raw: []byte(tool.Raw)})
+			case "namespace":
+				namespace := tool.Get("name").String()
+				if namespace == defaultToolNamespace {
+					namespace = ""
+				}
+				for _, nested := range tool.Get("tools").Array() {
+					if kind := nested.Get("type").String(); kind == "function" || kind == "custom" {
+						entries = append(entries, entry{namespace: namespace, name: nested.Get("name").String(), raw: []byte(nested.Raw)})
+					}
+				}
+			}
+		}
+	}
+	declared := gjson.GetBytes(body, "tools")
+	collect(declared)
+	input := gjson.GetBytes(body, "input")
+	var items []gjson.Result
+	hasAdditional := false
+	for _, item := range input.Array() {
+		if item.Get("type").String() == "additional_tools" {
+			collect(item.Get("tools"))
+			hasAdditional = true
+			continue
+		}
+		items = append(items, item)
+	}
+	if !declared.Exists() && !hasAdditional {
+		return body, nil
+	}
+
+	counts := map[string]int{}
+	for _, tool := range entries {
+		counts[tool.name]++
+	}
+	restore := map[string]namespacedTool{}
+	flat := map[namespacedTool]string{}
+	tools := make([]any, 0, len(entries))
+	for _, tool := range entries {
+		raw := tool.raw
+		if tool.namespace != "" {
+			name := tool.name
+			if counts[name] > 1 {
+				name = tool.namespace + tool.name
+			}
+			original := namespacedTool{Namespace: tool.namespace, Name: tool.name}
+			restore[name] = original
+			flat[original] = name
+			raw, _ = sjson.SetBytes(raw, "name", name)
+		}
+		tools = append(tools, json.RawMessage(raw))
+	}
+	if len(tools) == 0 {
+		body, _ = sjson.DeleteBytes(body, "tools")
+	} else {
+		body, _ = sjson.SetBytes(body, "tools", tools)
+	}
+
+	if input.IsArray() {
+		rewritten := make([]any, 0, len(items))
+		for _, item := range items {
+			raw := []byte(item.Raw)
+			if kind := item.Get("type").String(); (kind == "function_call" || kind == "custom_tool_call") && item.Get("namespace").Exists() {
+				raw, _ = sjson.DeleteBytes(raw, "namespace")
+				if namespace := item.Get("namespace").String(); namespace != "" && namespace != defaultToolNamespace {
+					original := namespacedTool{Namespace: namespace, Name: item.Get("name").String()}
+					name, ok := flat[original]
+					if !ok {
+						name = namespace + original.Name
+					}
+					raw, _ = sjson.SetBytes(raw, "name", name)
+				}
+			}
+			rewritten = append(rewritten, json.RawMessage(raw))
+		}
+		body, _ = sjson.SetBytes(body, "input", rewritten)
+	}
+	return body, restore
+}
+
+// restoreToolNamespaces gives calls to flattened tools the namespace and name
+// the client declared, in a Responses stream event or response object.
+func restoreToolNamespaces(data []byte, restore map[string]namespacedTool) []byte {
+	if len(restore) == 0 {
+		return data
+	}
+	root := gjson.ParseBytes(data)
+	rename := func(path string, item gjson.Result) {
+		if kind := item.Get("type").String(); kind != "function_call" && kind != "custom_tool_call" {
+			return
+		}
+		original, ok := restore[item.Get("name").String()]
+		if !ok {
+			return
+		}
+		data, _ = sjson.SetBytes(data, path+".name", original.Name)
+		data, _ = sjson.SetBytes(data, path+".namespace", original.Namespace)
+	}
+	if item := root.Get("item"); item.IsObject() {
+		rename("item", item)
+	}
+	for _, path := range []string{"response.output", "output"} {
+		for index, item := range root.Get(path).Array() {
+			rename(path+"."+strconv.Itoa(index), item)
+		}
+	}
+	return data
+}
+
+// responsesInputTypes are the input items Zed's Responses parser accepts.
+// The others record hosted tools Zed cannot run, so they are dropped.
+var responsesInputTypes = map[string]bool{
+	"message":                 true,
+	"function_call":           true,
+	"function_call_output":    true,
+	"custom_tool_call":        true,
+	"custom_tool_call_output": true,
+	"reasoning":               true,
+	"compaction":              true,
+	"compaction_summary":      true,
+}
+
+// responsesSummaryModes are the reasoning summaries Zed's parser accepts.
+var responsesSummaryModes = map[string]bool{"auto": true, "concise": true, "detailed": true}
+
 // normalizeResponsesBody makes a Responses request acceptable to Zed's
-// OpenAI route.
+// OpenAI route, whose parser, like the Anthropic one, rejects any value
+// outside its enums.
 func normalizeResponsesBody(body []byte, model zedModel) ([]byte, error) {
 	input := gjson.GetBytes(body, "input")
 	if input.Type == gjson.String {
@@ -540,6 +703,19 @@ func normalizeResponsesBody(body []byte, model zedModel) ([]byte, error) {
 			raw := []byte(item.Raw)
 			if !item.Get("type").Exists() && item.Get("role").Exists() {
 				raw, _ = sjson.SetBytes(raw, "type", "message")
+			} else if !responsesInputTypes[item.Get("type").String()] {
+				continue
+			}
+			// Zed's parser reads a missing list as empty but rejects null,
+			// which Codex and CPA's Claude translator send on reasoning items.
+			item.ForEach(func(key, value gjson.Result) bool {
+				if value.Type == gjson.Null {
+					raw, _ = sjson.DeleteBytes(raw, key.String())
+				}
+				return true
+			})
+			if item.Get("role").String() == "developer" {
+				raw, _ = sjson.SetBytes(raw, "role", "system")
 			}
 			if content := item.Get("content"); content.Type == gjson.String && item.Get("role").String() != "" {
 				partType := "input_text"
@@ -552,6 +728,42 @@ func normalizeResponsesBody(body []byte, model zedModel) ([]byte, error) {
 		}
 		if encoded, errMarshal := json.Marshal(items); errMarshal == nil {
 			body, _ = sjson.SetRawBytes(body, "input", encoded)
+		}
+	}
+	if include := gjson.GetBytes(body, "include"); include.Exists() {
+		kept := []string{}
+		for _, field := range include.Array() {
+			if field.String() == "reasoning.encrypted_content" {
+				kept = append(kept, field.String())
+			}
+		}
+		if len(kept) == 0 {
+			body, _ = sjson.DeleteBytes(body, "include")
+		} else {
+			body, _ = sjson.SetBytes(body, "include", kept)
+		}
+	}
+	// Zed's parser takes tool_choice only as a mode. A forced tool becomes
+	// that tool alone with the required mode, which forces the same call.
+	if choice := gjson.GetBytes(body, "tool_choice"); choice.IsObject() {
+		var forced []any
+		for _, tool := range gjson.GetBytes(body, "tools").Array() {
+			if name := choice.Get("name").String(); name != "" && tool.Get("name").String() == name {
+				forced = append(forced, json.RawMessage(tool.Raw))
+			}
+		}
+		if len(forced) == 0 {
+			body, _ = sjson.DeleteBytes(body, "tool_choice")
+		} else {
+			body, _ = sjson.SetBytes(body, "tools", forced)
+			body, _ = sjson.SetBytes(body, "tool_choice", "required")
+		}
+	}
+	if reasoning := gjson.GetBytes(body, "reasoning"); reasoning.Exists() {
+		if reasoning.Get("effort").Type != gjson.String {
+			body, _ = sjson.DeleteBytes(body, "reasoning")
+		} else if summary := reasoning.Get("summary"); summary.Type == gjson.String && !responsesSummaryModes[summary.String()] {
+			body, _ = sjson.DeleteBytes(body, "reasoning.summary")
 		}
 	}
 	if limit := gjson.GetBytes(body, "max_output_tokens"); limit.Exists() && limit.Int() < minResponsesOutputTokens {
@@ -604,9 +816,9 @@ func setStream(body []byte, stream bool) ([]byte, error) {
 }
 
 // convertResponse turns a buffered native response into the client format.
-func convertResponse(ctx context.Context, plan routePlan, model string, original, request, body []byte) ([]byte, error) {
+func convertResponse(ctx context.Context, plan routePlan, model string, original, request, body []byte, namespaced map[string]namespacedTool) ([]byte, error) {
 	if plan.ResponseFrom == "" {
-		return body, nil
+		return restoreToolNamespaces(body, namespaced), nil
 	}
 	if plan.ResponseFrom == sdktranslator.FormatCodex {
 		event, errEvent := codexTerminalEvent(body)

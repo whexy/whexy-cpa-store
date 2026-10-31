@@ -41,6 +41,9 @@ type executorCall struct {
 	// payload is the client's request in plan.Source.
 	payload []byte
 	body    []byte
+	// namespaced maps flattened tool names back to the client's namespaced
+	// tools.
+	namespaced map[string]namespacedTool
 }
 
 func executorExecute(raw []byte) ([]byte, error) {
@@ -110,14 +113,14 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	if len(payload) == 0 {
 		payload = req.OriginalRequest
 	}
-	body, errBody := buildUpstreamBody(ctx, plan, payload, model, stream)
+	body, namespaced, errBody := buildUpstreamBody(ctx, plan, payload, model, stream)
 	if errBody != nil {
 		return nil, errorEnvelope("invalid_request", fmt.Sprintf("build %s request for %s: %v", upstream, model.ID, errBody), http.StatusBadRequest)
 	}
 	if effort != "" {
 		body = applyRequestedEffort(upstream, body, effort, model)
 	}
-	return &executorCall{req: req, host: h, cfg: cfg, cred: cred, model: model, plan: plan, payload: payload, body: body}, nil
+	return &executorCall{req: req, host: h, cfg: cfg, cred: cred, model: model, plan: plan, payload: payload, body: body, namespaced: namespaced}, nil
 }
 
 func (c *executorCall) completionBody() ([]byte, error) {
@@ -178,7 +181,7 @@ func (c *executorCall) execute(ctx context.Context) []byte {
 	if errAssemble != nil {
 		return errorEnvelope("translation_failed", errAssemble.Error(), http.StatusBadGateway)
 	}
-	out, errConvert := convertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, native)
+	out, errConvert := convertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, native, c.namespaced)
 	if errConvert != nil {
 		return errorEnvelope("translation_failed", errConvert.Error(), http.StatusBadGateway)
 	}
@@ -237,7 +240,7 @@ func (c *executorCall) executeStream(ctx context.Context) []byte {
 		upstream.Close()
 		return c.upstreamFailure(upstream.StatusCode, upstream.Headers, body)
 	}
-	converter := newStreamConverter(ctx, c.plan, c.req.Model, c.payload, c.body)
+	converter := newStreamConverter(ctx, c.plan, c.req.Model, c.payload, c.body, c.namespaced)
 	streamID := c.req.StreamID
 	startBackground(func(ctx context.Context) { c.pumpStream(ctx, upstream, converter, streamID) })
 	raw, errEnvelope := okEnvelope(rpcExecutorStreamResponse{Headers: diagnosticHeaders(upstream.Headers)})

@@ -105,7 +105,7 @@ func TestStreamConverterPassthroughClaude(t *testing.T) {
 	if errPlan != nil {
 		t.Fatal(errPlan)
 	}
-	converter := newStreamConverter(nil, plan, "claude-sonnet-5-5", nil, nil)
+	converter := newStreamConverter(nil, plan, "claude-sonnet-5-5", nil, nil, nil)
 	chunks, errConvert := converter.convert([]byte(`{"type":"message_start","message":{}}`))
 	if errConvert != nil {
 		t.Fatal(errConvert)
@@ -120,7 +120,7 @@ func TestStreamConverterPassthroughGeminiIsBareJSON(t *testing.T) {
 	if errPlan != nil {
 		t.Fatal(errPlan)
 	}
-	converter := newStreamConverter(nil, plan, "gemini-3-flash", nil, nil)
+	converter := newStreamConverter(nil, plan, "gemini-3-flash", nil, nil, nil)
 	chunks, errConvert := converter.convert([]byte(`{"candidates":[{"content":{"parts":[{"text":"hi"}]}}]}`))
 	if errConvert != nil {
 		t.Fatal(errConvert)
@@ -135,7 +135,7 @@ func TestGeminiTranslatedStreamFlushesTerminal(t *testing.T) {
 	if errPlan != nil {
 		t.Fatal(errPlan)
 	}
-	converter := newStreamConverter(nil, plan, "gemini-3-flash", nil, nil)
+	converter := newStreamConverter(nil, plan, "gemini-3-flash", nil, nil, nil)
 	event := []byte(`{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":1,"totalTokenCount":6}}`)
 	chunks, errConvert := converter.convert(event)
 	if errConvert != nil {
@@ -213,7 +213,7 @@ func TestChatRequiresFinishReason(t *testing.T) {
 	if out, errAssemble := assembleChat(events); errAssemble == nil {
 		t.Fatalf("a Chat response without finish_reason must fail: %s", out)
 	}
-	converter := newStreamConverter(t.Context(), routePlan{Source: sdktranslator.FormatOpenAI, Response: sdktranslator.FormatOpenAI, Upstream: sdktranslator.FormatOpenAI}, "grok", nil, nil)
+	converter := newStreamConverter(t.Context(), routePlan{Source: sdktranslator.FormatOpenAI, Response: sdktranslator.FormatOpenAI, Upstream: sdktranslator.FormatOpenAI}, "grok", nil, nil, nil)
 	if _, errConvert := converter.convert(events[0]); errConvert != nil {
 		t.Fatal(errConvert)
 	}
@@ -243,5 +243,17 @@ func TestAssembleChatToolCalls(t *testing.T) {
 	}
 	if call["function"].(map[string]any)["arguments"] != `{"command":"ls"}` {
 		t.Fatalf("arguments: %v", call["function"])
+	}
+}
+
+func TestStreamConverterRestoresToolNamespaces(t *testing.T) {
+	plan := routePlan{Source: sdktranslator.FormatOpenAIResponse, Response: sdktranslator.FormatOpenAIResponse, Upstream: sdktranslator.FormatOpenAIResponse}
+	converter := newStreamConverter(t.Context(), plan, "gpt-6.1-sol", nil, nil, map[string]namespacedTool{"sleep": {Namespace: "clock", Name: "sleep"}})
+	chunks, errConvert := converter.convert([]byte(`{"type":"response.output_item.done","item":{"type":"function_call","name":"sleep","call_id":"c1","arguments":"{}"}}`))
+	if errConvert != nil {
+		t.Fatal(errConvert)
+	}
+	if len(chunks) != 1 || !strings.Contains(string(chunks[0]), `"namespace":"clock"`) {
+		t.Fatalf("chunks: %q", chunks)
 	}
 }

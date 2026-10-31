@@ -205,7 +205,7 @@ func TestBuildUpstreamBodyCarriesGeminiLimitsToGPT(t *testing.T) {
 			"thinkingConfig":  map[string]any{"thinkingLevel": "high"},
 		},
 	})
-	out, errBuild := buildUpstreamBody(t.Context(), plan, payload, model, true)
+	out, _, errBuild := buildUpstreamBody(t.Context(), plan, payload, model, true)
 	if errBuild != nil {
 		t.Fatal(errBuild)
 	}
@@ -346,5 +346,163 @@ func TestNormalizeClaudeKeepsCompaction(t *testing.T) {
 	edits := gjson.GetBytes(out, "context_management.edits").Array()
 	if len(edits) != 1 || edits[0].Get("type").String() != "compact_20260112" || edits[0].Get("trigger.value").Int() != 150000 {
 		t.Fatalf("edits: %s", out)
+	}
+}
+
+func TestBuildUpstreamBodyFlattensCodexTools(t *testing.T) {
+	// Codex declares tools in an additional_tools item, grouped into
+	// namespaces, and replays namespaced calls in its history.
+	model := zedModel{ID: "gpt-6.1-sol", Provider: "open_ai"}
+	function := func(name string) map[string]any {
+		return map[string]any{"type": "function", "name": name, "parameters": map[string]any{"type": "object"}}
+	}
+	payload := mustJSON(t, map[string]any{
+		"model": "zed/gpt-6.1-sol",
+		"tools": []any{map[string]any{"type": "web_search"}},
+		"input": []any{
+			map[string]any{"type": "additional_tools", "role": "developer", "tools": []any{
+				map[string]any{"type": "namespace", "name": "functions", "tools": []any{
+					map[string]any{"type": "custom", "name": "exec"},
+					function("wait"),
+				}},
+				map[string]any{"type": "namespace", "name": "clock", "tools": []any{function("sleep")}},
+				map[string]any{"type": "namespace", "name": "mcp__a__", "tools": []any{function("search")}},
+				map[string]any{"type": "namespace", "name": "mcp__b__", "tools": []any{function("search")}},
+				map[string]any{"type": "image_generation"},
+			}},
+			map[string]any{"type": "message", "role": "developer", "content": []any{map[string]any{"type": "input_text", "text": "You are Codex."}}},
+			map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": "wait a second"}}},
+			map[string]any{"type": "function_call", "call_id": "c1", "namespace": "clock", "name": "sleep", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "c1", "output": "slept"},
+			map[string]any{"type": "function_call", "call_id": "c2", "namespace": "mcp__b__", "name": "search", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "c2", "output": "found"},
+			map[string]any{"type": "custom_tool_call", "call_id": "c3", "namespace": "functions", "name": "exec", "input": "ls"},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "c3", "output": "a.txt"},
+		},
+	})
+	plan, errPlan := planRoute(sdktranslator.FormatOpenAIResponse, sdktranslator.FormatOpenAIResponse, sdktranslator.FormatOpenAIResponse)
+	if errPlan != nil {
+		t.Fatal(errPlan)
+	}
+	out, namespaced, errBuild := buildUpstreamBody(t.Context(), plan, payload, model, true)
+	if errBuild != nil {
+		t.Fatal(errBuild)
+	}
+	var names []string
+	for _, tool := range gjson.GetBytes(out, "tools").Array() {
+		names = append(names, tool.Get("type").String()+":"+tool.Get("name").String())
+	}
+	if got := strings.Join(names, ","); got != "custom:exec,function:wait,function:sleep,function:mcp__a__search,function:mcp__b__search" {
+		t.Fatalf("tools = %s", got)
+	}
+	want := map[string]namespacedTool{
+		"sleep":          {Namespace: "clock", Name: "sleep"},
+		"mcp__a__search": {Namespace: "mcp__a__", Name: "search"},
+		"mcp__b__search": {Namespace: "mcp__b__", Name: "search"},
+	}
+	if len(namespaced) != len(want) {
+		t.Fatalf("namespaced = %v", namespaced)
+	}
+	for name, tool := range want {
+		if namespaced[name] != tool {
+			t.Fatalf("namespaced[%s] = %v, want %v", name, namespaced[name], tool)
+		}
+	}
+	input := gjson.GetBytes(out, "input").Array()
+	if len(input) != 8 {
+		t.Fatalf("input: %s", out)
+	}
+	if role := input[0].Get("role").String(); role != "system" {
+		t.Fatalf("developer message role = %q", role)
+	}
+	for index, name := range map[int]string{2: "sleep", 4: "mcp__b__search", 6: "exec"} {
+		if input[index].Get("name").String() != name || input[index].Get("namespace").Exists() {
+			t.Fatalf("history call %d: %s", index, input[index].Raw)
+		}
+	}
+}
+
+func TestNormalizeResponsesBodyFitsZedParser(t *testing.T) {
+	model := zedModel{ID: "gpt-5.5"}
+	body := mustJSON(t, map[string]any{
+		"include":   []any{"reasoning.encrypted_content", "web_search_call.action.sources"},
+		"reasoning": map[string]any{"effort": "low", "summary": "none"},
+		"input": []any{
+			map[string]any{"role": "developer", "content": "Be terse."},
+			map[string]any{"type": "web_search_call", "id": "ws_1", "status": "completed"},
+			map[string]any{"type": "item_reference", "id": "msg_1"},
+			map[string]any{"type": "reasoning", "summary": []any{}, "content": nil, "encrypted_content": "e"},
+			map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": "hi"}}},
+		},
+	})
+	out, errNormalize := normalizeResponsesBody(body, model)
+	if errNormalize != nil {
+		t.Fatal(errNormalize)
+	}
+	input := gjson.GetBytes(out, "input").Array()
+	if len(input) != 3 {
+		t.Fatalf("input: %s", out)
+	}
+	if input[0].Get("type").String() != "message" || input[0].Get("role").String() != "system" || input[0].Get("content.0.type").String() != "input_text" {
+		t.Fatalf("developer message: %s", input[0].Raw)
+	}
+	if input[1].Get("type").String() != "reasoning" || input[1].Get("content").Exists() || input[1].Get("encrypted_content").String() != "e" {
+		t.Fatalf("reasoning item: %s", input[1].Raw)
+	}
+	if include := gjson.GetBytes(out, "include").Array(); len(include) != 1 || include[0].String() != "reasoning.encrypted_content" {
+		t.Fatalf("include: %s", out)
+	}
+	if gjson.GetBytes(out, "reasoning.summary").Exists() || gjson.GetBytes(out, "reasoning.effort").String() != "low" {
+		t.Fatalf("reasoning: %s", out)
+	}
+
+	tools := []any{
+		map[string]any{"type": "function", "name": "get_time"},
+		map[string]any{"type": "function", "name": "get_date"},
+	}
+	forced, errNormalize := normalizeResponsesBody(mustJSON(t, map[string]any{"input": []any{}, "tools": tools, "tool_choice": map[string]any{"type": "function", "name": "get_date"}}), model)
+	if errNormalize != nil {
+		t.Fatal(errNormalize)
+	}
+	if kept := gjson.GetBytes(forced, "tools.#.name").Array(); len(kept) != 1 || kept[0].String() != "get_date" || gjson.GetBytes(forced, "tool_choice").String() != "required" {
+		t.Fatalf("forced tool: %s", forced)
+	}
+	hosted, errNormalize := normalizeResponsesBody(mustJSON(t, map[string]any{"input": []any{}, "tools": tools, "tool_choice": map[string]any{"type": "web_search"}}), model)
+	if errNormalize != nil {
+		t.Fatal(errNormalize)
+	}
+	if gjson.GetBytes(hosted, "tool_choice").Exists() || len(gjson.GetBytes(hosted, "tools").Array()) != 2 {
+		t.Fatalf("hosted tool choice: %s", hosted)
+	}
+
+	withoutEffort, errNormalize := normalizeResponsesBody(mustJSON(t, map[string]any{"input": []any{}, "reasoning": map[string]any{"summary": "auto"}}), model)
+	if errNormalize != nil {
+		t.Fatal(errNormalize)
+	}
+	if gjson.GetBytes(withoutEffort, "reasoning").Exists() {
+		t.Fatalf("reasoning without effort survived: %s", withoutEffort)
+	}
+}
+
+func TestRestoreToolNamespaces(t *testing.T) {
+	namespaced := map[string]namespacedTool{"sleep": {Namespace: "clock", Name: "sleep"}}
+	added := restoreToolNamespaces([]byte(`{"type":"response.output_item.added","item":{"type":"function_call","name":"sleep","call_id":"c1"}}`), namespaced)
+	if gjson.GetBytes(added, "item.namespace").String() != "clock" || gjson.GetBytes(added, "item.name").String() != "sleep" {
+		t.Fatalf("added: %s", added)
+	}
+	completed := restoreToolNamespaces([]byte(`{"type":"response.completed","response":{"output":[{"type":"message"},{"type":"function_call","name":"sleep"},{"type":"custom_tool_call","name":"exec"}]}}`), namespaced)
+	if gjson.GetBytes(completed, "response.output.1.namespace").String() != "clock" {
+		t.Fatalf("completed: %s", completed)
+	}
+	if gjson.GetBytes(completed, "response.output.2.namespace").Exists() || gjson.GetBytes(completed, "response.output.0.namespace").Exists() {
+		t.Fatalf("an unflattened item got a namespace: %s", completed)
+	}
+	folded := restoreToolNamespaces([]byte(`{"object":"response","output":[{"type":"function_call","name":"sleep"}]}`), namespaced)
+	if gjson.GetBytes(folded, "output.0.namespace").String() != "clock" {
+		t.Fatalf("folded: %s", folded)
+	}
+	untouched := []byte(`{"item":{"type":"function_call","name":"sleep"}}`)
+	if got := restoreToolNamespaces(untouched, nil); string(got) != string(untouched) {
+		t.Fatalf("restored without a map: %s", got)
 	}
 }
