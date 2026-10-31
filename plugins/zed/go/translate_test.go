@@ -268,3 +268,83 @@ func TestNormalizeResponsesStringInput(t *testing.T) {
 		t.Fatalf("max_output_tokens: %s", out)
 	}
 }
+
+func TestNormalizeClaudeBodyFitsZedParser(t *testing.T) {
+	// The shapes Claude Code sends that Zed's Anthropic parser rejects.
+	model := zedModel{ID: "claude-sonnet-5-5", OutputTokens: 64000, SupportsThinking: true, EffortLevels: []string{"low", "medium", "high"}}
+	body := mustJSON(t, map[string]any{
+		"model":      "claude-sonnet-5-5",
+		"max_tokens": 32000,
+		"thinking":   map[string]any{"type": "between_tools"},
+		"context_management": map[string]any{"edits": []any{
+			map[string]any{"type": "clear_thinking_20251015", "keep": "all"},
+			map[string]any{"type": "clear_tool_uses_20250919"},
+		}},
+		"tools": []any{
+			map[string]any{"name": "Bash", "description": "Run a command", "input_schema": map[string]any{"type": "object"}},
+			map[string]any{"name": "mcp__docs__search", "input_schema": map[string]any{"type": "object"}},
+			map[string]any{"type": "web_search_20250305", "name": "web_search", "max_uses": 8},
+		},
+		"tool_choice": map[string]any{"type": "tool", "name": "web_search"},
+		"messages": []any{
+			map[string]any{"role": "user", "content": "list files"},
+			map[string]any{"role": "system", "content": []any{map[string]any{"type": "text", "text": "<system-reminder>a</system-reminder>"}}},
+			map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": map[string]any{"command": "ls"}}}},
+			map[string]any{"role": "system", "content": "<system-reminder>b</system-reminder>"},
+			map[string]any{"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": "toolu_1", "content": "a.txt"}}},
+		},
+	})
+	out, errNormalize := normalizeClaudeBody(body, model)
+	if errNormalize != nil {
+		t.Fatal(errNormalize)
+	}
+	messages := gjson.GetBytes(out, "messages").Array()
+	if len(messages) != 3 {
+		t.Fatalf("messages: %s", out)
+	}
+	for index, role := range []string{"user", "assistant", "user"} {
+		if got := messages[index].Get("role").String(); got != role {
+			t.Fatalf("message %d role = %q: %s", index, got, out)
+		}
+	}
+	if texts := messages[0].Get("content.#.text").Array(); len(texts) != 2 || texts[1].String() != "<system-reminder>a</system-reminder>" {
+		t.Fatalf("first turn: %s", messages[0].Raw)
+	}
+	last := messages[2].Get("content").Array()
+	if len(last) != 2 || last[0].Get("type").String() != "tool_result" || last[0].Get("is_error").Type != gjson.False || last[1].Get("text").String() != "<system-reminder>b</system-reminder>" {
+		t.Fatalf("tool_result turn: %s", messages[2].Raw)
+	}
+	if gjson.GetBytes(out, "context_management").Exists() {
+		t.Fatalf("clearing edits survived: %s", out)
+	}
+	if gjson.GetBytes(out, "thinking").Exists() {
+		t.Fatalf("between_tools survived: %s", out)
+	}
+	tools := gjson.GetBytes(out, "tools").Array()
+	if len(tools) != 2 || tools[1].Get("description").Type != gjson.String {
+		t.Fatalf("tools: %s", out)
+	}
+	if gjson.GetBytes(out, "tool_choice").Exists() {
+		t.Fatalf("tool_choice naming a dropped tool survived: %s", out)
+	}
+}
+
+func TestNormalizeClaudeKeepsCompaction(t *testing.T) {
+	model := zedModel{ID: "claude-sonnet-5-5"}
+	body := mustJSON(t, map[string]any{
+		"max_tokens": 1024,
+		"messages":   []any{map[string]any{"role": "user", "content": "hi"}},
+		"context_management": map[string]any{"edits": []any{
+			map[string]any{"type": "clear_thinking_20251015", "keep": "all"},
+			map[string]any{"type": "compact_20260112", "trigger": map[string]any{"type": "input_tokens", "value": 150000}},
+		}},
+	})
+	out, errNormalize := normalizeClaudeBody(body, model)
+	if errNormalize != nil {
+		t.Fatal(errNormalize)
+	}
+	edits := gjson.GetBytes(out, "context_management.edits").Array()
+	if len(edits) != 1 || edits[0].Get("type").String() != "compact_20260112" || edits[0].Get("trigger.value").Int() != 150000 {
+		t.Fatalf("edits: %s", out)
+	}
+}

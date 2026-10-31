@@ -73,14 +73,24 @@ The wire protocol comes from the model's Zed provider:
 
 Zed no longer lists xAI models, but the route stays for a future return.
 Conversions use CLIProxyAPI's own translators in process. Non-streaming
-clients are served by folding Zed's event stream:
+clients are served by folding Zed's event stream.
 
-- Claude requests have block content and no `temperature`/`top_p`/`top_k` on
-  Sonnet 5 and later. On models that list effort levels,
-  `thinking.type: enabled` becomes `thinking.type: adaptive` with
-  `output_config.effort`; the others keep their token budget.
-- Responses requests get `type: message` on input items the client left bare.
-- Gemini requests drop `safetySettings`, which Zed's parser rejects.
+Zed parses each request into its own types before forwarding it, so a value
+outside one of its enums fails the request. The plugin rewrites what clients
+send to fit:
+
+- Claude: content becomes blocks, Sonnet 5 and later lose
+  `temperature`/`top_p`/`top_k`, `system` messages between turns become user
+  turns, and context edits other than `compact_20260112` are dropped.
+- Claude thinking: on models that list effort levels, `thinking.type: enabled`
+  becomes `adaptive` with `output_config.effort` (the others keep their token
+  budget), and `disabled` or `between_tools` is dropped because Zed accepts
+  neither.
+- Responses: bare input items get `type: message`.
+- Gemini: `safetySettings` is dropped.
+
+Claude server tools such as web search run on Anthropic's side, which Zed does
+not offer, so the plugin drops them and the model answers without them.
 
 A thinking suffix such as `zed/claude-sonnet-5-5(high)` asks for that effort
 the way Zed's editor does: adaptive thinking and `output_config.effort` for

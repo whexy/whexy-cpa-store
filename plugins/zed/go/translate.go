@@ -319,27 +319,20 @@ func normalizeNativeBody(upstream sdktranslator.Format, body []byte, model zedMo
 
 // normalizeClaudeBody turns a Messages request into the newer API the Zed
 // Anthropic route speaks: block content, adaptive thinking, and no sampling
-// parameters on models that reject them.
+// parameters on models that reject them. Zed's edge parses the body into its
+// own request type before forwarding it, so a field it does not know is
+// dropped but a value outside one of its enums fails the whole request.
 func normalizeClaudeBody(body []byte, model zedModel) ([]byte, error) {
 	root := gjson.ParseBytes(body)
 	messages := root.Get("messages")
 	if !messages.IsArray() {
 		return nil, errors.New("Claude request has no messages")
 	}
-	normalized := []any{}
-	for _, message := range messages.Array() {
-		raw := []byte(message.Raw)
-		content := message.Get("content")
-		if content.Type == gjson.String {
-			raw, _ = sjson.SetBytes(raw, "content", []any{
-				map[string]any{"type": "text", "text": content.String()},
-			})
-		}
-		normalized = append(normalized, json.RawMessage(raw))
-	}
-	if encoded, errMarshal := json.Marshal(normalized); errMarshal == nil {
+	if encoded, errMarshal := json.Marshal(claudeTurns(messages)); errMarshal == nil {
 		body, _ = sjson.SetRawBytes(body, "messages", encoded)
 	}
+	body = keepClaudeTools(body)
+	body = keepClaudeCompaction(body)
 
 	if rejectsSamplingParameters(model.ID) {
 		for _, field := range []string{"temperature", "top_p", "top_k"} {
@@ -360,7 +353,9 @@ func normalizeClaudeBody(body []byte, model zedModel) ([]byte, error) {
 			if effort := supportedEffort(effortForBudget(budget), model); effort != "" && !gjson.GetBytes(body, "output_config.effort").Exists() {
 				body, _ = sjson.SetBytes(body, "output_config.effort", effort)
 			}
-		case "disabled":
+		case "disabled", "between_tools":
+			// Zed's parser has no between_tools, and Sonnet 5.5 refuses
+			// disabled, so neither can turn thinking off through Zed.
 			body, _ = sjson.DeleteBytes(body, "thinking")
 		}
 	}
@@ -368,6 +363,108 @@ func normalizeClaudeBody(body []byte, model zedModel) ([]byte, error) {
 		body, _ = sjson.SetBytes(body, "max_tokens", model.OutputTokens)
 	}
 	return fitThinkingBudget(body), nil
+}
+
+// claudeTurns gives every message a block array and every tool_result the
+// is_error flag Zed's parser requires. Zed knows only the user and assistant
+// roles, so the system messages Claude Code sends between turns become user
+// turns, merged with their neighbours so tool_result blocks stay first.
+func claudeTurns(messages gjson.Result) []any {
+	type turn struct {
+		role    string
+		results []any
+		blocks  []any
+	}
+	var turns []*turn
+	for _, message := range messages.Array() {
+		role := message.Get("role").String()
+		if role == "system" {
+			role = "user"
+		}
+		var current *turn
+		if last := len(turns) - 1; last >= 0 && role == "user" && turns[last].role == "user" {
+			current = turns[last]
+		} else {
+			current = &turn{role: role}
+			turns = append(turns, current)
+		}
+		content := message.Get("content")
+		if content.Type == gjson.String {
+			current.blocks = append(current.blocks, map[string]any{"type": "text", "text": content.String()})
+			continue
+		}
+		for _, block := range content.Array() {
+			raw := []byte(block.Raw)
+			if block.Get("type").String() != "tool_result" {
+				current.blocks = append(current.blocks, json.RawMessage(raw))
+				continue
+			}
+			if block.Get("is_error").Type != gjson.True {
+				raw, _ = sjson.SetBytes(raw, "is_error", false)
+			}
+			current.results = append(current.results, json.RawMessage(raw))
+		}
+	}
+	out := make([]any, 0, len(turns))
+	for _, turn := range turns {
+		content := append(append(make([]any, 0, len(turn.results)+len(turn.blocks)), turn.results...), turn.blocks...)
+		out = append(out, map[string]any{"role": turn.role, "content": content})
+	}
+	return out
+}
+
+// keepClaudeTools keeps the tools Zed's parser accepts: every tool needs a
+// description, so server tools such as web search, which Zed cannot run, are
+// dropped along with a tool_choice that names one.
+func keepClaudeTools(body []byte) []byte {
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return body
+	}
+	kept := []any{}
+	names := map[string]bool{}
+	for _, tool := range tools.Array() {
+		if kind := tool.Get("type").String(); kind != "" && kind != "custom" {
+			continue
+		}
+		raw := []byte(tool.Raw)
+		if tool.Get("description").Type != gjson.String {
+			raw, _ = sjson.SetBytes(raw, "description", "")
+		}
+		names[tool.Get("name").String()] = true
+		kept = append(kept, json.RawMessage(raw))
+	}
+	if len(kept) == 0 {
+		body, _ = sjson.DeleteBytes(body, "tools")
+		body, _ = sjson.DeleteBytes(body, "tool_choice")
+		return body
+	}
+	body, _ = sjson.SetBytes(body, "tools", kept)
+	if choice := gjson.GetBytes(body, "tool_choice"); choice.Get("type").String() == "tool" && !names[choice.Get("name").String()] {
+		body, _ = sjson.DeleteBytes(body, "tool_choice")
+	}
+	return body
+}
+
+// keepClaudeCompaction keeps the only context edit Zed's parser knows.
+// Claude Code also asks to clear old thinking and tool uses, which Zed
+// rejects outright.
+func keepClaudeCompaction(body []byte) []byte {
+	if !gjson.GetBytes(body, "context_management").Exists() {
+		return body
+	}
+	kept := []any{}
+	for _, edit := range gjson.GetBytes(body, "context_management.edits").Array() {
+		if edit.Get("type").String() == "compact_20260112" {
+			kept = append(kept, json.RawMessage(edit.Raw))
+		}
+	}
+	if len(kept) == 0 {
+		body, _ = sjson.DeleteBytes(body, "context_management")
+		return body
+	}
+	body, _ = sjson.SetBytes(body, "context_management.edits", kept)
+	return body
 }
 
 // minThinkingBudget is the smallest budget_tokens Anthropic accepts.
