@@ -355,6 +355,22 @@ type zedModel struct {
 	SupportsCompaction bool
 }
 
+// typeName is the capability family CPA lists for the model, matching the
+// names its built-in providers use.
+func (m zedModel) typeName() string {
+	switch m.Provider {
+	case "anthropic":
+		return "claude"
+	case "open_ai":
+		return "openai"
+	case "google":
+		return "gemini"
+	case "x_ai":
+		return "xai"
+	}
+	return m.Provider
+}
+
 func (m zedModel) nativeProtocol() string {
 	switch m.Provider {
 	case "anthropic":

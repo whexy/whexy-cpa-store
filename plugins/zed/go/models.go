@@ -76,7 +76,7 @@ func modelInfo(cfg settings, model zedModel) pluginapi.ModelInfo {
 		ID:                  cfg.exposedID(model.ID),
 		Object:              "model",
 		OwnedBy:             model.Provider,
-		Type:                model.nativeProtocol(),
+		Type:                model.typeName(),
 		DisplayName:         model.DisplayName,
 		Name:                model.ID,
 		Description:         "Zed-hosted " + model.DisplayName,
