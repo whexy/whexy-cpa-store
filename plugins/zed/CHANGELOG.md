@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/whexy/whexy-cpa-store/compare/zed-v0.1.0...zed-v0.1.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **zed:** accept Codex's requests on Zed's Responses route
+* **zed:** accept Claude Code's requests on Zed's Anthropic route
+
 ## 0.1.0 (2026-10-31)
 
 

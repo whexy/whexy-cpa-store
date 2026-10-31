@@ -74,7 +74,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.1.0"
+	pluginVersion = "0.1.1"
 
 	providerKey = "zed"
 	displayName = "Zed"
