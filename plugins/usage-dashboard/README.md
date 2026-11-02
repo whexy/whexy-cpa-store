@@ -44,7 +44,10 @@ Quota section draws one chart per provider: the pool of its longest window,
 usually the weekly limit, summed over its enabled accounts, as recorded and
 as projected. An account joins once a request through CLIProxyAPI has
 reported its quota, or once a poll has read it. A Grok account on the paid
-API has no subscription windows to read and stays unreported.
+API has no subscription windows to read and stays unreported, as does an
+account with its own `proxy_url` or a `base_url` outside the provider's own
+domain, since the poll reaches the provider itself through CLIProxyAPI's
+global proxy.
 
 The projection continues the burn measured over the last 1, 3, 6 or 24
 hours, or the average since each window opened when less than 15 minutes of

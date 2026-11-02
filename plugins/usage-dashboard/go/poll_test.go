@@ -181,12 +181,17 @@ func TestPollRecordsEveryPolledProvider(t *testing.T) {
 		{ID: "claude-a", AuthIndex: "c1", Provider: "claude", Email: "claude@example.com"},
 		{ID: "meta-off", AuthIndex: "m2", Provider: "meta", Disabled: true},
 		{ID: "xai-proxied", AuthIndex: "x2", Provider: "xai"},
+		{ID: "xai-relay", AuthIndex: "x3", Provider: "xai"},
+		{ID: "meta-relay", AuthIndex: "m3", Provider: "meta"},
 	}
-	host.files["m1"] = `{"type":"meta","dca_token":"dca:meta-token"}`
-	host.files["x1"] = `{"type":"xai","access_token":"xai-token","sub":"user-9"}`
+	// Logins as CLIProxyAPI writes them, with the provider's own base_url.
+	host.files["m1"] = `{"type":"meta","dca_token":"dca:meta-token","base_url":"https://api.meta.ai/v1"}`
+	host.files["x1"] = `{"type":"xai","access_token":"xai-token","sub":"user-9","base_url":"https://api.x.ai/v1"}`
 	host.files["g1"] = `{"type":"opencode-go","keys":[{"id":"key-a","api_key":"oc_sk_first"},{"id":"key-b","api_key":"oc_sk_second"}]}`
 	host.files["g3"] = `{"type":"opencode-go","auth_method":"oauth","access_token":"login-token","refresh_token":"refresh","org_id":"org-1"}`
 	host.files["x2"] = `{"type":"xai","access_token":"proxied-token","proxy_url":"socks5://10.0.0.1:1080"}`
+	host.files["x3"] = `{"type":"xai","access_token":"relay-token","base_url":"https://x.ai.relay.example/v1"}`
+	host.files["m3"] = `{"type":"meta","dca_token":"dca:relay-token","base_url":"https://relay.example/meta.ai/v1"}`
 	host.answer(metaQuotaURL, 200, metaUsageBody)
 	host.answer(xaiBillingWeeklyURL, 200, xaiWeeklyBody)
 	host.answer(xaiBillingMonthlyURL, 200, xaiMonthlyBody)
@@ -310,5 +315,23 @@ func TestParseQuotaPollIntervalSetting(t *testing.T) {
 	}
 	if _, errParse := parseSettings([]byte("quota_poll_interval: soon\n")); errParse == nil {
 		t.Fatal("an unreadable interval must be rejected")
+	}
+}
+
+func TestOnOwnDomain(t *testing.T) {
+	for baseURL, want := range map[string]bool{
+		"":                                   true,
+		"https://api.x.ai/v1":                true,
+		"https://cli-chat-proxy.grok.com/v1": true,
+		"https://X.AI:443/v1":                true,
+		"http://api.x.ai/v1":                 false,
+		"https://evilx.ai/v1":                false,
+		"https://x.ai.relay.example/v1":      false,
+		"https://relay.example/api.x.ai":     false,
+		"api.x.ai/v1":                        false,
+	} {
+		if got := onOwnDomain(baseURL, []string{"x.ai", "grok.com"}); got != want {
+			t.Errorf("onOwnDomain(%q) = %v, want %v", baseURL, got, want)
+		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -107,10 +108,12 @@ func (p *quotaPoller) poll(ctx context.Context) {
 }
 
 // pollAuthFile reads one account's auth file. It refuses an account with
-// its own proxy or upstream: host.http.do applies only the global proxy,
-// so the poll would reach the provider from somewhere CLIProxyAPI never
-// sends that account's traffic.
-func pollAuthFile(entry pluginapi.HostAuthFileEntry) (json.RawMessage, bool) {
+// its own proxy, or with a base_url outside the provider's own domains:
+// host.http.do applies only the global proxy, so the poll would reach the
+// provider from somewhere CLIProxyAPI never sends that account's traffic,
+// or hand a relay's credential to the provider. CLIProxyAPI writes the
+// provider's default base_url into every Grok and Meta login.
+func pollAuthFile(entry pluginapi.HostAuthFileEntry, ownDomains ...string) (json.RawMessage, bool) {
 	raw, errFile := hostAuthFile(strings.TrimSpace(entry.AuthIndex))
 	if errFile != nil || len(raw) == 0 {
 		return nil, false
@@ -119,14 +122,34 @@ func pollAuthFile(entry pluginapi.HostAuthFileEntry) (json.RawMessage, bool) {
 		ProxyURL string `json:"proxy_url"`
 		BaseURL  string `json:"base_url"`
 	}
-	if json.Unmarshal(raw, &route) != nil || strings.TrimSpace(route.ProxyURL) != "" || strings.TrimSpace(route.BaseURL) != "" {
+	if json.Unmarshal(raw, &route) != nil || strings.TrimSpace(route.ProxyURL) != "" || !onOwnDomain(route.BaseURL, ownDomains) {
 		return nil, false
 	}
 	return raw, true
 }
 
+// onOwnDomain reports whether baseURL is empty or an https URL whose host
+// is one of domains or a subdomain of one.
+func onOwnDomain(baseURL string, domains []string) bool {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return true
+	}
+	parsed, errParse := url.Parse(baseURL)
+	if errParse != nil || parsed.Scheme != "https" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	for _, domain := range domains {
+		if host == domain || strings.HasSuffix(host, "."+domain) {
+			return true
+		}
+	}
+	return false
+}
+
 func pollMeta(ctx context.Context, entry pluginapi.HostAuthFileEntry) []quotaWindow {
-	raw, ok := pollAuthFile(entry)
+	raw, ok := pollAuthFile(entry, "meta.ai")
 	if !ok {
 		return nil
 	}
@@ -195,7 +218,7 @@ func metaQuotaFromUsage(body []byte) []quotaWindow {
 }
 
 func pollXAI(ctx context.Context, entry pluginapi.HostAuthFileEntry) []quotaWindow {
-	raw, ok := pollAuthFile(entry)
+	raw, ok := pollAuthFile(entry, "x.ai", "grok.com")
 	if !ok {
 		return nil
 	}
@@ -330,7 +353,7 @@ func pollOpenCodeGo(ctx context.Context, entry pluginapi.HostAuthFileEntry) []qu
 	if strings.HasSuffix(strings.TrimSpace(entry.ID), "#zen") {
 		return nil
 	}
-	raw, ok := pollAuthFile(entry)
+	raw, ok := pollAuthFile(entry, "opencode.ai")
 	if !ok {
 		return nil
 	}
