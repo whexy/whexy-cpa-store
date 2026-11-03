@@ -34,7 +34,9 @@ func interceptRequest(raw []byte) ([]byte, error) {
 // decide matches the model the client asked for and the model it resolved to
 // after aliases, model pools and model routing, so a rule can name either.
 func decide(req pluginapi.RequestInterceptRequest) pluginapi.RequestInterceptResponse {
-	prompt := currentRules().promptFor(req.RequestedModel, req.Model)
+	// Read metadata so caller selectors also work on hosts without a CallerScope field.
+	scope, _ := req.Metadata["caller_scope"].(string)
+	prompt := currentRules().promptFor(scope, req.RequestedModel, req.Model)
 	if prompt == "" {
 		return pluginapi.RequestInterceptResponse{}
 	}

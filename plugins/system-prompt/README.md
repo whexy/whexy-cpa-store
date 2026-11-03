@@ -33,6 +33,53 @@ suffix such as `gpt-5.5(high)` is ignored. When several rules match,
 their prompts are appended in list order. Count-tokens requests get the same
 text, so their counts include it.
 
+## Limit a rule to callers
+
+On a shared gateway, optional `callers` selectors let you set prompts per client
+API key or user with a separate key. Configure selectors in YAML. The management
+page edits models and prompts and preserves existing `callers` selectors when
+saving.
+
+Each entry is a caller scope, the caller identity CLIProxyAPI exposes to plugins,
+rather than an API key. This example uses a synthetic scope that you must replace:
+
+```yaml
+rules:
+  - models: ["*"]
+    prompt: "Follow the organization's writing guidelines."
+  - models: ["gpt-*"]
+    callers:
+      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+    prompt: "Answer in Swedish."
+```
+
+Put these rules under `plugins.configs.system-prompt` as in the setup example.
+Both the model and caller scope must match a restricted rule. Matching prompts
+still follow config order.
+
+| `callers` value                       | Behavior when the model matches                                   |
+| ------------------------------------- | ----------------------------------------------------------------- |
+| Absent                                | Apply to every caller, including requests without a caller scope. |
+| Nonempty list of valid scopes         | Apply only to a listed caller scope.                              |
+| Empty list, null, or a non-list value | Disable the rule and report a problem.                            |
+| List with any malformed entry         | Disable the entire rule and report a problem.                     |
+
+Entries must contain 64 hexadecimal characters after trimming whitespace and
+converting to lowercase. A missing or non-string request scope matches only
+rules without `callers`. The plugin reads `Metadata["caller_scope"]`, so it also
+works with v8 hosts whose request type has no dedicated `CallerScope` field.
+The plugin's status endpoint reports invalid rules in `problems`.
+
+To compute a caller scope, set `KEY` privately to the client API key without
+surrounding whitespace, then run:
+
+```sh
+printf 'cli-proxy-api:caller-scope:v1\0%s' "$KEY" | shasum -a 256
+```
+
+Copy only the 64-character digest into `callers`. Do not put the API key in the
+plugin config or commit it. Users who share a key share a caller scope.
+
 ## Where the text goes
 
 The prompt follows the client's system prompt after a blank line. When the

@@ -187,7 +187,7 @@ func pluginRegistration() registration {
 			GitHubRepository: "https://github.com/whexy/whexy-cpa-store",
 			Logo:             logoPath,
 			ConfigFields: []pluginapi.ConfigField{
-				{Name: "rules", Type: pluginapi.ConfigFieldTypeArray, Description: "Rules of {models, prompt}: the prompt is appended to the system prompt of requests whose model matches one of the models. Edit them on the System Prompts page in Management Center."},
+				{Name: "rules", Type: pluginapi.ConfigFieldTypeArray, Description: "Rules of {models, callers?, prompt}: append the prompt when the model matches and, if callers is present, the caller scope matches. Edit models and prompts on the System Prompts page in Management Center; configure callers in YAML."},
 			},
 		},
 		Capabilities: registrationCapability{

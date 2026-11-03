@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -24,6 +25,7 @@ type ruleSet struct {
 
 type rule struct {
 	patterns []string
+	callers  map[string]struct{}
 	prompt   string
 }
 
@@ -37,8 +39,9 @@ type configDocument struct {
 }
 
 type ruleConfig struct {
-	Models []string `yaml:"models"`
-	Prompt string   `yaml:"prompt"`
+	Models  []string  `yaml:"models"`
+	Callers yaml.Node `yaml:"callers"`
+	Prompt  string    `yaml:"prompt"`
 }
 
 var (
@@ -110,18 +113,46 @@ func compileRule(config ruleConfig) (rule, string) {
 	case compiled.prompt == "":
 		return rule{}, "has an empty prompt"
 	}
+	// A present selector must never become an unrestricted rule, even for null.
+	if config.Callers.Kind != 0 {
+		if config.Callers.Kind != yaml.SequenceNode {
+			return rule{}, "callers is not a list of caller scopes"
+		}
+		if len(config.Callers.Content) == 0 {
+			return rule{}, "lists no callers"
+		}
+		compiled.callers = make(map[string]struct{}, len(config.Callers.Content))
+		for index, node := range config.Callers.Content {
+			var value string
+			if errDecode := node.Decode(&value); errDecode != nil {
+				return rule{}, fmt.Sprintf("caller %d is not a caller scope", index+1)
+			}
+			scope := strings.ToLower(strings.TrimSpace(value))
+			if len(scope) != 64 || strings.IndexFunc(scope, func(ch rune) bool {
+				return (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f')
+			}) >= 0 {
+				return rule{}, fmt.Sprintf("caller %d is not a caller scope", index+1)
+			}
+			compiled.callers[scope] = struct{}{}
+		}
+	}
 	return compiled, ""
 }
 
 // promptFor joins the prompts of every rule that matches one of the model
-// IDs, in configured order.
-func (s *ruleSet) promptFor(models ...string) string {
+// IDs and caller scope, in configured order.
+func (s *ruleSet) promptFor(callerScope string, models ...string) string {
 	var candidates []string
 	for _, model := range models {
 		candidates = appendModelCandidates(candidates, model)
 	}
 	var prompts []string
 	for _, rule := range s.rules {
+		if rule.callers != nil {
+			if _, matches := rule.callers[callerScope]; !matches {
+				continue
+			}
+		}
 		if rule.matches(candidates) {
 			prompts = append(prompts, rule.prompt)
 		}
