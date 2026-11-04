@@ -4,7 +4,12 @@ import { pathToFileURL } from "node:url";
 import { readPlugins, UNRELEASED } from "./plugins.mjs";
 
 const SYSTEM = "x86_64-linux";
-const DOCUMENTATION = ["AGENTS.md", "CLAUDE.md", "README.md"];
+const DOCUMENTATION = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "CONTRIBUTING.md",
+  "README.md",
+];
 
 // Releases that a commit declares and whexy-bot has not listed yet: tagged
 // releases still being published, and untagged ones.

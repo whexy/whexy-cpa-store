@@ -4,6 +4,9 @@ Private plugin store registry for [CLIProxyAPI](https://github.com/router-for-me
 CLIProxyAPI's Management Center reads this repo's `registry.json` and installs
 plugins directly from this repo's GitHub release assets.
 
+Contributions are not accepted, and pull requests from outside contributors
+will not be merged. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Plugins
 
 - `client-keys` — policies per client API key, set on a Management Center page: which models a key may use and see listed, and whether it may use the OpenAI Responses API.
