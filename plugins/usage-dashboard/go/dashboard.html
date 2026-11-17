@@ -1313,28 +1313,20 @@
     <script>
       "use strict";
 
-      // The Quota section's model: no DOM, so testdata/page_test.mjs runs it
-      // under node. The page script below draws it.
+      // The Quota section's chart model: no DOM, so testdata/page_test.mjs
+      // runs it under node. The page script below draws it. Each section is
+      // one provider of the plugin's quota/pools route, which works out the
+      // pools.
 
       const MINUTE = 60 * 1000;
       const HOUR = 60 * MINUTE;
       const DAY = 24 * HOUR;
-      // Spacing of the recorded grid and of projected points between events.
+      // Spacing of the recorded grid the route is asked for, which the
+      // cursor snaps to.
       const QUOTA_STEP = 10 * MINUTE;
       const QUOTA_SPAN_DAYS = 14;
       const QUOTA_PAST_DAYS = 3;
-      // Stats look this far ahead whatever range the chart shows.
-      const QUOTA_HORIZON = 14 * DAY;
       const QUOTA_LOOKBACKS = [5, 24, 48, 72];
-      // An account read for less of the lookback than this has no rate yet.
-      const MIN_RATE_COVERAGE = 15 * MINUTE;
-      // A window open for less than this has too little use behind it for an
-      // average.
-      const MIN_WINDOW_AVERAGE = HOUR;
-      // A rise this large with no reset passed still restored quota.
-      const RISE_THRESHOLD = 0.5;
-      // Rises below a point are rounding, not a reset.
-      const MIN_JUMP = 1;
       const EPSILON = 1e-6;
       const CHART_HEIGHT = 300;
       const CHART_MARGIN = { top: 30, right: 14, bottom: 30, left: 56 };
@@ -1355,20 +1347,6 @@
         return { start: start.getTime(), end: end.getTime() };
       }
 
-      // The window a provider's pool is drawn from: the longest one its
-      // accounts report, since a fortnight of 5-hour windows is a sawtooth.
-      function pooledWindow(accounts) {
-        let pooled = null;
-        for (const account of accounts) {
-          const last = account.samples[account.samples.length - 1];
-          for (const window of last ? last.windows : []) {
-            if (!pooled || window.period_minutes > pooled.minutes)
-              pooled = { id: window.id, minutes: window.period_minutes };
-          }
-        }
-        return pooled;
-      }
-
       // Index of the last item at or before `t`; -1 when all are later.
       function indexAtOrBefore(items, t, timeOf) {
         let low = 0;
@@ -1387,466 +1365,26 @@
       }
 
       const timeOfValue = (value) => value;
-      const timeOfPoint = (point) => point.at;
 
-      // One account's readings of one window, oldest first.
-      function quotaTrack(samples, windowId) {
-        const track = [];
-        for (const sample of samples) {
-          const window = sample.windows.find((item) => item.id === windowId);
-          if (!window) continue;
-          track.push({
-            at: sample.at,
-            remaining: window.remaining,
-            resetAt: window.reset_at || null,
-            period: window.period_minutes * MINUTE,
-          });
-        }
-        return track.sort((a, b) => a.at - b.at);
-      }
-
-      // The window's figure at `t`: the reading then standing, or 100 once
-      // its reset passed. The plugin keeps every change of a pooled window, so
-      // it held still between readings. Null before the first reading.
-      function trackValueAt(track, t) {
-        const index = indexAtOrBefore(track, t, timeOfPoint);
-        if (index === -1) return null;
-        const point = track[index];
-        return point.resetAt !== null && point.resetAt <= t
-          ? 100
-          : point.remaining;
-      }
-
-      // Points used in each `step` bucket from `from`, and how much of each
-      // bucket the readings cover: from the first reading to `now`. A drop
-      // between two readings is spread over the time between them; across a
-      // reset only the use after it is known.
-      function usageBuckets(track, from, step, count, now) {
-        const used = new Array(count).fill(0);
-        const covered = new Array(count).fill(0);
-        const spread = (target, start, end, amount) => {
-          if (end <= start) {
-            const bucket = Math.floor((end - from) / step);
-            if (bucket >= 0 && bucket < count) target[bucket] += amount;
-            return;
-          }
-          const first = Math.max(0, Math.floor((start - from) / step));
-          const last = Math.min(count - 1, Math.floor((end - from - 1) / step));
-          for (let bucket = first; bucket <= last; bucket++) {
-            const bucketStart = from + bucket * step;
-            const overlap =
-              Math.min(end, bucketStart + step) - Math.max(start, bucketStart);
-            if (overlap > 0)
-              target[bucket] += (amount * overlap) / (end - start);
-          }
-        };
-        if (track.length && now > track[0].at)
-          spread(covered, track[0].at, now, now - track[0].at);
-        for (let index = 0; index + 1 < track.length; index++) {
-          const before = track[index];
-          const after = track[index + 1];
-          const reset =
-            before.resetAt !== null &&
-            before.resetAt > before.at &&
-            before.resetAt <= after.at;
-          let start = before.at;
-          let drop = before.remaining - after.remaining;
-          if (reset || after.remaining > before.remaining + RISE_THRESHOLD) {
-            drop = 100 - after.remaining;
-            if (reset) start = before.resetAt;
-          }
-          if (drop > 0) spread(used, start, after.at, drop);
-        }
-        return { used, covered };
-      }
-
-      // Running totals of an account's buckets, as poolRate reads them.
-      function runningUsage({ used, covered }) {
-        const sum = (values) => {
-          const out = [0];
-          for (const value of values) out.push(out[out.length - 1] + value);
-          return out;
-        };
-        return { used: sum(used), covered: sum(covered) };
-      }
-
-      // Pool burn over buckets first..last: each account's own rate over the
-      // time its readings cover, summed. Null when no account was read long
-      // enough.
-      function poolRate(usages, first, last) {
-        let perHour = 0;
-        let coveredMs = 0;
-        let measured = false;
-        for (const usage of usages) {
-          const low = Math.max(0, first);
-          const high = Math.min(last + 1, usage.used.length - 1);
-          if (high <= low) continue;
-          const used = usage.used[high] - usage.used[low];
-          const covered = usage.covered[high] - usage.covered[low];
-          coveredMs = Math.max(coveredMs, covered);
-          if (covered < MIN_RATE_COVERAGE) continue;
-          measured = true;
-          perHour += used / (covered / HOUR);
-        }
-        return measured ? { perHour, coveredMs } : null;
-      }
-
-      // The first reset after `after`, moving a passed one on by whole
-      // periods.
-      function upcomingReset(resetAt, period, after) {
-        if (resetAt > after) return resetAt;
-        if (!period) return null;
-        return resetAt + Math.ceil((after - resetAt + 1) / period) * period;
-      }
-
-      // Where a pool goes from `from`. The burn is split evenly over the
-      // accounts with quota left, as CLIProxyAPI's default round-robin
-      // routing spreads requests; an account that runs dry hands its share to
-      // the rest, and a reset puts it back at 100%. `values[k][i]` is account
-      // i at `times[k]`; a reset repeats its instant, before and after.
-      function projectPool(accounts, burnPerHour, from, until, step) {
-        const remaining = accounts.map((account) =>
-          Math.min(100, Math.max(0, account.remaining)),
-        );
-        const nextReset = accounts.map((account, index) => {
-          if (account.resetAt === null) return null;
-          if (account.resetAt > from) return account.resetAt;
-          // The reading predates its reset, which has since restored it.
-          remaining[index] = 100;
-          return upcomingReset(account.resetAt, account.period, from);
-        });
-        const times = [];
-        const values = [];
-        const pool = [];
-        const resets = [];
-        const empties = [];
-        let poolEmptyAt = null;
-        const push = (at) => {
-          times.push(at);
-          values.push(remaining.slice());
-          pool.push(remaining.reduce((sum, value) => sum + value, 0));
-        };
-        const markPoolEmpty = (at) => {
-          if (poolEmptyAt === null && accounts.length) poolEmptyAt = at;
-        };
-        const ratePerMs = Math.max(0, burnPerHour) / HOUR;
-        const drain = (start, end) => {
-          let amount = ratePerMs * (end - start);
-          let cursor = start;
-          while (amount > EPSILON) {
-            const active = [];
-            remaining.forEach((value, index) => {
-              if (value > EPSILON) active.push(index);
-            });
-            if (!active.length) {
-              markPoolEmpty(cursor);
-              return;
-            }
-            // A window that has not started yet starts with its first use.
-            for (const index of active) {
-              const period = accounts[index].period;
-              if (
-                nextReset[index] === null &&
-                accounts[index].resetAt === null &&
-                period
-              )
-                nextReset[index] = cursor + period;
-            }
-            const share = amount / active.length;
-            const smallest = Math.min(
-              ...active.map((index) => remaining[index]),
-            );
-            const taken = Math.min(share, smallest);
-            cursor =
-              share <= smallest
-                ? end
-                : cursor + (smallest * active.length) / ratePerMs;
-            amount -= taken * active.length;
-            let emptied = false;
-            for (const index of active) {
-              remaining[index] -= taken;
-              if (remaining[index] <= EPSILON) {
-                remaining[index] = 0;
-                empties.push({ at: cursor, account: index });
-                emptied = true;
-              }
-            }
-            if (!emptied) return;
-            push(cursor);
-            if (remaining.every((value) => value <= EPSILON))
-              markPoolEmpty(cursor);
-          }
-        };
-
-        if (accounts.length && remaining.every((value) => value <= EPSILON))
-          markPoolEmpty(from);
-        push(from);
-        let cursor = from;
-        while (cursor < until) {
-          let due = Infinity;
-          for (const at of nextReset)
-            if (at !== null && at > cursor && at < due) due = at;
-          const next = Math.min(cursor + step, until, due);
-          drain(cursor, next);
-          cursor = next;
-          const resetting = [];
-          nextReset.forEach((at, index) => {
-            if (at !== null && at <= cursor) resetting.push(index);
-          });
-          if (resetting.length) {
-            push(cursor);
-            for (const index of resetting) {
-              resets.push({
-                at: cursor,
-                account: index,
-                gain: 100 - remaining[index],
-              });
-              remaining[index] = 100;
-              nextReset[index] = upcomingReset(
-                nextReset[index],
-                accounts[index].period,
-                cursor,
-              );
-            }
-          }
-          if (times[times.length - 1] !== cursor || resetting.length)
-            push(cursor);
-        }
-        return { times, values, pool, resets, empties, poolEmptyAt };
-      }
+      // Each account's figure at index `k` of a series.
+      const accountsAt = (series, k) =>
+        series.accounts.map((values) => values[k]);
 
       // Each account's projected figure at `t`, linear between points; null
       // outside the run.
-      function projectionAt(projection, t) {
-        const { times, values } = projection;
+      function projectionAt(projected, t) {
+        const { times, accounts } = projected;
         const index = indexAtOrBefore(times, t, timeOfValue);
         if (index === -1) return null;
         if (index === times.length - 1)
-          return t === times[index] ? values[index] : null;
+          return t === times[index] ? accountsAt(projected, index) : null;
         const span = times[index + 1] - times[index];
-        if (span <= 0) return values[index + 1];
+        if (span <= 0) return accountsAt(projected, index + 1);
         const ratio = (t - times[index]) / span;
-        return values[index].map(
-          (value, account) =>
-            value + (values[index + 1][account] - value) * ratio,
+        return accounts.map(
+          (values) =>
+            values[index] + (values[index + 1] - values[index]) * ratio,
         );
-      }
-
-      function windowAverage(members, now) {
-        let perHour = 0;
-        let measured = false;
-        for (const member of members) {
-          if (member.resetAt === null || !member.period) continue;
-          const elapsed = now - (member.resetAt - member.period);
-          if (elapsed < MIN_WINDOW_AVERAGE) continue;
-          measured = true;
-          perHour += (100 - member.remaining) / (elapsed / HOUR);
-        }
-        return measured ? perHour : null;
-      }
-
-      // Events at one instant together, keeping those that restore a point.
-      function groupGains(events) {
-        const byTime = new Map();
-        for (const event of events)
-          byTime.set(event.at, (byTime.get(event.at) || 0) + event.gain);
-        return Array.from(byTime, ([at, gain]) => ({ at, gain })).filter(
-          (event) => event.gain >= MIN_JUMP,
-        );
-      }
-
-      // One provider's pool: what was recorded, how fast it burns and where
-      // it goes from `now`. `accounts` are the route's accounts of the
-      // provider; null when none has a reading.
-      function buildQuotaSection(accounts, options) {
-        const { now, start, end, lookbackHours, usageFactor } = options;
-        const pooled = pooledWindow(accounts);
-        if (!pooled) return null;
-        const members = [];
-        const unseen = [];
-        for (const account of accounts) {
-          const track = quotaTrack(account.samples, pooled.id);
-          if (!track.length) {
-            unseen.push(account.label);
-            continue;
-          }
-          const last = track[track.length - 1];
-          const remaining = trackValueAt(track, now);
-          members.push({
-            name: account.label,
-            track,
-            remaining: remaining === null ? last.remaining : remaining,
-            resetAt:
-              last.resetAt === null
-                ? null
-                : upcomingReset(last.resetAt, last.period, now),
-            period: last.period,
-          });
-        }
-        if (!members.length) return null;
-        const capacity = members.length * 100;
-        const poolNow = members.reduce(
-          (sum, member) => sum + member.remaining,
-          0,
-        );
-
-        // Recorded: the grid through the span up to now, then now itself.
-        const recordedEnd = Math.min(now, end);
-        const times = [];
-        for (let at = start; at <= recordedEnd; at += QUOTA_STEP)
-          if (at !== now) times.push(at);
-        const recordedAccounts = times.map((at) =>
-          members.map((member) => trackValueAt(member.track, at)),
-        );
-        if (now >= start && now <= end) {
-          times.push(now);
-          recordedAccounts.push(members.map((member) => member.remaining));
-        }
-        const recordedPool = recordedAccounts.map((values) =>
-          values.some((value) => value !== null)
-            ? values.reduce((sum, value) => sum + (value || 0), 0)
-            : null,
-        );
-        const recordedGains = [];
-        for (let k = 1; k < times.length; k++) {
-          let gain = 0;
-          recordedAccounts[k].forEach((value, index) => {
-            const before = recordedAccounts[k - 1][index];
-            if (value !== null && before !== null && value > before)
-              gain += value - before;
-          });
-          if (gain < MIN_JUMP) continue;
-          const previous = recordedGains[recordedGains.length - 1];
-          // A reset spread over neighbouring steps reads as one jump.
-          if (previous && times[k - 1] === previous.at) {
-            previous.at = times[k];
-            previous.gain += gain;
-            previous.top = recordedPool[k] ?? previous.top;
-          } else {
-            recordedGains.push({
-              at: times[k],
-              gain,
-              top: recordedPool[k] ?? 0,
-            });
-          }
-        }
-
-        // Burn over the lookback, else the average since each window opened.
-        const lookback = lookbackHours * HOUR;
-        const recent = poolRate(
-          members.map((member) =>
-            runningUsage(
-              usageBuckets(member.track, now - lookback, lookback, 1, now),
-            ),
-          ),
-          0,
-          0,
-        );
-        const average = recent ? null : windowAverage(members, now);
-        const burn = recent
-          ? {
-              perHour: recent.perHour,
-              source: "recorded",
-              coveredMs: recent.coveredMs,
-            }
-          : average !== null
-            ? { perHour: average, source: "window", coveredMs: 0 }
-            : null;
-
-        // Drain: the burn over the lookback ending at each step.
-        const lookbackSteps = Math.max(1, Math.round(lookback / QUOTA_STEP));
-        const drainSteps = Math.max(
-          0,
-          Math.ceil((recordedEnd - start) / QUOTA_STEP),
-        );
-        const drainUsages = members.map((member) =>
-          runningUsage(
-            usageBuckets(
-              member.track,
-              start - lookbackSteps * QUOTA_STEP,
-              QUOTA_STEP,
-              lookbackSteps + drainSteps,
-              now,
-            ),
-          ),
-        );
-        const drainTimes = [];
-        const drainValues = [];
-        for (let k = 0; k < drainSteps; k++) {
-          drainTimes.push(Math.min(recordedEnd, start + (k + 1) * QUOTA_STEP));
-          const rate = poolRate(drainUsages, k + 1, k + lookbackSteps);
-          drainValues.push(rate ? rate.perHour : null);
-        }
-
-        const projectedBurn = burn === null ? null : burn.perHour * usageFactor;
-        const horizonEnd = now + QUOTA_HORIZON;
-        const projection =
-          projectedBurn === null
-            ? null
-            : projectPool(
-                members,
-                projectedBurn,
-                now,
-                Math.max(end, horizonEnd),
-                QUOTA_STEP,
-              );
-        const projectedGains = projection
-          ? groupGains(projection.resets).map(({ at, gain }) => ({
-              at,
-              gain,
-              top: projection.pool[projection.times.lastIndexOf(at)] ?? 0,
-            }))
-          : [];
-        const jumps = [
-          ...recordedGains.map((jump) => ({ ...jump, projected: false })),
-          ...projectedGains.map((jump) => ({ ...jump, projected: true })),
-        ].filter((jump) => jump.at >= start && jump.at <= end);
-
-        const projectedEmptyAt = projection ? projection.poolEmptyAt : null;
-        const poolEmptyAt =
-          projectedEmptyAt !== null && projectedEmptyAt <= horizonEnd
-            ? projectedEmptyAt
-            : null;
-        const dryNow = members.findIndex((member) => member.remaining <= 0);
-        const firstDry =
-          dryNow !== -1
-            ? { at: now, account: dryNow }
-            : projection
-              ? projection.empties.find((event) => event.at <= horizonEnd) ||
-                null
-              : null;
-        const nextReset = projection
-          ? groupGains(projection.resets).find((reset) => reset.at > now) ||
-            null
-          : groupGains(
-              members
-                .filter(
-                  (member) => member.resetAt !== null && member.resetAt > now,
-                )
-                .map((member) => ({
-                  at: member.resetAt,
-                  gain: 100 - member.remaining,
-                })),
-            ).sort((a, b) => a.at - b.at)[0] || null;
-
-        return {
-          windowMinutes: pooled.minutes,
-          names: members.map((member) => member.name),
-          unseen,
-          capacity,
-          poolNow,
-          recorded: { times, accounts: recordedAccounts, pool: recordedPool },
-          drain: { times: drainTimes, values: drainValues },
-          burn,
-          projectedBurn,
-          projection,
-          jumps,
-          poolEmptyAt,
-          firstEmpty: firstDry
-            ? { at: firstDry.at, name: members[firstDry.account].name }
-            : null,
-          nextReset,
-        };
       }
 
       const round1 = (value) => Math.round(value * 10) / 10;
@@ -1935,12 +1473,12 @@
 
       // The projected burn as steps: the burn while any account has quota.
       function projectedDrain(section) {
-        const { projection, projectedBurn } = section;
+        const { projected, projected_burn: projectedBurn } = section;
         const times = [];
         const values = [];
-        if (!projection || projectedBurn === null) return { times, values };
-        projection.times.forEach((at, index) => {
-          const rate = projection.pool[index] > EPSILON ? projectedBurn : 0;
+        if (!projected || projectedBurn === null) return { times, values };
+        projected.times.forEach((at, index) => {
+          const rate = projected.pool[index] > EPSILON ? projectedBurn : 0;
           if (values.length && values[values.length - 1] !== rate) {
             times.push(at);
             values.push(values[values.length - 1]);
@@ -1978,7 +1516,7 @@
           mode === "remaining"
             ? section.capacity
             : niceCeiling(
-                Math.max(recordedDrainMax, section.projectedBurn || 0) * 1.15,
+                Math.max(recordedDrainMax, section.projected_burn || 0) * 1.15,
               );
         const y = (value) =>
           plot.bottom -
@@ -1993,7 +1531,7 @@
             : runs(section.drain.times, section.drain.values)
         ).map(toPoints);
 
-        const projection = section.projection;
+        const projection = section.projected || null;
         let projectedSegments = [];
         if (projection && now <= end) {
           const source =
@@ -2011,14 +1549,18 @@
 
         // Boundaries between stacked accounts.
         const accountLines = [];
-        if (mode === "remaining" && showAccounts && section.names.length > 1) {
+        if (
+          mode === "remaining" &&
+          showAccounts &&
+          section.accounts.length > 1
+        ) {
           const projectedRange =
             projection && now <= end
               ? visibleRange(projection.times, start, end)
               : null;
           for (
             let boundary = 0;
-            boundary < section.names.length - 1;
+            boundary < section.accounts.length - 1;
             boundary++
           ) {
             const cumulative = (values) =>
@@ -2027,10 +1569,10 @@
                 .reduce((sum, value) => sum + (value || 0), 0);
             const recorded = runs(
               section.recorded.times,
-              section.recorded.accounts.map((values, index) =>
-                section.recorded.pool[index] === null
+              section.recorded.pool.map((pool, index) =>
+                pool === null
                   ? null
-                  : cumulative(values),
+                  : cumulative(accountsAt(section.recorded, index)),
               ),
             ).map(toPoints);
             const projected = [];
@@ -2042,7 +1584,7 @@
               )
                 projected.push([
                   projection.times[index],
-                  cumulative(projection.values[index]),
+                  cumulative(accountsAt(projection, index)),
                 ]);
             }
             accountLines.push({
@@ -2078,9 +1620,9 @@
 
         const nowValue =
           mode === "remaining"
-            ? section.poolNow
+            ? section.remaining
             : section.burn
-              ? section.burn.perHour
+              ? section.burn.per_hour
               : null;
         const nowMark =
           now >= start && now <= end
@@ -2110,7 +1652,7 @@
           }
         }
 
-        const emptyAt = section.poolEmptyAt;
+        const emptyAt = section.pool_empty_at;
         const empty =
           mode === "remaining" &&
           emptyAt !== null &&
@@ -2154,11 +1696,11 @@
       // What the chart says at `t`: the recorded pool (or burn) up to now, the
       // projection after, and each account's figure.
       function quotaReadout(section, mode, t, now) {
-        const unknown = section.names.map(() => null);
+        const unknown = section.accounts.map(() => null);
         if (t <= now) {
           const index = indexAtOrBefore(section.recorded.times, t, timeOfValue);
           const accounts =
-            index === -1 ? unknown : section.recorded.accounts[index];
+            index === -1 ? unknown : accountsAt(section.recorded, index);
           if (mode === "drain") {
             const drainIndex = indexAtOrBefore(
               section.drain.times,
@@ -2168,7 +1710,7 @@
             const value =
               t === now
                 ? section.burn
-                  ? section.burn.perHour
+                  ? section.burn.per_hour
                   : null
                 : drainIndex === -1
                   ? null
@@ -2181,8 +1723,8 @@
             accounts,
           };
         }
-        const values = section.projection
-          ? projectionAt(section.projection, t)
+        const values = section.projected
+          ? projectionAt(section.projected, t)
           : null;
         if (!values)
           return { kind: "projected", value: null, accounts: unknown };
@@ -2190,10 +1732,10 @@
         const value =
           mode === "remaining"
             ? pool
-            : section.projectedBurn === null
+            : section.projected_burn === null
               ? null
               : pool > EPSILON
-                ? section.projectedBurn
+                ? section.projected_burn
                 : 0;
         return { kind: "projected", value, accounts: values };
       }
@@ -2250,14 +1792,6 @@
 
       function quotaDayLabel(ms) {
         return quotaWeekday.format(ms) + " " + new Date(ms).getDate();
-      }
-
-      // "7-day limit", "5-hour limit".
-      function quotaWindowLabel(minutes) {
-        if (minutes % (24 * 60) === 0)
-          return minutes / (24 * 60) + "-day limit";
-        if (minutes % 60 === 0) return minutes / 60 + "-hour limit";
-        return minutes + "-minute limit";
       }
     </script>
     <script>
@@ -3520,13 +3054,13 @@
       // Quota: each provider's pool across its accounts, as recorded from
       // the responses CLIProxyAPI served and from usage endpoints, and as
       // projected from the current burn.
-      const QUOTA_PROVIDERS = [
-        { key: "claude", name: "Claude", color: 2 },
-        { key: "codex", name: "Codex", color: 3 },
-        { key: "xai", name: "Grok", color: 4 },
-        { key: "meta", name: "Meta", color: 5 },
-        { key: "opencode-go", name: "OpenCode Go", color: 6 },
-      ];
+      const QUOTA_COLORS = {
+        claude: 2,
+        codex: 3,
+        xai: 4,
+        meta: 5,
+        "opencode-go": 6,
+      };
       const QUOTA_MODES = [
         ["remaining", "Remaining"],
         ["drain", "Drain rate"],
@@ -3557,20 +3091,22 @@
       }
 
       function renderQuotaControls() {
-        const pick = (key, value) => {
+        // The burn and the future usage are worked out by the route.
+        const pick = (key, value, reload) => {
           prefs[key] = value;
           savePrefs();
           renderQuotaControls();
-          renderQuota();
+          if (reload) loadQuota();
+          else renderQuota();
         };
         segmented($("quota-mode"), QUOTA_MODES, prefs.quotaMode, (mode) =>
-          pick("quotaMode", mode),
+          pick("quotaMode", mode, false),
         );
         segmented(
           $("quota-lookback"),
           QUOTA_LOOKBACKS.map((hours) => [hours, hours + "h"]),
           prefs.quotaLookback,
-          (hours) => pick("quotaLookback", hours),
+          (hours) => pick("quotaLookback", hours, true),
         );
         $("quota-future").value = prefs.quotaFuture;
         $("quota-accounts").setAttribute(
@@ -3590,7 +3126,7 @@
       $("quota-future").addEventListener("change", (event) => {
         prefs.quotaFuture = event.target.value;
         savePrefs();
-        renderQuota();
+        loadQuota();
       });
       $("quota-accounts").addEventListener("click", () => {
         prefs.quotaAccounts = !prefs.quotaAccounts;
@@ -3614,15 +3150,20 @@
 
       async function loadQuota() {
         const seq = ++quotaSeq;
-        const now = Date.now();
-        const span = quotaSpan(quota.weeks, now);
-        // The burn and the drain series look back from the span's start.
-        const from =
-          Math.min(span.start, now) - Math.max(...QUOTA_LOOKBACKS) * HOUR;
+        const span = quotaSpan(quota.weeks, Date.now());
+        const factor = QUOTA_FUTURE.find(
+          ([key]) => key === prefs.quotaFuture,
+        )[2];
         try {
           const data = await api(
-            "/quota?" +
-              new URLSearchParams({ from: new Date(from).toISOString() }),
+            "/quota/pools?" +
+              new URLSearchParams({
+                burn: prefs.quotaLookback + "h",
+                usage: factor,
+                from: new Date(span.start).toISOString(),
+                until: new Date(span.end).toISOString(),
+                step: QUOTA_STEP / MINUTE + "m",
+              }),
           );
           if (seq !== quotaSeq) return;
           quota.data = data;
@@ -3639,40 +3180,26 @@
       }
 
       function renderQuota() {
-        const accounts = quota.data ? quota.data.accounts : [];
-        $("quota").hidden = !accounts.length && !quota.error;
+        const data = quota.data;
+        const sections = data ? data.providers : [];
+        $("quota").hidden = !sections.length && !quota.error;
         $("quota-error").textContent = quota.error;
         $("quota-error").hidden = !quota.error;
-        // A clock behind CLIProxyAPI's would put its latest reading ahead of
-        // now.
-        let now = Date.now();
-        for (const account of accounts)
-          for (const sample of account.samples) now = Math.max(now, sample.at);
-        const span = quotaSpan(quota.weeks, now);
-        const factor = QUOTA_FUTURE.find(
-          ([key]) => key === prefs.quotaFuture,
-        )[2];
         quota.panels = [];
         const panels = [];
-        for (const provider of QUOTA_PROVIDERS) {
-          const members = accounts.filter(
-            (account) => account.provider === provider.key,
-          );
-          if (!members.length) continue;
-          const section = buildQuotaSection(members, {
-            now,
-            start: span.start,
-            end: span.end,
-            lookbackHours: prefs.quotaLookback,
-            usageFactor: factor,
-          });
-          panels.push(quotaPanel(provider, members, section, now, span));
-        }
+        for (const section of sections) panels.push(quotaPanel(section, data));
         $("quota-panels").replaceChildren(...panels);
         for (const panel of quota.panels) drawQuotaChart(panel);
       }
 
-      function quotaPanel(provider, members, section, now, span) {
+      function quotaPanel(section, data) {
+        const { now } = data;
+        const span = { start: data.from, end: data.until };
+        const provider = {
+          key: section.provider,
+          name: section.label,
+          color: QUOTA_COLORS[section.provider] || 1,
+        };
         const article = h("article", {
           class: "quota-panel k" + provider.color,
           "aria-label": provider.name,
@@ -3683,8 +3210,10 @@
           h("span", { class: "dot" }),
           h("h3", {}, provider.name),
         );
-        if (!section) {
-          title.append(h("span", {}, plural(members.length, "account")));
+        if (!section.window) {
+          title.append(
+            h("span", {}, plural(section.unreported.length, "account")),
+          );
           article.append(title, h("p", {}, "No quota reading yet."));
           return article;
         }
@@ -3692,19 +3221,19 @@
           h(
             "span",
             {},
-            plural(section.names.length, "account") +
+            plural(section.account_count, "account") +
               " · " +
-              quotaWindowLabel(section.windowMinutes),
-            section.unseen.length
+              section.window.label,
+            section.unreported.length
               ? h(
                   "span",
-                  { title: section.unseen.join(", ") },
-                  " · " + section.unseen.length + " not reported yet",
+                  { title: section.unreported.join(", ") },
+                  " · " + section.unreported.length + " not reported yet",
                 )
               : null,
           ),
         );
-        const poolNow = Math.round(section.poolNow);
+        const poolNow = Math.round(section.remaining);
         const hero = h(
           "div",
           { class: "quota-hero" },
@@ -3712,11 +3241,16 @@
           h("span", {}, "of " + section.capacity + "%"),
         );
 
-        const projected = section.projection !== null;
-        const notBy = "Not by " + quotaDate.format(now + QUOTA_HORIZON);
+        const projected = Boolean(section.projected);
+        const notBy = "Not by " + quotaDate.format(data.horizon);
         const when = (at) => formatQuotaInstant(at, now);
-        const { poolEmptyAt, firstEmpty, nextReset, burn } = section;
-        const lookback = prefs.quotaLookback + "h";
+        const {
+          pool_empty_at: poolEmptyAt,
+          first_empty: firstEmpty,
+          next_reset: nextReset,
+          burn,
+        } = section;
+        const lookback = data.burn_hours + "h";
         const stats = [
           {
             label: "Pool empty",
@@ -3733,8 +3267,8 @@
             label: "First empty",
             value: firstEmpty
               ? firstEmpty.at <= now
-                ? firstEmpty.name + " now"
-                : firstEmpty.name +
+                ? firstEmpty.account + " now"
+                : firstEmpty.account +
                   " in " +
                   formatQuotaDuration(firstEmpty.at - now)
               : projected
@@ -3754,15 +3288,15 @@
                   "Less than 15 minutes of the last " +
                   lookback +
                   " were recorded, so this is the average since each window opened.",
-                value: formatQuotaRate(burn.perHour) + "%/h",
+                value: formatQuotaRate(burn.per_hour) + "%/h",
               }
             : {
                 label:
                   "Burn, last " +
-                  (burn && burn.coveredMs < prefs.quotaLookback * HOUR * 0.9
-                    ? formatQuotaDuration(burn.coveredMs)
+                  (burn && burn.covered_ms < data.burn_hours * HOUR * 0.9
+                    ? formatQuotaDuration(burn.covered_ms)
                     : lookback),
-                value: burn ? formatQuotaRate(burn.perHour) + "%/h" : "—",
+                value: burn ? formatQuotaRate(burn.per_hour) + "%/h" : "—",
               },
         ];
         const dl = h(
@@ -3827,7 +3361,7 @@
             : null,
           prefs.quotaMode === "remaining" &&
             prefs.quotaAccounts &&
-            section.names.length > 1
+            section.accounts.length > 1
             ? h("span", {}, h("i", { class: "line-key thin" }), "Accounts")
             : null,
         );
@@ -4072,16 +3606,16 @@
         if (
           prefs.quotaMode === "remaining" &&
           prefs.quotaAccounts &&
-          section.names.length > 1
+          section.accounts.length > 1
         ) {
           // Top band first, as the accounts stack on the chart.
-          for (let index = section.names.length - 1; index >= 0; index--) {
+          for (let index = section.accounts.length - 1; index >= 0; index--) {
             const value = readout.accounts[index];
             rows.push(
               row(
                 "line-key thin",
                 value === null ? "—" : Math.round(value) + "%",
-                section.names[index],
+                section.accounts[index].label,
               ),
             );
           }

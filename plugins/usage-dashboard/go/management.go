@@ -26,6 +26,9 @@ const (
 	pricesPath = "/v0/management/" + pluginID + "/prices"
 	// quotaPath reads the quota samples behind the page's Quota section.
 	quotaPath = "/v0/management/" + pluginID + "/quota"
+	// poolsPath serves each provider's pool, recorded and projected, ready
+	// to draw.
+	poolsPath = quotaPath + "/pools"
 )
 
 //go:embed dashboard.html
@@ -78,6 +81,11 @@ func managementRegister(_ []byte) ([]byte, error) {
 				Method:      http.MethodGet,
 				Path:        quotaPath,
 				Description: "Accounts of every provider whose quota is recorded, with their readings: ?from=<RFC 3339 time>.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        poolsPath,
+				Description: "Each provider's quota pool, recorded and projected: ?burn=24h&usage=1&from=<RFC 3339>&until=<RFC 3339>&step=10m&series=accounts|pool|none.",
 			},
 			{
 				Method:      http.MethodPut,
@@ -142,6 +150,19 @@ func routeManagement(req pluginapi.ManagementRequest) pluginapi.ManagementRespon
 			return managementJSON(http.StatusBadRequest, map[string]string{"error": errReport.Error()})
 		}
 		return managementJSON(http.StatusOK, report)
+	case method == http.MethodGet && req.Path == poolsPath:
+		view, status, errPools := quotaPools(poolsQuery{
+			Burn:   req.Query.Get("burn"),
+			Usage:  req.Query.Get("usage"),
+			From:   req.Query.Get("from"),
+			Until:  req.Query.Get("until"),
+			Step:   req.Query.Get("step"),
+			Series: req.Query.Get("series"),
+		})
+		if errPools != nil {
+			return managementJSON(status, map[string]string{"error": errPools.Error()})
+		}
+		return managementJSON(http.StatusOK, view)
 	case method == http.MethodGet && req.Path == pricesPath:
 		return priceListResponse()
 	case method == http.MethodPut && req.Path == pricesPath:

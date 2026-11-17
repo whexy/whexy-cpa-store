@@ -49,7 +49,7 @@ account with its own `proxy_url` or a `base_url` outside the provider's own
 domain, since the poll reaches the provider itself through CLIProxyAPI's
 global proxy.
 
-The projection continues the burn measured over the last 1, 3, 6 or 24
+The projection continues the burn measured over the last 5, 24, 48 or 72
 hours, or the average since each window opened when less than 15 minutes of
 that was recorded. It spreads the burn evenly over the accounts with quota
 left, as round-robin routing does, and each reset restores its account to
@@ -114,11 +114,17 @@ configuration form in Management Center:
 <details>
 <summary>Management API routes behind the page</summary>
 
-All take the management key as `Authorization: Bearer <key>`.
+All take the management key as `Authorization: Bearer <key>`. Other clients
+can read the usage and the quota pools the page shows; [API.md](API.md)
+describes both answers field by field.
 
 `GET /v0/management/usage-dashboard/summary?range=24h|7d|30d|90d&group=family|account&tz=<IANA zone>`
 answers the totals, one series per group, per-model rows and per-point rows
 for the range. Day ranges end with today in `tz`.
+
+`GET /v0/management/usage-dashboard/quota/pools?burn=24h&usage=1&from=<RFC 3339 time>&until=<RFC 3339 time>&step=10m&series=accounts|pool|none`
+answers each provider's pool, the stats above its chart, and its recorded,
+drain and projected series for the span.
 
 `GET /v0/management/usage-dashboard/quota?from=<RFC 3339 time>` lists the
 accounts of every provider whose quota is recorded that CLIProxyAPI routes

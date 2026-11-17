@@ -1,5 +1,6 @@
-// Tests the Quota section's model, the page's first <script>, which touches
-// no DOM. Run by TestQuotaPageModel.
+// Tests the Quota section's chart model, the page's first <script>, which
+// touches no DOM. Run by TestQuotaPageModel. The pools it draws are worked
+// out by the quota/pools route and tested in pools_test.go.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -15,221 +16,117 @@ const model = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const page = vm.createContext({});
 vm.runInContext(model, page);
 const get = (name) => vm.runInContext(name, page);
-const projectPool = get("projectPool");
 const projectionAt = get("projectionAt");
-const quotaTrack = get("quotaTrack");
-const trackValueAt = get("trackValueAt");
-const usageBuckets = get("usageBuckets");
-const buildQuotaSection = get("buildQuotaSection");
+const projectedDrain = get("projectedDrain");
+const quotaReadout = get("quotaReadout");
 const buildQuotaChart = get("buildQuotaChart");
 const quotaSpan = get("quotaSpan");
 const formatQuotaDuration = get("formatQuotaDuration");
 const formatQuotaRate = get("formatQuotaRate");
-const quotaWindowLabel = get("quotaWindowLabel");
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
-const WEEK = 7 * DAY;
 const NOW = Date.UTC(2026, 9, 26, 12);
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-// One route sample: a 5-hour window and a weekly one.
-const sample = (at, weekly, weeklyReset) => ({
-  at,
-  windows: [
-    { id: "5h", remaining: 50, reset_at: at + HOUR, period_minutes: 300 },
-    {
-      id: "7d",
-      remaining: weekly,
-      reset_at: weeklyReset,
-      period_minutes: 7 * 24 * 60,
-    },
+// One provider of the route, as it sends two accounts: a fell from 90 to
+// 81 over the last three hours, b has stood at 60. The projection burns 3
+// points an hour, 1.5 from each, until b is dry at 40h; a's 21 then last 7h
+// more, and a resets at 50h.
+const section = {
+  provider: "claude",
+  label: "Claude",
+  window: { id: "7d", minutes: 10080, label: "7-day limit" },
+  account_count: 2,
+  accounts: [
+    { label: "a@example.com", remaining: 81, reset_at: NOW + 50 * HOUR },
+    { label: "b@example.com", remaining: 60, reset_at: NOW + 50 * HOUR },
   ],
-});
-
-test("the projection splits the burn and hands a dry account's share on", () => {
-  const projection = projectPool(
-    [
-      { remaining: 50, resetAt: NOW + 30 * HOUR, period: WEEK },
-      { remaining: 10, resetAt: NOW + 100 * HOUR, period: WEEK },
+  unreported: [],
+  capacity: 200,
+  remaining: 141,
+  burn: { per_hour: 3, source: "recorded", covered_ms: 3 * HOUR },
+  projected_burn: 3,
+  pool_empty_at: NOW + 47 * HOUR,
+  first_empty: { at: NOW + 40 * HOUR, account: "b@example.com" },
+  next_reset: { at: NOW + 50 * HOUR, gain: 200 },
+  jumps: [{ at: NOW + 50 * HOUR, gain: 200, top: 200, projected: true }],
+  recorded: {
+    times: [NOW - 3 * DAY, NOW - 3 * HOUR, NOW],
+    pool: [null, 150, 141],
+    accounts: [
+      [null, 90, 81],
+      [null, 60, 60],
     ],
-    4,
-    NOW,
-    NOW + 72 * HOUR,
-    10 * MINUTE,
-  );
-  // 2 points an hour each until the small one is dry at 5h, then 4 an hour.
-  assert.deepEqual(
-    plain(
-      projection.empties.map((event) => [
-        (event.at - NOW) / HOUR,
-        event.account,
-      ]),
-    ),
-    [
-      [5, 1],
-      [15, 0],
-      [55, 0],
+  },
+  drain: {
+    times: [NOW - 3 * DAY + 10 * MINUTE, NOW - 3 * HOUR, NOW],
+    values: [null, 0, 3],
+  },
+  projected: {
+    times: [
+      NOW,
+      NOW + 40 * HOUR,
+      NOW + 47 * HOUR,
+      NOW + 50 * HOUR,
+      NOW + 50 * HOUR,
+      NOW + 14 * DAY,
     ],
-  );
-  assert.equal((projection.poolEmptyAt - NOW) / HOUR, 15);
-  assert.deepEqual(plain(projection.resets), [
-    { at: NOW + 30 * HOUR, account: 0, gain: 100 },
-  ]);
-  assert.deepEqual(plain(projectionAt(projection, NOW + 30 * HOUR)), [100, 0]);
-});
-
-test("the projection repeats resets each period", () => {
-  const projection = projectPool(
-    [{ remaining: 80, resetAt: NOW + HOUR, period: 5 * HOUR }],
-    2,
-    NOW,
-    NOW + 12 * HOUR,
-    10 * MINUTE,
-  );
-  assert.deepEqual(
-    plain(
-      projection.resets.map((reset) => [
-        (reset.at - NOW) / HOUR,
-        Math.round(reset.gain),
-      ]),
-    ),
-    [
-      [1, 22],
-      [6, 10],
-      [11, 10],
+    pool: [141, 21, 0, 0, 200, 0],
+    accounts: [
+      [81, 21, 0, 0, 100, 0],
+      [60, 0, 0, 0, 100, 0],
     ],
-  );
-  assert.equal(projection.poolEmptyAt, null);
-});
-
-test("a reading holds until the next one, or until its reset", () => {
-  const track = quotaTrack(
-    [
-      sample(NOW + 2 * HOUR, 60, NOW + 3 * HOUR),
-      sample(NOW, 70, NOW + 3 * HOUR),
-    ],
-    "7d",
-  );
-  assert.deepEqual(plain(track.map((point) => point.at)), [
-    NOW,
-    NOW + 2 * HOUR,
-  ]);
-  assert.equal(trackValueAt(track, NOW - 1), null);
-  assert.equal(trackValueAt(track, NOW + HOUR), 70);
-  assert.equal(trackValueAt(track, NOW + 2 * HOUR), 60);
-  assert.equal(trackValueAt(track, NOW + 3 * HOUR), 100);
-});
-
-test("use is spread over the time requests were served, not the idle hours", () => {
-  const reset = NOW + WEEK;
-  // Read at 80 before a night off, again unchanged when requests resume, and
-  // at 78 half an hour later.
-  const track = quotaTrack(
-    [
-      sample(NOW, 80, reset),
-      sample(NOW + 10 * HOUR, 80, reset),
-      sample(NOW + 10.5 * HOUR, 78, reset),
-    ],
-    "7d",
-  );
-  const { used, covered } = usageBuckets(track, NOW, HOUR, 11, NOW + 11 * HOUR);
-  assert.deepEqual(plain(used.slice(0, 10)), new Array(10).fill(0));
-  assert.equal(used[10], 2);
-  assert.deepEqual(plain(covered), new Array(11).fill(HOUR));
-});
-
-test("across a reset only the use after it counts", () => {
-  const track = quotaTrack(
-    [sample(NOW, 10, NOW + 30 * MINUTE), sample(NOW + HOUR, 96, NOW + WEEK)],
-    "7d",
-  );
-  const { used } = usageBuckets(track, NOW, 30 * MINUTE, 2, NOW + HOUR);
-  assert.deepEqual(plain(used), [0, 4]);
-});
-
-const options = {
-  now: NOW,
-  start: NOW - 3 * DAY,
-  end: NOW + 11 * DAY,
-  lookbackHours: 3,
-  usageFactor: 1,
+  },
 };
 
-// a falls 3 points an hour over the last three hours; b was last read two
-// days ago and has not been used since.
-const resetAt = NOW + 50 * HOUR;
-const accounts = [
-  {
-    label: "a@example.com",
-    samples: Array.from({ length: 10 }, (_, index) => {
-      const at = NOW - 3 * HOUR + index * 20 * MINUTE;
-      return sample(at, 81 + (3 * (NOW - at)) / HOUR, resetAt);
-    }),
-  },
-  { label: "b@example.com", samples: [sample(NOW - 2 * DAY, 60, resetAt)] },
-  { label: "c@example.com", samples: [] },
-];
+test("the projection is linear between points and takes a reset's after", () => {
+  assert.deepEqual(
+    plain(projectionAt(section.projected, NOW + 20 * HOUR)),
+    [51, 30],
+  );
+  assert.deepEqual(
+    plain(projectionAt(section.projected, NOW + 50 * HOUR)),
+    [100, 100],
+  );
+  assert.equal(projectionAt(section.projected, NOW - 1), null);
+  assert.equal(projectionAt(section.projected, NOW + 15 * DAY), null);
+});
 
-test("a section pools the weekly window and measures its burn", () => {
-  const section = buildQuotaSection(accounts, options);
-  assert.equal(section.windowMinutes, 7 * 24 * 60);
-  assert.deepEqual(plain(section.names), ["a@example.com", "b@example.com"]);
-  assert.deepEqual(plain(section.unseen), ["c@example.com"]);
-  assert.equal(section.capacity, 200);
-  assert.equal(section.poolNow, 141);
-  assert.equal(section.burn.source, "recorded");
-  assert.ok(Math.abs(section.burn.perHour - 3) < 1e-9);
-  assert.equal(section.burn.coveredMs, 3 * HOUR);
-  // 1.5 points an hour each: b is dry at 40h, then a's 21 last 7h more.
-  assert.deepEqual(plain(section.firstEmpty), {
-    at: NOW + 40 * HOUR,
-    name: "b@example.com",
+test("the readout holds a recorded point until the next", () => {
+  const before = quotaReadout(section, "remaining", NOW - 2 * HOUR, NOW);
+  assert.deepEqual(plain(before), {
+    kind: "recorded",
+    value: 150,
+    accounts: [90, 60],
   });
-  assert.ok(Math.abs(section.poolEmptyAt - (NOW + 47 * HOUR)) < MINUTE);
-  assert.deepEqual(plain(section.nextReset), { at: resetAt, gain: 200 });
-  const times = section.recorded.times;
-  assert.equal(times[times.length - 1], NOW);
-  assert.equal(section.recorded.pool[times.length - 1], 141);
+  assert.deepEqual(
+    plain(quotaReadout(section, "remaining", NOW - 4 * DAY, NOW)),
+    { kind: "recorded", value: null, accounts: [null, null] },
+  );
+  assert.equal(quotaReadout(section, "drain", NOW, NOW).value, 3);
+  assert.equal(quotaReadout(section, "drain", NOW - HOUR, NOW).value, 0);
 });
 
-test("a section without enough recording burns at the window average", () => {
-  const section = buildQuotaSection(
-    [{ label: "a", samples: [sample(NOW - 5 * MINUTE, 70, resetAt)] }],
-    options,
+test("the readout projects past now, and the drain stops with the pool", () => {
+  const later = quotaReadout(section, "remaining", NOW + 20 * HOUR, NOW);
+  assert.deepEqual(plain(later), {
+    kind: "projected",
+    value: 81,
+    accounts: [51, 30],
+  });
+  assert.equal(quotaReadout(section, "drain", NOW + 20 * HOUR, NOW).value, 3);
+  assert.equal(quotaReadout(section, "drain", NOW + 48 * HOUR, NOW).value, 0);
+  const drain = projectedDrain(section);
+  assert.deepEqual(
+    plain(drain.times.map((at) => (at - NOW) / HOUR)),
+    [0, 40, 47, 47, 50, 50, 50, 336, 336],
   );
-  const opened = resetAt - WEEK;
-  assert.equal(section.burn.source, "window");
-  assert.ok(
-    Math.abs(section.burn.perHour - 30 / ((NOW - opened) / HOUR)) < 1e-9,
-  );
-});
-
-test("a recorded reset is labelled once with what it restored", () => {
-  const section = buildQuotaSection(
-    [
-      {
-        label: "a",
-        samples: [
-          sample(NOW - 2 * HOUR, 12, NOW - 90 * MINUTE),
-          sample(NOW - HOUR, 100, NOW - 90 * MINUTE + WEEK),
-        ],
-      },
-    ],
-    { ...options, usageFactor: 0 },
-  );
-  assert.deepEqual(plain(section.jumps.filter((jump) => !jump.projected)), [
-    { at: NOW - 90 * MINUTE, gain: 88, top: 100, projected: false },
-  ]);
-});
-
-test("no section without a reading", () => {
-  assert.equal(buildQuotaSection([{ label: "a", samples: [] }], options), null);
+  assert.deepEqual(plain(drain.values), [3, 3, 3, 0, 0, 0, 3, 3, 0]);
 });
 
 test("the chart places now and thins day labels when narrow", () => {
-  const section = buildQuotaSection(accounts, options);
   const span = quotaSpan(0, NOW);
   assert.equal(span.start, Date.UTC(2026, 9, 23));
   assert.equal(span.end, Date.UTC(2026, 10, 6));
@@ -245,12 +142,54 @@ test("the chart places now and thins day labels when narrow", () => {
     });
   const wide = chart(1456);
   assert.ok(Math.abs(wide.now.x - wide.x(NOW)) < 1e-9);
+  assert.equal(wide.now.y, wide.y(141));
   assert.equal(wide.yMax, 200);
   assert.equal(wide.accountLines.length, 1);
   assert.ok(wide.days.every((day) => day.labelled));
+  assert.equal(wide.empty.at, NOW + 47 * HOUR);
+  assert.deepEqual(plain(wide.jumps.map((jump) => jump.gain)), [200]);
   const narrow = chart(600).days;
   assert.equal(narrow.length, 14);
   assert.equal(narrow.filter((day) => day.labelled).length, 7);
+});
+
+test("the drain chart scales to the larger of recorded and projected burn", () => {
+  const drain = buildQuotaChart({
+    section,
+    mode: "drain",
+    start: NOW - 3 * DAY,
+    end: NOW + 11 * DAY,
+    now: NOW,
+    width: 800,
+    showAccounts: false,
+  });
+  assert.equal(drain.yMax, 5);
+  assert.equal(drain.empty, null);
+  assert.deepEqual(plain(drain.jumps), []);
+});
+
+test("a pool without a projection draws only what was recorded", () => {
+  const recordedOnly = {
+    ...section,
+    burn: null,
+    projected_burn: null,
+    projected: undefined,
+  };
+  const chart = buildQuotaChart({
+    section: recordedOnly,
+    mode: "remaining",
+    start: NOW - 3 * DAY,
+    end: NOW + 11 * DAY,
+    now: NOW,
+    width: 800,
+    showAccounts: true,
+  });
+  assert.equal(chart.projectedLine, "");
+  assert.notEqual(chart.recordedLine, "");
+  assert.deepEqual(
+    plain(quotaReadout(recordedOnly, "remaining", NOW + HOUR, NOW)),
+    { kind: "projected", value: null, accounts: [null, null] },
+  );
 });
 
 test("formatting", () => {
@@ -263,6 +202,4 @@ test("formatting", () => {
   assert.equal(formatQuotaRate(0), "0");
   assert.equal(formatQuotaRate(3.74), "3.7");
   assert.equal(formatQuotaRate(12.4), "12");
-  assert.equal(quotaWindowLabel(10080), "7-day limit");
-  assert.equal(quotaWindowLabel(300), "5-hour limit");
 });
