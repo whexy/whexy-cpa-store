@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/whexy/whexy-cpa-store/compare/usage-dashboard-v0.6.1...usage-dashboard-v0.7.0) (2026-11-17)
+
+
+### Features
+
+* **usage-dashboard:** serve quota pools ready to draw
+
 ## [0.6.1](https://github.com/whexy/whexy-cpa-store/compare/usage-dashboard-v0.6.0...usage-dashboard-v0.6.1) (2026-11-02)
 
 
