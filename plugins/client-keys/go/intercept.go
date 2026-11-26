@@ -7,6 +7,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 const (
@@ -29,9 +30,9 @@ func interceptRequest(raw []byte, decide func(*ruleSet, pluginapi.RequestInterce
 	rules := currentRules()
 	var req pluginapi.RequestInterceptRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-		return okEnvelope(decideUndecodable(rules, raw))
+		return rpc.OK(decideUndecodable(rules, raw))
 	}
-	return okEnvelope(decide(rules, req))
+	return rpc.OK(decide(rules, req))
 }
 
 // decideUndecodable judges a request whose fields cannot be read by the

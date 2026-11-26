@@ -3,7 +3,15 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
+
+// compileYAML compiles configYAML as plugin.register delivers it.
+func compileYAML(t *testing.T, configYAML string) *ruleSet {
+	t.Helper()
+	return compileLifecycle(mustJSON(t, rpc.LifecycleRequest{ConfigYAML: []byte(configYAML)}))
+}
 
 func keyConfig(scope, entry string) string {
 	return "enabled: true\npriority: 0\nkeys:\n  " + scope + ":\n" + entry
@@ -82,7 +90,7 @@ func TestCompileRules(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rules := compileLifecycle(mustJSON(t, lifecycleRequest{ConfigYAML: []byte(tt.yaml)}))
+			rules := compileYAML(t, tt.yaml)
 			if tt.globalErr == "" && rules.err != "" || !strings.Contains(rules.err, tt.globalErr) {
 				t.Fatalf("global error = %q, want %q", rules.err, tt.globalErr)
 			}
@@ -115,7 +123,7 @@ func TestCompileRules(t *testing.T) {
 
 func TestCompileRulesReportsUnmatchableNames(t *testing.T) {
 	notHex := strings.Repeat("g", 64)
-	rules := compileRules([]byte("keys:\n  cursor:\n    policies:\n      models: {allow: [a]}\n  " + notHex + ":\n    name: x\n  " + n8nScope + ":\n    policies:\n      budget: {}\n  " + openScope + ": {}\n"))
+	rules := compileYAML(t, "keys:\n  cursor:\n    policies:\n      models: {allow: [a]}\n  "+notHex+":\n    name: x\n  "+n8nScope+":\n    policies:\n      budget: {}\n  "+openScope+": {}\n")
 	if rules.err != "" {
 		t.Fatal(rules.err)
 	}
@@ -138,7 +146,7 @@ func TestCompileRulesReportsUnmatchableNames(t *testing.T) {
 func TestCompileRulesLowercasesScopes(t *testing.T) {
 	upper := strings.ToUpper(cursorScope)
 	mixed := strings.ToUpper(n8nScope[:32]) + n8nScope[32:]
-	rules := compileRules([]byte("keys:\n  " + upper + ":\n    policies:\n      models: {allow: [gpt-5*]}\n  " + mixed + ":\n    policies:\n      models: {deny: [o3]}\n  " + n8nScope + ":\n    name: same key in lowercase\n"))
+	rules := compileYAML(t, "keys:\n  "+upper+":\n    policies:\n      models: {allow: [gpt-5*]}\n  "+mixed+":\n    policies:\n      models: {deny: [o3]}\n  "+n8nScope+":\n    name: same key in lowercase\n")
 	if rules.err != "" {
 		t.Fatal(rules.err)
 	}
@@ -179,7 +187,7 @@ func TestEveryPolicyTypeImplementsAHook(t *testing.T) {
 		if !ok {
 			t.Fatalf("no test settings for policy type %s", kind.name)
 		}
-		rules := compileRules([]byte(keyConfig(cursorScope, "    policies:\n      "+kind.name+": "+config+"\n")))
+		rules := compileYAML(t, keyConfig(cursorScope, "    policies:\n      "+kind.name+": "+config+"\n"))
 		key := rules.keys[cursorScope]
 		if key.err != "" || len(key.policies) != 1 {
 			t.Fatalf("%s: %+v", kind.name, key)

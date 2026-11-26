@@ -7,6 +7,8 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/plugin"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // Client keys used across tests, and their session.CallerScope values
@@ -51,15 +53,15 @@ keys:
 // useConfig applies configYAML through plugin.reconfigure, returns the
 // registration it answered and restores the previous rules after the test.
 // Tests touching package state must not run in parallel.
-func useConfig(t *testing.T, configYAML string) registration {
+func useConfig(t *testing.T, configYAML string) rpc.Registration {
 	t.Helper()
 	previous := currentRuleSet.Load()
 	t.Cleanup(func() { currentRuleSet.Store(previous) })
-	raw, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte(configYAML)}))
+	raw, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, rpc.LifecycleRequest{ConfigYAML: []byte(configYAML)}))
 	if errHandle != nil {
 		t.Fatal(errHandle)
 	}
-	return decodeResult[registration](t, raw)
+	return decodeResult[rpc.Registration](t, raw)
 }
 
 func useEmptyCatalog(t *testing.T) {
@@ -78,9 +80,9 @@ func mustJSON(t *testing.T, value any) []byte {
 	return raw
 }
 
-func decodeEnvelope(t *testing.T, raw []byte) envelope {
+func decodeEnvelope(t *testing.T, raw []byte) rpc.Envelope {
 	t.Helper()
-	var env envelope
+	var env rpc.Envelope
 	if errUnmarshal := json.Unmarshal(raw, &env); errUnmarshal != nil {
 		t.Fatalf("envelope %s: %v", raw, errUnmarshal)
 	}
@@ -102,11 +104,11 @@ func decodeResult[T any](t *testing.T, raw []byte) T {
 
 func TestRegistrationDeclaresCapabilities(t *testing.T) {
 	useConfig(t, "enabled: true\npriority: 0\n")
-	raw, errHandle := handleMethod(pluginabi.MethodPluginRegister, mustJSON(t, lifecycleRequest{}))
+	raw, errHandle := handleMethod(pluginabi.MethodPluginRegister, mustJSON(t, rpc.LifecycleRequest{}))
 	if errHandle != nil {
 		t.Fatal(errHandle)
 	}
-	reg := decodeResult[registration](t, raw)
+	reg := decodeResult[rpc.Registration](t, raw)
 	if reg.SchemaVersion != pluginabi.SchemaVersion {
 		t.Fatalf("schema = %d, want %d", reg.SchemaVersion, pluginabi.SchemaVersion)
 	}
@@ -167,18 +169,18 @@ func TestLifecycleNeverFails(t *testing.T) {
 		[]byte(`{}`),
 		[]byte(`not json`),
 		[]byte(`{"config_yaml":"not base64"}`),
-		mustJSON(t, lifecycleRequest{ConfigYAML: []byte("keys: [\n")}),
-		mustJSON(t, lifecycleRequest{ConfigYAML: []byte("- a\n- b\n")}),
-		mustJSON(t, lifecycleRequest{ConfigYAML: []byte("keys:\n  " + invalidScope + ": &a [*a]\n")}),
-		mustJSON(t, lifecycleRequest{ConfigYAML: []byte("keys:\n  ? [a, b]\n  : x\n")}),
+		mustJSON(t, rpc.LifecycleRequest{ConfigYAML: []byte("keys: [\n")}),
+		mustJSON(t, rpc.LifecycleRequest{ConfigYAML: []byte("- a\n- b\n")}),
+		mustJSON(t, rpc.LifecycleRequest{ConfigYAML: []byte("keys:\n  " + invalidScope + ": &a [*a]\n")}),
+		mustJSON(t, rpc.LifecycleRequest{ConfigYAML: []byte("keys:\n  ? [a, b]\n  : x\n")}),
 	}
 	for _, method := range []string{pluginabi.MethodPluginRegister, pluginabi.MethodPluginReconfigure} {
 		for _, request := range requests {
-			raw, errHandle := safeHandleMethod(method, request)
+			raw, errHandle := plugin.Dispatch(method, request)
 			if errHandle != nil {
 				t.Fatalf("%s %q: %v", method, request, errHandle)
 			}
-			reg := decodeResult[registration](t, raw)
+			reg := decodeResult[rpc.Registration](t, raw)
 			if !reg.Capabilities.RequestInterceptor || !reg.Capabilities.ManagementAPI {
 				t.Fatalf("%s %q registration = %+v", method, request, reg)
 			}
@@ -211,7 +213,7 @@ func TestLifecycleAndUnknownMethods(t *testing.T) {
 		t.Fatalf("unknown method = %s", raw)
 	}
 	for _, method := range []string{pluginabi.MethodResponseInterceptAfter, pluginabi.MethodManagementHandle} {
-		if _, errHandle := safeHandleMethod(method, []byte(`not json`)); errHandle == nil {
+		if _, errHandle := plugin.Dispatch(method, []byte(`not json`)); errHandle == nil {
 			t.Fatalf("%s accepted an undecodable request", method)
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/session"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
 // oddKey pins JSON.stringify's escaping: <, >, & and U+2028/U+2029 stay
@@ -19,7 +20,8 @@ import (
 // escapes, other control characters lowercase \u00XX, DEL stays raw.
 const oddKey = "sk-<&>\u2028\u2029-\\u2028-\b\f\u0001\u007f-é-\"q\""
 
-func manage(t *testing.T, method, path string, body string) pluginapi.ManagementResponse {
+// serve runs management.handle through the plugin's method dispatch.
+func serve(t *testing.T, method, path string, body string) pluginapi.ManagementResponse {
 	t.Helper()
 	req := mustJSON(t, struct {
 		pluginapi.ManagementRequest
@@ -30,7 +32,7 @@ func manage(t *testing.T, method, path string, body string) pluginapi.Management
 		t.Fatal(errHandle)
 	}
 	resp := decodeResult[pluginapi.ManagementResponse](t, raw)
-	if path != resourcePagePath && path != logoPath && (resp.Headers.Get("Content-Type") != "application/json; charset=utf-8" || resp.Headers.Get("Cache-Control") != "no-store") {
+	if path != router.PagePath() && path != router.LogoPath() && (resp.Headers.Get("Content-Type") != "application/json; charset=utf-8" || resp.Headers.Get("Cache-Control") != "no-store") {
 		t.Fatalf("%s %s headers = %v", method, path, resp.Headers)
 	}
 	return resp
@@ -71,7 +73,7 @@ func TestManagementRegistrationWireShape(t *testing.T) {
 }
 
 func TestLogo(t *testing.T) {
-	resp := manage(t, "GET", logoPath, "")
+	resp := serve(t, "GET", router.LogoPath(), "")
 	if resp.StatusCode != http.StatusOK || !bytes.Equal(resp.Body, logoSVG) || resp.Headers.Get("Content-Type") != "image/svg+xml" || resp.Headers.Get("Content-Security-Policy") != "default-src 'none'" {
 		t.Fatalf("logo = %d %v", resp.StatusCode, resp.Headers)
 	}
@@ -82,14 +84,14 @@ func TestLogo(t *testing.T) {
 	if errParse := xml.Unmarshal(logoSVG, &svg); errParse != nil || svg.XMLName.Local != "svg" || svg.ViewBox != "0 0 24 24" {
 		t.Fatalf("logo is not a 24x24 SVG: %+v %v", svg, errParse)
 	}
-	if pluginRegistration().Metadata.Logo != logoPath {
+	if pluginRegistration().Metadata.Logo != router.LogoPath() {
 		t.Fatalf("Metadata.Logo = %q", pluginRegistration().Metadata.Logo)
 	}
 }
 
 func TestManagementPage(t *testing.T) {
-	resp := manage(t, "get", resourcePagePath, "")
-	if resp.StatusCode != http.StatusOK || string(resp.Body) != string(managementPage) {
+	resp := serve(t, "get", router.PagePath(), "")
+	if resp.StatusCode != http.StatusOK || !bytes.Equal(resp.Body, router.PageHTML()) {
 		t.Fatalf("page = %d %.80s", resp.StatusCode, resp.Body)
 	}
 	for header, want := range map[string]string{
@@ -113,7 +115,7 @@ func TestManagementPage(t *testing.T) {
 }
 
 func TestFingerprints(t *testing.T) {
-	resp := manage(t, http.MethodPost, fingerprintsPath, string(mustJSON(t, map[string]any{
+	resp := serve(t, http.MethodPost, fingerprintsPath, string(mustJSON(t, map[string]any{
 		"keys":     []string{cursorKey, oddKey, n8nKey},
 		"api_base": "https://cpa.example.com/",
 	})))
@@ -161,13 +163,13 @@ func TestNameFingerprintVectors(t *testing.T) {
 
 func TestFingerprintsWithoutAPIBase(t *testing.T) {
 	for _, body := range []string{`{"keys":["` + cursorKey + `"]}`, `{"keys":["` + cursorKey + `"],"api_base":null}`} {
-		resp := manage(t, http.MethodPost, fingerprintsPath, body)
+		resp := serve(t, http.MethodPost, fingerprintsPath, body)
 		want := `{"fingerprints":[{"scope":"` + cursorScope + `"}]}`
 		if resp.StatusCode != http.StatusOK || string(resp.Body) != want {
 			t.Fatalf("%s = %d %s", body, resp.StatusCode, resp.Body)
 		}
 	}
-	resp := manage(t, http.MethodPost, fingerprintsPath, `{"keys":[]}`)
+	resp := serve(t, http.MethodPost, fingerprintsPath, `{"keys":[]}`)
 	if resp.StatusCode != http.StatusOK || string(resp.Body) != `{"fingerprints":[]}` {
 		t.Fatalf("no keys = %d %s", resp.StatusCode, resp.Body)
 	}
@@ -190,7 +192,7 @@ func TestFingerprintsRejectsBadBodies(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp := manage(t, http.MethodPost, fingerprintsPath, tt.body)
+			resp := serve(t, http.MethodPost, fingerprintsPath, tt.body)
 			if resp.StatusCode != http.StatusBadRequest || !strings.Contains(errorText(t, resp), tt.want) {
 				t.Fatalf("response = %d %s", resp.StatusCode, resp.Body)
 			}
@@ -199,7 +201,7 @@ func TestFingerprintsRejectsBadBodies(t *testing.T) {
 			}
 		})
 	}
-	resp := manage(t, http.MethodPost, fingerprintsPath, string(mustJSON(t, map[string]any{"keys": tooMany[:maxFingerprintKeys]})))
+	resp := serve(t, http.MethodPost, fingerprintsPath, string(mustJSON(t, map[string]any{"keys": tooMany[:maxFingerprintKeys]})))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("1000 keys = %d", resp.StatusCode)
 	}
@@ -207,18 +209,18 @@ func TestFingerprintsRejectsBadBodies(t *testing.T) {
 
 func TestModelsRoute(t *testing.T) {
 	useEmptyCatalog(t)
-	resp := manage(t, http.MethodGet, modelsPath, "")
+	resp := serve(t, http.MethodGet, modelsPath, "")
 	if resp.StatusCode != http.StatusOK || string(resp.Body) != `{"models":[],"captured_at":null}` {
 		t.Fatalf("empty catalog = %d %s", resp.StatusCode, resp.Body)
 	}
 	at := time.Date(2026, 10, 12, 8, 30, 0, 0, time.FixedZone("CST", 8*3600))
 	captureCatalog([]byte(`{"object":"list","data":[{"id":"gpt-5.4"},{"id":"o3"}]}`), at)
-	resp = manage(t, http.MethodGet, modelsPath, "")
+	resp = serve(t, http.MethodGet, modelsPath, "")
 	if string(resp.Body) != `{"models":["gpt-5.4","o3"],"captured_at":"2026-10-12T00:30:00Z"}` {
 		t.Fatalf("catalog = %s", resp.Body)
 	}
 	captureCatalog([]byte(`{"object":"list","data":[]}`), at)
-	resp = manage(t, http.MethodGet, modelsPath, "")
+	resp = serve(t, http.MethodGet, modelsPath, "")
 	if string(resp.Body) != `{"models":[],"captured_at":"2026-10-12T00:30:00Z"}` {
 		t.Fatalf("empty captured catalog = %s", resp.Body)
 	}
@@ -226,7 +228,7 @@ func TestModelsRoute(t *testing.T) {
 
 func TestStatusRoute(t *testing.T) {
 	useConfig(t, fixtureConfig+"  cursor:\n    name: typo\n")
-	resp := manage(t, http.MethodGet, statusPath, "")
+	resp := serve(t, http.MethodGet, statusPath, "")
 	var view map[string]json.RawMessage
 	if errUnmarshal := json.Unmarshal(resp.Body, &view); errUnmarshal != nil {
 		t.Fatal(errUnmarshal)
@@ -248,7 +250,7 @@ func TestStatusRoute(t *testing.T) {
 	}
 
 	useConfig(t, "keys: [\n")
-	resp = manage(t, http.MethodGet, statusPath, "")
+	resp = serve(t, http.MethodGet, statusPath, "")
 	var failed statusView
 	if errUnmarshal := json.Unmarshal(resp.Body, &failed); errUnmarshal != nil {
 		t.Fatal(errUnmarshal)
@@ -262,17 +264,21 @@ func TestStatusBeforeRegistration(t *testing.T) {
 	previous := currentRuleSet.Load()
 	currentRuleSet.Store(nil)
 	t.Cleanup(func() { currentRuleSet.Store(previous) })
-	resp := manage(t, http.MethodGet, statusPath, "")
+	resp := serve(t, http.MethodGet, statusPath, "")
 	if string(resp.Body) != `{"generation":0,"response_interceptor":false,"keys":{}}` {
 		t.Fatalf("status = %s", resp.Body)
 	}
 }
 
 func TestUnknownManagementRoute(t *testing.T) {
-	for _, call := range [][2]string{{http.MethodGet, managementBasePath + "/keys"}, {http.MethodPost, statusPath}, {http.MethodGet, fingerprintsPath}} {
-		resp := manage(t, call[0], call[1], "")
-		if resp.StatusCode != http.StatusNotFound || !strings.Contains(errorText(t, resp), "no Client keys route") {
-			t.Fatalf("%s %s = %d %s", call[0], call[1], resp.StatusCode, resp.Body)
+	resp := serve(t, http.MethodGet, manage.APIPath(pluginID, "keys"), "")
+	if resp.StatusCode != http.StatusNotFound || !strings.Contains(errorText(t, resp), "no Client keys route") {
+		t.Fatalf("unknown route = %d %s", resp.StatusCode, resp.Body)
+	}
+	for _, call := range [][3]string{{http.MethodPost, statusPath, http.MethodGet}, {http.MethodGet, fingerprintsPath, http.MethodPost}} {
+		resp := serve(t, call[0], call[1], "")
+		if resp.StatusCode != http.StatusMethodNotAllowed || resp.Headers.Get("Allow") != call[2] {
+			t.Fatalf("%s %s = %d %v %s", call[0], call[1], resp.StatusCode, resp.Headers, resp.Body)
 		}
 	}
 }

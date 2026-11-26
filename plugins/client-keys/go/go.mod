@@ -1,4 +1,4 @@
-module github.com/router-for-me/CLIProxyAPI/v8/whexy-cpa-store/plugins/client-keys
+module github.com/whexy/whexy-cpa-store/plugins/client-keys
 
 go 1.26.0
 
@@ -6,6 +6,7 @@ require (
 	github.com/router-for-me/CLIProxyAPI/v8 v8.0.27
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
+	github.com/whexy/whexy-cpa-store/pluginkit v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -40,3 +41,5 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
 )
+
+replace github.com/whexy/whexy-cpa-store/pluginkit => ../../../pluginkit

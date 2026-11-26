@@ -13,6 +13,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 const claudeEncodedIDPrefix = "claude-fable-5-dd-"
@@ -41,16 +42,16 @@ func interceptResponse(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode response intercept request: %w", errUnmarshal)
 	}
 	if probe.Model != "" || probe.RequestedModel != "" {
-		return okEnvelope(pluginapi.ResponseInterceptResponse{})
+		return rpc.OK(pluginapi.ResponseInterceptResponse{})
 	}
 	var req pluginapi.ResponseInterceptRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode response intercept request: %w", errUnmarshal)
 	}
 	if len(req.RequestBody) > 0 || len(req.OriginalRequest) > 0 {
-		return okEnvelope(pluginapi.ResponseInterceptResponse{})
+		return rpc.OK(pluginapi.ResponseInterceptResponse{})
 	}
-	return okEnvelope(filterModelList(currentRules(), req, time.Now()))
+	return rpc.OK(filterModelList(currentRules(), req, time.Now()))
 }
 
 // filterModelList returns an empty response, which leaves the list as it is,

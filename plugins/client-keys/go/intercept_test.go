@@ -8,6 +8,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/plugin"
 )
 
 type interceptCase struct {
@@ -160,7 +161,7 @@ func TestRequestedModel(t *testing.T) {
 func TestModelsPolicyMatching(t *testing.T) {
 	compile := func(t *testing.T, settings string) modelsPolicy {
 		t.Helper()
-		rules := compileRules([]byte(keyConfig(cursorScope, "    policies:\n      models: "+settings+"\n")))
+		rules := compileYAML(t, keyConfig(cursorScope, "    policies:\n      models: "+settings+"\n"))
 		key := rules.keys[cursorScope]
 		if key.err != "" {
 			t.Fatal(key.err)
@@ -406,7 +407,7 @@ func TestAfterAuthRefusalQuotesTheRequestedName(t *testing.T) {
 
 func TestOversizedRequests(t *testing.T) {
 	for _, method := range []string{pluginabi.MethodRequestInterceptBefore, pluginabi.MethodRequestInterceptAfter} {
-		raw, errOversized := oversizedRequest(method, maxRequestLength+1)
+		raw, errOversized := oversizedRequest(method, 1<<31)
 		if errOversized != nil {
 			t.Fatal(errOversized)
 		}
@@ -416,12 +417,9 @@ func TestOversizedRequests(t *testing.T) {
 		}
 	}
 	for _, method := range []string{pluginabi.MethodResponseInterceptAfter, pluginabi.MethodManagementHandle, pluginabi.MethodPluginReconfigure} {
-		if _, errOversized := oversizedRequest(method, maxRequestLength+1); errOversized == nil || !strings.Contains(errOversized.Error(), "too large") {
+		if _, errOversized := oversizedRequest(method, 1<<31); errOversized == nil || !strings.Contains(errOversized.Error(), "too large") {
 			t.Fatalf("%s error = %v", method, errOversized)
 		}
-	}
-	if maxRequestLength != 1<<31-1 {
-		t.Fatalf("maxRequestLength = %d, want the largest C int", maxRequestLength)
 	}
 }
 
@@ -443,7 +441,7 @@ func TestUndecodableInterceptRequests(t *testing.T) {
 	}
 	for _, method := range []string{pluginabi.MethodRequestInterceptBefore, pluginabi.MethodRequestInterceptAfter} {
 		for _, tt := range tests {
-			raw, errHandle := safeHandleMethod(method, tt.raw)
+			raw, errHandle := plugin.Dispatch(method, tt.raw)
 			if errHandle != nil {
 				t.Fatalf("%s %s: %v", method, tt.name, errHandle)
 			}

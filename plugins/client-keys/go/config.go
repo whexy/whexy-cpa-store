@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -10,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/whexy/whexy-cpa-store/pluginkit/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -82,26 +82,22 @@ func compileLifecycle(raw []byte) (rules *ruleSet) {
 			rules = failedRules(fmt.Sprintf("reading the plugin config panicked: %v", recovered))
 		}
 	}()
-	var request lifecycleRequest
-	if len(raw) > 0 {
-		if errUnmarshal := json.Unmarshal(raw, &request); errUnmarshal != nil {
-			return failedRules("decode lifecycle request: " + errUnmarshal.Error())
-		}
+	var doc yaml.Node
+	if errDecode := config.Decode(raw, &doc); errDecode != nil {
+		return failedRules(errDecode.Error())
 	}
-	return compileRules(request.ConfigYAML)
+	return compileRules(&doc)
 }
 
 func failedRules(message string) *ruleSet {
 	return &ruleSet{err: message, keys: map[string]keyRules{}, entries: map[string]entryStatus{}, filtersModelLists: true}
 }
 
-func compileRules(configYAML []byte) *ruleSet {
+// compileRules reads plugins.configs.client-keys. Other top-level fields
+// belong to the host (enabled, priority, store).
+func compileRules(doc *yaml.Node) *ruleSet {
 	rules := &ruleSet{keys: map[string]keyRules{}, entries: map[string]entryStatus{}}
-	var doc yaml.Node
-	if errUnmarshal := yaml.Unmarshal(configYAML, &doc); errUnmarshal != nil {
-		return failedRules("decode plugin config: " + errUnmarshal.Error())
-	}
-	root := &doc
+	root := doc
 	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
 		root = resolved(root.Content[0])
 	}
@@ -111,7 +107,6 @@ func compileRules(configYAML []byte) *ruleSet {
 	if root.Kind != yaml.MappingNode {
 		return failedRules("the plugin config is not a mapping")
 	}
-	// Other top-level fields belong to the host (enabled, priority, store).
 	var keysNode *yaml.Node
 	for index := 0; index+1 < len(root.Content); index += 2 {
 		if name := resolved(root.Content[index]); name.Kind == yaml.ScalarNode && name.Value == "keys" {
