@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/whexy/whexy-cpa-store/compare/zed-v0.1.1...zed-v0.2.0) (2026-11-26)
+
+
+### Features
+
+* **zed:** restyle the page with Frost
+* **pluginkit:** add translate for provider plugins
+* **pluginkit:** refine the Frost kit from the page rollout
+* **pluginkit:** style every page with Frost
+* **pluginkit:** add what the first plugin migrations needed
+* **pluginkit:** add a shared library for store plugins
+
 ## [0.1.1](https://github.com/whexy/whexy-cpa-store/compare/zed-v0.1.0...zed-v0.1.1) (2026-10-31)
 
 

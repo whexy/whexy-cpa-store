@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	pluginVersion = "0.1.1"
+	pluginVersion = "0.2.0"
 
 	pluginID    = "reset-first"
 	displayName = "Reset First"

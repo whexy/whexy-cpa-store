@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/whexy/whexy-cpa-store/compare/usage-dashboard-v0.7.0...usage-dashboard-v0.8.0) (2026-11-26)
+
+
+### Features
+
+* **usage-dashboard:** restyle the dashboard with Frost
+* **pluginkit:** add translate for provider plugins
+* **pluginkit:** refine the Frost kit from the page rollout
+* **pluginkit:** style every page with Frost
+* **pluginkit:** add what the first plugin migrations needed
+* **pluginkit:** add a shared library for store plugins
+
 ## [0.7.0](https://github.com/whexy/whexy-cpa-store/compare/usage-dashboard-v0.6.1...usage-dashboard-v0.7.0) (2026-11-17)
 
 

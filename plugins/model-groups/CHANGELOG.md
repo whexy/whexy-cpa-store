@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.2.1...model-groups-v0.3.0) (2026-11-26)
+
+
+### Features
+
+* **model-groups:** restyle the page with Frost
+* **pluginkit:** add translate for provider plugins
+* **pluginkit:** refine the Frost kit from the page rollout
+* **pluginkit:** style every page with Frost
+* **pluginkit:** add what the first plugin migrations needed
+* **pluginkit:** add a shared library for store plugins
+
+### Bug Fixes
+
+* **model-groups:** use CPA's routing defaults when config.yaml sets none
+
 ## [0.2.1](https://github.com/whexy/whexy-cpa-store/compare/model-groups-v0.2.0...model-groups-v0.2.1) (2026-10-23)
 
 
