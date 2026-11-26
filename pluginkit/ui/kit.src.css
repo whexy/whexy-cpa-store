@@ -25,6 +25,8 @@
  *   .notice.toast                 kit: transient notice (kit.toast)
  *   .error                        kit: inline failure text
  *   .empty                        kit: a list with nothing in it
+ *   .popover                      kit: opaque menu or suggestion list
+ *   .track > .fill[.ok|.warn|.danger]   kit: meter; width from --value
  *   .hint, .muted, .mono, .row, .spacer, .sr-only   kit: text and layout
  *   table.table                   kit: data table on paper
  *   form.auth#auth                kit: management key prompt (kit.auth)
@@ -168,6 +170,21 @@
   color: var(--color-neutral-950);
 }
 
+/* In the dark variant white is a surface, not a highlight, so the two
+   controls Frost lifts with translucent white get a lighter fill instead. */
+[data-theme="dark"] .btn-glass {
+  border-color: var(--color-line-strong);
+  background-color: var(--color-fill);
+  &:hover {
+    background-color: var(--color-line-strong);
+  }
+}
+
+[data-theme="dark"]
+  :is(.segmented-active, .segmented-item[aria-pressed="true"]) {
+  background-color: var(--color-neutral-200);
+}
+
 /* ------------------------------------------------------------------
  * Base.
  * ------------------------------------------------------------------ */
@@ -226,6 +243,20 @@
     color: var(--color-ink-glass);
   }
 
+  /* Frost's prose link: a rose highlighter under the word that fills it on
+     hover. Each wrapped line gets its own highlighter. */
+  a:not([class]) {
+    color: inherit;
+    text-decoration: none;
+    box-shadow: inset 0 -0.4rem 0 var(--color-accent);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    transition: background-color 200ms;
+    &:hover {
+      background-color: var(--color-accent);
+    }
+  }
+
   code,
   .mono {
     font-family: var(--font-mono);
@@ -268,6 +299,20 @@
     padding: var(--spacing-toolbar) 0 calc(var(--spacing) * 10);
     @media (width >= 40rem) {
       padding-inline: calc(var(--spacing) * 4);
+    }
+  }
+
+  /* Page-level surfaces go square and edge to edge on phones; panel and
+     paper do so themselves. Anything else in the column keeps a gutter. */
+  .page > .glass-card {
+    @media (width < 40rem) {
+      border-radius: 0;
+    }
+  }
+
+  .page > :not(.head, .glass-card, .panel, .paper) {
+    @media (width < 40rem) {
+      margin-inline: calc(var(--spacing) * 4);
     }
   }
 
@@ -365,7 +410,8 @@
     align-self: flex-start;
   }
 
-  .card h2 {
+  /* Zero specificity, so a Frost title class such as .chart-title wins. */
+  :where(.card h2) {
     margin: 0;
     font-size: var(--text-base);
   }
@@ -443,6 +489,45 @@
     color: var(--color-ink-subtle);
     &:hover {
       color: var(--color-ink-strong);
+    }
+  }
+
+  /* Menu or suggestion list floating over the page, from paper: opaque so
+     the text beneath cannot show through. Position it on the page. */
+  .popover {
+    z-index: 30;
+    padding: calc(var(--spacing) * 1);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-xl);
+    background-color: var(--color-white);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Meter, from the chart segmented whole: a rounded track with a bar
+     showing a share, set as --value (a percentage). A status class colors
+     the bar; without one it is the neutral total. */
+  .track {
+    display: block;
+    height: calc(var(--spacing) * 1.5);
+    overflow: hidden;
+    border-radius: 9999px;
+    background-color: var(--color-fill);
+    & > .fill {
+      display: block;
+      width: var(--value, 0%);
+      height: 100%;
+      border-radius: inherit;
+      background-color: var(--color-series-total);
+      transition: width 200ms;
+    }
+    & > .fill.ok {
+      background-color: var(--color-ok);
+    }
+    & > .fill.warn {
+      background-color: var(--color-warn);
+    }
+    & > .fill.danger {
+      background-color: var(--color-danger);
     }
   }
 
@@ -697,8 +782,8 @@
     }
   }
 
-  /* Side editor, from the panel: a translucent white sheet over a blurred
-     scrim. */
+  /* Side editor, from paper: an opaque sheet over a blurred scrim, since
+     it holds a form whose fields must not show the page through. */
   .scrim {
     position: fixed;
     inset: 0;
@@ -723,9 +808,8 @@
     margin: 0;
     border: 0;
     border-left: 1px solid var(--color-line);
-    background-color: color-mix(in oklab, var(--color-white) 85%, transparent);
+    background-color: var(--color-white);
     box-shadow: var(--shadow-md);
-    backdrop-filter: blur(var(--blur-md)) saturate(150%);
     &:focus {
       outline: none;
     }
