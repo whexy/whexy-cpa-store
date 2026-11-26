@@ -189,7 +189,7 @@ func TestUnreadableConfigKeepsPreviousModels(t *testing.T) {
 		if ids := currentModels().ids(); !reflect.DeepEqual(ids, []string{"claude-next"}) {
 			t.Fatalf("%q: ids = %v", config, ids)
 		}
-		if len(logged) != 1 || !strings.HasPrefix(logged[0], "warn extra-models: keeping the previous models") {
+		if len(logged) != 1 || !strings.HasPrefix(logged[0], "warn keeping the previous models") {
 			t.Fatalf("%q: logged %q", config, logged)
 		}
 	}
@@ -211,7 +211,7 @@ func TestRepeatedConfigLogsOnce(t *testing.T) {
 	if logged := configureYAML(t, config); len(logged) != 0 {
 		t.Fatalf("same configure logged %q", logged)
 	}
-	if logged := configureYAML(t, "provider: claude\nmodels: [{id: claude-next}]"); !reflect.DeepEqual(logged, []string{"info extra-models: adding claude-next to claude"}) {
+	if logged := configureYAML(t, "provider: claude\nmodels: [{id: claude-next}]"); !reflect.DeepEqual(logged, []string{"info adding claude-next to claude"}) {
 		t.Fatalf("changed configure logged %q", logged)
 	}
 }
@@ -219,8 +219,8 @@ func TestRepeatedConfigLogsOnce(t *testing.T) {
 func TestModelRegister(t *testing.T) {
 	logged := configureYAML(t, "provider: claude\nmodels: [{id: claude-next}, {id: ''}]")
 	if want := []string{
-		"warn extra-models: skipping model 2: it has no id",
-		"info extra-models: adding claude-next to claude",
+		"warn skipping model 2: it has no id",
+		"info adding claude-next to claude",
 	}; !reflect.DeepEqual(logged, want) {
 		t.Fatalf("logged %q, want %q", logged, want)
 	}

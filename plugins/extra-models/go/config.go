@@ -143,7 +143,7 @@ func configure(raw []byte) {
 	}
 	lastReport = report
 	for _, line := range report {
-		host.Log(line.level, pluginID+": "+line.message, nil)
+		host.Log(line.level, line.message, nil)
 	}
 }
 
