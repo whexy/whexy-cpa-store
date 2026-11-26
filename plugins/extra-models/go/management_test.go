@@ -6,25 +6,30 @@ import (
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
+
+func serve(method, path string) pluginapi.ManagementResponse {
+	return router.Serve(manage.Request{ManagementRequest: pluginapi.ManagementRequest{Method: method, Path: path}})
+}
 
 func TestRouteManagement(t *testing.T) {
 	tests := []struct {
 		method, path, contentType string
 		status                    int
 	}{
-		{http.MethodGet, logoPath, "image/svg+xml", http.StatusOK},
-		{"get", logoPath, "image/svg+xml", http.StatusOK},
-		{http.MethodPost, logoPath, "text/plain; charset=utf-8", http.StatusNotFound},
-		{http.MethodGet, "/v0/resource/plugins/" + pluginID + "/other", "text/plain; charset=utf-8", http.StatusNotFound},
+		{http.MethodGet, router.LogoPath(), "image/svg+xml", http.StatusOK},
+		{"get", router.LogoPath(), "image/svg+xml", http.StatusOK},
+		{http.MethodPost, router.LogoPath(), "application/json; charset=utf-8", http.StatusNotFound},
+		{http.MethodGet, manage.ResourcePath(pluginID, "index.html"), "application/json; charset=utf-8", http.StatusNotFound},
 	}
 	for _, tt := range tests {
-		resp := routeManagement(pluginapi.ManagementRequest{Method: tt.method, Path: tt.path})
+		resp := serve(tt.method, tt.path)
 		if resp.StatusCode != tt.status || resp.Headers.Get("Content-Type") != tt.contentType {
 			t.Errorf("%s %s = %d %q, want %d %q", tt.method, tt.path, resp.StatusCode, resp.Headers.Get("Content-Type"), tt.status, tt.contentType)
 		}
 	}
-	if resp := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: logoPath}); !bytes.Equal(resp.Body, logoSVG) {
+	if resp := serve(http.MethodGet, router.LogoPath()); !bytes.Equal(resp.Body, logoSVG) {
 		t.Fatalf("logo body = %q", resp.Body)
 	}
 }

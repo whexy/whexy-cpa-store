@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -10,6 +9,8 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/config"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 	"gopkg.in/yaml.v3"
 )
 
@@ -142,18 +143,12 @@ func configure(raw []byte) {
 	}
 	lastReport = report
 	for _, line := range report {
-		hostLog(line.level, line.message)
+		host.Log(line.level, pluginID+": "+line.message, nil)
 	}
 }
 
-func applyConfig(raw []byte) []logLine {
-	var request lifecycleRequest
-	if len(raw) > 0 {
-		if errUnmarshal := json.Unmarshal(raw, &request); errUnmarshal != nil {
-			return []logLine{{"warn", "keeping the previous models: decode lifecycle request: " + errUnmarshal.Error()}}
-		}
-	}
-	set, problems, errParse := parseConfig(request.ConfigYAML)
+func applyConfig(request []byte) []logLine {
+	set, problems, errParse := parseConfig(request)
 	if errParse != nil {
 		return []logLine{{"warn", "keeping the previous models: " + errParse.Error()}}
 	}
@@ -168,13 +163,13 @@ func applyConfig(raw []byte) []logLine {
 	return report
 }
 
-// parseConfig reads plugins.configs.extra-models. It fails only when the
-// document cannot be read; an entry it cannot use is skipped and described in
-// problems.
-func parseConfig(configYAML []byte) (*modelSet, []string, error) {
+// parseConfig reads plugins.configs.extra-models from a lifecycle request. It
+// fails only when the document cannot be read; an entry it cannot use is
+// skipped and described in problems.
+func parseConfig(request []byte) (*modelSet, []string, error) {
 	var doc configDocument
-	if errUnmarshal := yaml.Unmarshal(configYAML, &doc); errUnmarshal != nil {
-		return nil, nil, fmt.Errorf("decode plugin config: %w", errUnmarshal)
+	if errDecode := config.Decode(request, &doc); errDecode != nil {
+		return nil, nil, errDecode
 	}
 	// Management Center saves a cleared field as null.
 	if doc.Models.Kind == yaml.ScalarNode && doc.Models.Tag == "!!null" {
