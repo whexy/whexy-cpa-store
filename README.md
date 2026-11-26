@@ -88,14 +88,19 @@ To release, finish the pull request's changes, then run:
 ```bash
 node release/bump.mjs <id>          # next version from the commits since <id>'s last tag
 node release/bump.mjs <id> 0.2.1    # or name the version
+node release/bump.mjs --affected    # every plugin with releasable commits, for a pluginkit change
 ```
 
 It writes the version into `go/main.go` and a section into `CHANGELOG.md`
-listing the `feat`, `fix`, `perf` and `revert` commits that touch
-`plugins/<id>/`. Before 1.0, `feat` and breaking changes bump the minor
-version and `fix` the patch. Commit both files as
-`chore(<id>): release <version>` and merge the pull request; changes merged
-without a bump wait for the next one.
+listing the `feat`, `fix`, `perf` and `revert` commits that touch what the
+plugin is built from: `plugins/<id>/` and the `pluginkit/` packages it
+imports, directly or through other pluginkit packages. Before 1.0, `feat` and
+breaking changes bump the minor version and `fix` the patch. Commit the files
+as `chore(<id>): release <version>`, or for `--affected` as
+`chore(release): release <id> <version>, ...`, and merge the pull request;
+changes merged without a bump wait for the next one. One pull request that
+changes `pluginkit/` and ends with `--affected` releases every plugin the
+change reaches, and the `main` pipeline tags them all in one push.
 
 Woodpecker runs `.woodpecker.yaml`, and nothing else is manual; never create
 tags or releases by hand:

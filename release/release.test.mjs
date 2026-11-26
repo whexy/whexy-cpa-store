@@ -6,9 +6,11 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   changelogEntry,
+  linkedPackages,
   nextVersion,
   parseCommit,
   prependSection,
+  sourcePaths,
 } from "./bump.mjs";
 import { githubToken } from "./github-app.mjs";
 import { pluginForTag } from "./plugin-tag.mjs";
@@ -174,6 +176,38 @@ test("a version is bumped from the conventional commits since its last tag", () 
   );
   assert.equal(nextVersion("0.2.0", commits("chore(foo): a")), undefined);
   assert.equal(parseCommit("Merge branch main"), undefined);
+});
+
+test("a plugin is built from its directory and the pluginkit packages it links", () => {
+  const kit = (sub) => `"github.com/whexy/whexy-cpa-store/pluginkit${sub}"`;
+  const sources = {
+    "plugins/a/go/main.go": `import (\n\t${kit("/plugin")}\n\t"fmt"\n)`,
+    "plugins/b/go/main.go": `import ${kit("/manage")}`,
+    "pluginkit/plugin/plugin.go": `import (\n\t${kit("/host")}\n\t${kit("/rpc")}\n)`,
+    "pluginkit/host/host.go": `import ${kit("/rpc")}`,
+    "pluginkit/rpc/rpc.go": "package rpc",
+    "pluginkit/manage/manage.go": `import ${kit("/ui")}`,
+    "pluginkit/ui/ui.go": "package ui",
+  };
+  assert.deepEqual(linkedPackages("plugins/a/go", sources), [
+    "pluginkit/host",
+    "pluginkit/plugin",
+    "pluginkit/rpc",
+  ]);
+  assert.deepEqual(linkedPackages("plugins/b/go", sources), [
+    "pluginkit/manage",
+    "pluginkit/ui",
+  ]);
+});
+
+test("pluginkit changes reach only the plugins that link them", async () => {
+  const zed = await sourcePaths("zed");
+  assert.equal(zed[0], "plugins/zed");
+  assert.ok(zed.includes("pluginkit/translate"));
+  const extraModels = await sourcePaths("extra-models");
+  assert.ok(extraModels.includes("pluginkit/plugin"));
+  assert.ok(!extraModels.includes("pluginkit/translate"));
+  assert.ok(!zed.includes("pluginkit/host/hosttest"));
 });
 
 test("a changelog entry groups the releasable commits under its version", () => {

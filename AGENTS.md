@@ -13,9 +13,14 @@ describes how a plugin is released.
 - To release your plugin, run `node release/bump.mjs <id>` as the last commit
   of your pull request. Merging that pull request is the release; CI tags,
   builds, publishes and lists it in `registry.json` without anyone's help.
-- Never touch another plugin's version, changelog, pull request or branch,
-  never close or merge a pull request you did not open, and never create tags
-  or releases by hand.
+- To release a change to `pluginkit/`, end its pull request with
+  `node release/bump.mjs --affected`, which bumps every plugin the change
+  reaches. That is the only time you change another plugin's version or
+  changelog. When it conflicts with a plugin session's bump, the second pull
+  request to merge reruns its bump on the new `main`.
+- Never touch another plugin's version, changelog, pull request or branch
+  otherwise, never close or merge a pull request you did not open, and never
+  create tags or releases by hand.
 - `main` does not require an up-to-date branch. Rebase an open pull request
   only when GitHub reports a conflict, not because `main` moved.
 - `nix flake check` runs everything the pull request pipeline runs; run it

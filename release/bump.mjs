@@ -1,15 +1,19 @@
 import { execFileSync } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
   compareVersions,
   declaredVersion,
   isMain,
+  readPlugins,
   RELEASE_VERSION,
   setDeclaredVersion,
   tagName,
   UNRELEASED,
 } from "./plugins.mjs";
+
+const KIT_MODULE = "github.com/whexy/whexy-cpa-store/pluginkit";
+const KIT_IMPORT = new RegExp(`"${KIT_MODULE}((?:/[\\w.-]+)*)"`, "g");
 
 const INITIAL_VERSION = "0.1.0";
 const CONVENTIONAL = /^(\w+)(?:\(([^)]*)\))?(!)?: (.+)$/;
@@ -88,6 +92,66 @@ export function prependSection(changelog, section) {
   return `${`# Changelog\n\n${section.trimEnd()}\n\n${rest}`.trimEnd()}\n`;
 }
 
+// linkedPackages lists the pluginkit package directories a plugin's build
+// links, following imports through pluginkit. sources maps each non-test Go
+// file, by repository path, to its contents; the plugin's own files are
+// those under pluginDir.
+export function linkedPackages(pluginDir, sources) {
+  const importsIn = (inScope) =>
+    Object.entries(sources)
+      .filter(([path]) => inScope(path.slice(0, path.lastIndexOf("/"))))
+      .flatMap(([, source]) =>
+        [...source.matchAll(KIT_IMPORT)].map(([, sub]) => "pluginkit" + sub),
+      );
+  const linked = new Set();
+  const pending = importsIn(
+    (dir) => dir === pluginDir || dir.startsWith(pluginDir + "/"),
+  );
+  while (pending.length > 0) {
+    const dir = pending.pop();
+    if (linked.has(dir)) continue;
+    linked.add(dir);
+    pending.push(...importsIn((other) => other === dir));
+  }
+  return [...linked].sort();
+}
+
+async function goSources(root, dir) {
+  const sources = {};
+  const walk = async (path) => {
+    const entries = await readdir(new URL(path + "/", root), {
+      withFileTypes: true,
+    }).catch((error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    for (const entry of entries) {
+      const child = `${path}/${entry.name}`;
+      if (entry.isDirectory() && entry.name !== "testdata") await walk(child);
+      else if (entry.name.endsWith(".go") && !entry.name.endsWith("_test.go"))
+        sources[child] = await readFile(new URL(child, root), "utf8");
+    }
+  };
+  await walk(dir);
+  return sources;
+}
+
+// sourcePaths lists what a plugin's library is built from: its own
+// directory and the pluginkit packages it links. A commit to any of them is
+// a change to the plugin.
+export async function sourcePaths(id, root = new URL("../", import.meta.url)) {
+  const sources = {
+    ...(await goSources(root, `plugins/${id}/go`)),
+    ...(await goSources(root, "pluginkit")),
+  };
+  return [`plugins/${id}`, ...linkedPackages(`plugins/${id}/go`, sources)];
+}
+
+// NothingToRelease means a plugin has no releasable commits since its last
+// tag; PendingRelease, that it already declares a version not tagged yet.
+export class NothingToRelease extends Error {}
+export class PendingRelease extends Error {}
+
 // Writes the next version of plugins/<id> into go/main.go and CHANGELOG.md,
 // so the pull request that carries the change also releases it.
 export async function bump(
@@ -96,12 +160,13 @@ export async function bump(
   {
     root = new URL("../", import.meta.url),
     date = new Date().toISOString().slice(0, 10),
+    fetchTags = true,
   } = {},
 ) {
   const git = (...args) =>
     execFileSync("git", args, { cwd: fileURLToPath(root), encoding: "utf8" });
   const path = `plugins/${id}`;
-  git("fetch", "--quiet", "--tags", "origin");
+  if (fetchTags) git("fetch", "--quiet", "--tags", "origin");
   const released = git("tag", "--list", tagName(id, "*"))
     .split("\n")
     .map((tag) => tag.slice(tagName(id, "").length))
@@ -112,7 +177,7 @@ export async function bump(
   const source = await readFile(mainFile, "utf8");
   const current = declaredVersion(source, `${path}/go/main.go`);
   if (current !== (released ?? UNRELEASED))
-    throw new Error(
+    throw new PendingRelease(
       `${path} already declares ${current}; its latest tag is ${released ? tagName(id, released) : "none"}`,
     );
   const commits = git(
@@ -120,7 +185,7 @@ export async function bump(
     "--format=%s%x1f%b%x1e",
     released ? `${tagName(id, released)}..HEAD` : "HEAD",
     "--",
-    path,
+    ...(await sourcePaths(id, root)),
   )
     .split("\x1e")
     .map((entry) => entry.trim())
@@ -129,7 +194,7 @@ export async function bump(
     .filter(Boolean);
   const version = requested ?? nextVersion(released, commits);
   if (!version)
-    throw new Error(
+    throw new NothingToRelease(
       `${path} has no feat, fix, perf or revert commits since ${tagName(id, released)}; name a version to release anyway`,
     );
   if (
@@ -163,14 +228,56 @@ export async function bump(
   return version;
 }
 
+// bumpAffected bumps every plugin with releasable commits since its last
+// tag, so one pull request that changes pluginkit also releases each plugin
+// the change reaches. A plugin that already declares an unreleased version
+// is left as it is.
+export async function bumpAffected({
+  root = new URL("../", import.meta.url),
+  date,
+} = {}) {
+  execFileSync("git", ["fetch", "--quiet", "--tags", "origin"], {
+    cwd: fileURLToPath(root),
+  });
+  const bumped = [];
+  for (const { id } of await readPlugins(root)) {
+    try {
+      bumped.push({
+        id,
+        version: await bump(id, undefined, { root, date, fetchTags: false }),
+      });
+    } catch (error) {
+      if (
+        !(error instanceof NothingToRelease || error instanceof PendingRelease)
+      )
+        throw error;
+    }
+  }
+  return bumped;
+}
+
 if (isMain(import.meta.url)) {
   const [id, version] = process.argv.slice(2);
   if (!id) {
-    console.error("Usage: node release/bump.mjs <plugin-id> [<version>]");
+    console.error(
+      "Usage: node release/bump.mjs <plugin-id> [<version>]\n       node release/bump.mjs --affected",
+    );
     process.exit(2);
   }
-  const next = await bump(id, version);
-  console.log(
-    `Commit plugins/${id} as "chore(${id}): release ${next}"; merging it releases ${tagName(id, next)}.`,
-  );
+  if (id === "--affected") {
+    const bumped = await bumpAffected();
+    if (bumped.length === 0) {
+      console.log("No plugin has releasable commits since its last tag.");
+    } else {
+      const list = bumped.map((b) => `${b.id} ${b.version}`).join(", ");
+      console.log(
+        `Commit plugins/ as "chore(release): release ${list}"; merging it releases ${bumped.map((b) => tagName(b.id, b.version)).join(", ")}.`,
+      );
+    }
+  } else {
+    const next = await bump(id, version);
+    console.log(
+      `Commit plugins/${id} as "chore(${id}): release ${next}"; merging it releases ${tagName(id, next)}.`,
+    );
+  }
 }
