@@ -159,7 +159,7 @@ func (s *state) load(dir string) {
 	}
 	var file persisted
 	if errUnmarshal := json.Unmarshal(raw, &file); errUnmarshal != nil || file.Version != stateVersion {
-		host.Log("warn", "reset-first: ignoring unreadable state file", map[string]any{"path": filepath.Join(dir, stateFileName)})
+		host.Log("warn", "ignoring unreadable state file", map[string]any{"path": filepath.Join(dir, stateFileName)})
 		return
 	}
 	for id, a := range file.Accounts {
@@ -192,7 +192,7 @@ func (s *state) persist(now time.Time) {
 	s.dirty = false
 	s.mu.Unlock()
 	if errMarshal != nil {
-		host.Log("warn", "reset-first: cannot encode state", map[string]any{"error": errMarshal.Error()})
+		host.Log("warn", "cannot encode state", map[string]any{"error": errMarshal.Error()})
 		return
 	}
 	target := filepath.Join(dir, stateFileName)
@@ -205,7 +205,7 @@ func (s *state) persist(now time.Time) {
 		errWrite = os.Rename(temp, target)
 	}
 	if errWrite != nil {
-		host.Log("warn", "reset-first: cannot save state", map[string]any{"path": target, "error": errWrite.Error()})
+		host.Log("warn", "cannot save state", map[string]any{"path": target, "error": errWrite.Error()})
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
 	"github.com/whexy/whexy-cpa-store/pluginkit/config"
 	"github.com/whexy/whexy-cpa-store/pluginkit/datadir"
 	"github.com/whexy/whexy-cpa-store/pluginkit/host"
@@ -81,62 +82,39 @@ func configure(request []byte) error {
 	}
 	currentConfig.Store(&cfg)
 	current.load(datadir.Default(pluginID))
-	poller.start()
+	startLoop()
 	return nil
+}
+
+var (
+	loopMu sync.Mutex
+	// looping is set while the background loop runs; the host registers and
+	// reconfigures many times, and each must not start another loop.
+	looping bool
+)
+
+func startLoop() {
+	loopMu.Lock()
+	defer loopMu.Unlock()
+	if !looping {
+		looping = true
+		background.Go(loop)
+	}
 }
 
 // quiesce saves everything and stops writing, on shutdown and to hand the
 // state file to the library replacing this one in a hot upgrade. This library
 // may still answer an in-flight call afterwards, from memory.
 func quiesce() {
-	poller.stop(shutdownGrace)
+	loopMu.Lock()
+	looping = false
+	background.Stop(shutdownGrace)
+	loopMu.Unlock()
 	current.persist(time.Now())
 }
 
-// loop is the background work. Unlike pluginkit/background it starts again
-// after a stop: a failed hot upgrade rolls back to this library with
-// plugin.register after quiesce.
-type loop struct {
-	mu     sync.Mutex
-	cancel context.CancelFunc
-	done   chan struct{}
-}
-
-var poller loop
-
-func (l *loop) start() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.cancel != nil {
-		return
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	l.cancel, l.done = cancel, make(chan struct{})
-	go l.run(ctx, l.done)
-}
-
-func (l *loop) stop(grace time.Duration) {
-	l.mu.Lock()
-	cancel, done := l.cancel, l.done
-	l.cancel, l.done = nil, nil
-	l.mu.Unlock()
-	if cancel == nil {
-		return
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(grace):
-	}
-}
-
-func (l *loop) run(ctx context.Context, done chan struct{}) {
-	defer close(done)
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			host.Log("error", fmt.Sprintf("reset-first: background loop panicked: %v", recovered), nil)
-		}
-	}()
+// loop refreshes every tick until ctx ends.
+func loop(ctx context.Context) {
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	for {
