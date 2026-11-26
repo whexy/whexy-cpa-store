@@ -66,9 +66,15 @@ func TestManagementRegistrationWireShape(t *testing.T) {
 	if strings.Join(routes, ",") != want {
 		t.Fatalf("routes = %v", routes)
 	}
-	if len(reg.Resources) != 2 || reg.Resources[0].Path != "/v0/resource/plugins/client-keys/index.html" || reg.Resources[0].Menu != "Client keys" || reg.Resources[0].Description == "" ||
+	// The page and logo come first; the kit's fonts follow, without a menu.
+	if len(reg.Resources) < 2 || reg.Resources[0].Path != "/v0/resource/plugins/client-keys/index.html" || reg.Resources[0].Menu != "Client keys" || reg.Resources[0].Description == "" ||
 		reg.Resources[1].Path != "/v0/resource/plugins/client-keys/logo.svg" || reg.Resources[1].Menu != "" {
 		t.Fatalf("resources = %+v", reg.Resources)
+	}
+	for _, resource := range reg.Resources[2:] {
+		if !strings.HasPrefix(resource.Path, "/v0/resource/plugins/client-keys/fonts/") || resource.Menu != "" {
+			t.Fatalf("resource %+v is neither the page, the logo nor a font", resource)
+		}
 	}
 }
 
