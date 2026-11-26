@@ -41,7 +41,7 @@ func base64Raw(raw []byte) string {
 
 func installZedHost(t *testing.T) {
 	t.Helper()
-	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+	installHost(t).HandleHTTP(func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
@@ -97,40 +97,51 @@ func TestExecutorExecuteClaude(t *testing.T) {
 }
 
 func TestExecutorPlanRestrictionIsNotAuthFailure(t *testing.T) {
-	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
-		switch {
-		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
-			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
-		case strings.HasSuffix(req.URL, "/models"):
-			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"models": []any{map[string]any{"id": "claude-opus-5-5", "provider": "anthropic"}}})}, nil
-		case strings.HasSuffix(req.URL, "/completions"):
-			return pluginapi.HTTPResponse{StatusCode: 403, Body: []byte(`Access to model "claude-opus-5-5" is not included in your plan`)}, nil
-		}
-		return pluginapi.HTTPResponse{StatusCode: 404}, nil
-	})
-	useSettings(t, defaultSettings())
-	payload := mustJSON(t, map[string]any{"model": "claude-opus-5-5", "max_tokens": 10, "messages": []any{map[string]any{"role": "user", "content": "hi"}}})
-	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
-		AuthID:       "a",
-		Model:        "zed/claude-opus-5-5",
-		Format:       "claude",
-		SourceFormat: "claude",
-		Payload:      payload,
-		StorageJSON:  testAuthJSON(t),
-	}}
-	raw, _ := executorExecute(mustJSON(t, req))
-	env := decodeEnvelope(t, raw)
-	if env.OK || env.Error == nil {
-		t.Fatalf("expected failure envelope: %s", raw)
+	cases := []struct {
+		body   string
+		status int
+	}{
+		// A 400 never cools the account down.
+		{`Access to model "claude-opus-5-5" is not included in your plan`, http.StatusBadRequest},
+		// An account-wide failure keeps its 403 so CPA moves on.
+		{`Your plan has expired`, http.StatusForbidden},
 	}
-	if env.Error.HTTPStatus != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 so the account is not cooled down: %s", env.Error.HTTPStatus, raw)
+	for _, c := range cases {
+		installHost(t).HandleHTTP(func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+			switch {
+			case strings.HasSuffix(req.URL, "/client/llm_tokens"):
+				return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
+			case strings.HasSuffix(req.URL, "/models"):
+				return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"models": []any{map[string]any{"id": "claude-opus-5-5", "provider": "anthropic"}}})}, nil
+			case strings.HasSuffix(req.URL, "/completions"):
+				return pluginapi.HTTPResponse{StatusCode: 403, Body: []byte(c.body)}, nil
+			}
+			return pluginapi.HTTPResponse{StatusCode: 404}, nil
+		})
+		useSettings(t, defaultSettings())
+		payload := mustJSON(t, map[string]any{"model": "claude-opus-5-5", "max_tokens": 10, "messages": []any{map[string]any{"role": "user", "content": "hi"}}})
+		req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+			AuthID:       "a",
+			Model:        "zed/claude-opus-5-5",
+			Format:       "claude",
+			SourceFormat: "claude",
+			Payload:      payload,
+			StorageJSON:  testAuthJSON(t),
+		}}
+		raw, _ := executorExecute(mustJSON(t, req))
+		env := decodeEnvelope(t, raw)
+		if env.OK || env.Error == nil {
+			t.Fatalf("expected failure envelope: %s", raw)
+		}
+		if env.Error.HTTPStatus != c.status {
+			t.Errorf("%q: status = %d, want %d: %s", c.body, env.Error.HTTPStatus, c.status, raw)
+		}
 	}
 }
 
 func claudeModelHost(t *testing.T, completions string) {
 	t.Helper()
-	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+	installHost(t).HandleHTTP(func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
@@ -177,7 +188,7 @@ func TestExecutorRejectsTruncatedNonStreamingGeneration(t *testing.T) {
 }
 
 func TestExecutorCatalogFailureKeepsStatus(t *testing.T) {
-	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+	installHost(t).HandleHTTP(func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
@@ -205,7 +216,7 @@ func TestExecutorCatalogFailureKeepsStatus(t *testing.T) {
 func TestExecutorRevokedLoginIsUnauthorized(t *testing.T) {
 	fake := installHost(t)
 	mints := 0
-	handleHTTP(fake, func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+	fake.HandleHTTP(func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			// The first JWT serves the catalog; the login is revoked before
@@ -238,7 +249,7 @@ func TestExecutorRevokedLoginIsUnauthorized(t *testing.T) {
 func TestExecutorAppliesThinkingSuffix(t *testing.T) {
 	fake := installHost(t)
 	var completions gjson.Result
-	handleHTTP(fake, func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+	fake.HandleHTTP(func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil

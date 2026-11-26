@@ -7,6 +7,7 @@ import (
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/translate"
 )
 
 func claudeEvents() [][]byte {
@@ -101,7 +102,7 @@ func TestLineSplitter(t *testing.T) {
 }
 
 func TestStreamConverterPassthroughClaude(t *testing.T) {
-	plan, errPlan := planRoute(sdktranslator.FormatClaude, sdktranslator.FormatClaude, sdktranslator.FormatClaude)
+	plan, errPlan := translate.PlanRoute(sdktranslator.FormatClaude, sdktranslator.FormatClaude, sdktranslator.FormatClaude)
 	if errPlan != nil {
 		t.Fatal(errPlan)
 	}
@@ -116,7 +117,7 @@ func TestStreamConverterPassthroughClaude(t *testing.T) {
 }
 
 func TestStreamConverterPassthroughGeminiIsBareJSON(t *testing.T) {
-	plan, errPlan := planRoute(sdktranslator.FormatGemini, sdktranslator.FormatGemini, sdktranslator.FormatGemini)
+	plan, errPlan := translate.PlanRoute(sdktranslator.FormatGemini, sdktranslator.FormatGemini, sdktranslator.FormatGemini)
 	if errPlan != nil {
 		t.Fatal(errPlan)
 	}
@@ -131,7 +132,7 @@ func TestStreamConverterPassthroughGeminiIsBareJSON(t *testing.T) {
 }
 
 func TestGeminiTranslatedStreamFlushesTerminal(t *testing.T) {
-	plan, errPlan := planRoute(sdktranslator.FormatClaude, sdktranslator.FormatClaude, sdktranslator.FormatGemini)
+	plan, errPlan := translate.PlanRoute(sdktranslator.FormatClaude, sdktranslator.FormatClaude, sdktranslator.FormatGemini)
 	if errPlan != nil {
 		t.Fatal(errPlan)
 	}
@@ -213,7 +214,7 @@ func TestChatRequiresFinishReason(t *testing.T) {
 	if out, errAssemble := assembleChat(events); errAssemble == nil {
 		t.Fatalf("a Chat response without finish_reason must fail: %s", out)
 	}
-	converter := newStreamConverter(t.Context(), routePlan{Source: sdktranslator.FormatOpenAI, Response: sdktranslator.FormatOpenAI, Upstream: sdktranslator.FormatOpenAI}, "grok", nil, nil, nil)
+	converter := newStreamConverter(t.Context(), translate.Plan{Source: sdktranslator.FormatOpenAI, Response: sdktranslator.FormatOpenAI, Upstream: sdktranslator.FormatOpenAI}, "grok", nil, nil, nil)
 	if _, errConvert := converter.convert(events[0]); errConvert != nil {
 		t.Fatal(errConvert)
 	}
@@ -247,7 +248,7 @@ func TestAssembleChatToolCalls(t *testing.T) {
 }
 
 func TestStreamConverterRestoresToolNamespaces(t *testing.T) {
-	plan := routePlan{Source: sdktranslator.FormatOpenAIResponse, Response: sdktranslator.FormatOpenAIResponse, Upstream: sdktranslator.FormatOpenAIResponse}
+	plan := translate.Plan{Source: sdktranslator.FormatOpenAIResponse, Response: sdktranslator.FormatOpenAIResponse, Upstream: sdktranslator.FormatOpenAIResponse}
 	converter := newStreamConverter(t.Context(), plan, "gpt-6.1-sol", nil, nil, map[string]namespacedTool{"sleep": {Namespace: "clock", Name: "sleep"}})
 	chunks, errConvert := converter.convert([]byte(`{"type":"response.output_item.done","item":{"type":"function_call","name":"sleep","call_id":"c1","arguments":"{}"}}`))
 	if errConvert != nil {

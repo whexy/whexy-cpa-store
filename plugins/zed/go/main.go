@@ -47,8 +47,7 @@ func main() {}
 
 func shutdown() {
 	logins.closeAll()
-	cancelCalls()
-	background.Stop(shutdownGrace)
+	background.Close(shutdownGrace)
 }
 
 func handleMethod(method string, request []byte) ([]byte, error) {

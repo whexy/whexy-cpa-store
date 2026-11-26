@@ -10,6 +10,7 @@ import (
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/translate"
 )
 
 // zedLine is one newline-delimited object from POST /completions.
@@ -130,7 +131,7 @@ func (s *lineSplitter) flush() [][]byte {
 // handler writes.
 type streamConverter struct {
 	ctx        context.Context
-	plan       routePlan
+	plan       translate.Plan
 	model      string
 	original   []byte
 	request    []byte
@@ -139,7 +140,7 @@ type streamConverter struct {
 	done       bool
 }
 
-func newStreamConverter(ctx context.Context, plan routePlan, model string, original, request []byte, namespaced map[string]namespacedTool) *streamConverter {
+func newStreamConverter(ctx context.Context, plan translate.Plan, model string, original, request []byte, namespaced map[string]namespacedTool) *streamConverter {
 	return &streamConverter{ctx: ctx, plan: plan, model: model, original: original, request: request, namespaced: namespaced}
 }
 

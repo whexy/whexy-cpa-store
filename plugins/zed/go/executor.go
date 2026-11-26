@@ -12,9 +12,7 @@ import (
 	"github.com/whexy/whexy-cpa-store/pluginkit/background"
 	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
-	// Registers CPA's protocol translators for in-process conversion between
-	// client formats and each model's native protocol.
-	_ "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator/builtin"
+	"github.com/whexy/whexy-cpa-store/pluginkit/translate"
 )
 
 // rpcExecutorRequest is the wire shape of executor.execute, execute_stream
@@ -32,17 +30,13 @@ type rpcExecutorStreamResponse struct {
 	Headers http.Header `json:"headers,omitempty"`
 }
 
-// callCtx ends at shutdown, so an executor call still in flight stops
-// before the host unloads the library underneath it.
-var callCtx, cancelCalls = context.WithCancel(context.Background())
-
 type executorCall struct {
 	req    rpcExecutorRequest
 	client host.Client
 	cfg    settings
 	cred   credential
 	model  zedModel
-	plan   routePlan
+	plan   translate.Plan
 	// payload is the client's request in plan.Source.
 	payload []byte
 	body    []byte
@@ -52,22 +46,26 @@ type executorCall struct {
 }
 
 func executorExecute(raw []byte) ([]byte, error) {
-	call, failure := prepareExecutorCall(callCtx, raw, false)
+	// A call still in flight at shutdown must stop before the host unloads
+	// the library underneath it.
+	ctx := background.Context()
+	call, failure := prepareExecutorCall(ctx, raw, false)
 	if failure != nil {
 		return failure, nil
 	}
-	return call.execute(callCtx), nil
+	return call.execute(ctx), nil
 }
 
 func executorExecuteStream(raw []byte) ([]byte, error) {
-	call, failure := prepareExecutorCall(callCtx, raw, true)
+	ctx := background.Context()
+	call, failure := prepareExecutorCall(ctx, raw, true)
 	if failure != nil {
 		return failure, nil
 	}
 	if call.req.StreamID == "" {
 		return rpc.Fail("invalid_request", "executor.execute_stream request has no stream_id", rpc.WithStatus(http.StatusBadRequest)), nil
 	}
-	return call.executeStream(callCtx), nil
+	return call.executeStream(ctx), nil
 }
 
 // executorCountTokens declines counting. A 404 that does not name the model
@@ -105,12 +103,12 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 		return nil, failureEnvelope(errModel)
 	}
 	upstream := nativeFormat(model)
-	source := normalizeFormat(req.SourceFormat)
+	source := provider.NormalizeFormat(req.SourceFormat)
 	response := source
 	if strings.TrimSpace(req.Format) != "" {
-		response = normalizeFormat(req.Format)
+		response = provider.NormalizeFormat(req.Format)
 	}
-	plan, errPlan := planRoute(source, response, upstream)
+	plan, errPlan := translate.PlanRoute(source, response, upstream)
 	if errPlan != nil {
 		return nil, rpc.Fail("unsupported_format", errPlan.Error(), rpc.WithStatus(http.StatusBadRequest))
 	}
@@ -176,7 +174,7 @@ func (c *executorCall) execute(ctx context.Context) []byte {
 		return transportFailure(errDo)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return upstreamFailureEnvelope(failureFrom(resp, ""))
+		return upstreamFailureEnvelope(completionFailure(resp))
 	}
 	events, errEvents := c.collectEvents(resp.Body)
 	if errEvents != nil {
@@ -186,7 +184,8 @@ func (c *executorCall) execute(ctx context.Context) []byte {
 	if errAssemble != nil {
 		return rpc.Fail("translation_failed", errAssemble.Error(), rpc.WithStatus(http.StatusBadGateway))
 	}
-	out, errConvert := convertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, native, c.namespaced)
+	restore := func(body []byte) []byte { return restoreToolNamespaces(body, c.namespaced) }
+	out, errConvert := provider.ConvertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, native, restore)
 	if errConvert != nil {
 		return rpc.Fail("translation_failed", errConvert.Error(), rpc.WithStatus(http.StatusBadGateway))
 	}
@@ -243,7 +242,7 @@ func (c *executorCall) executeStream(ctx context.Context) []byte {
 	if upstream.StatusCode < 200 || upstream.StatusCode > 299 {
 		body, _ := upstream.ReadAll()
 		upstream.Close()
-		return upstreamFailureEnvelope(failureFrom(pluginapi.HTTPResponse{StatusCode: upstream.StatusCode, Headers: upstream.Headers, Body: body}, ""))
+		return upstreamFailureEnvelope(completionFailure(pluginapi.HTTPResponse{StatusCode: upstream.StatusCode, Headers: upstream.Headers, Body: body}))
 	}
 	converter := newStreamConverter(ctx, c.plan, c.req.Model, c.payload, c.body, c.namespaced)
 	streamID := c.req.StreamID
@@ -349,10 +348,7 @@ func transportFailure(err error) []byte {
 	if errors.As(err, &failure) {
 		return upstreamFailureEnvelope(failure)
 	}
-	if errors.Is(err, context.Canceled) {
-		return rpc.Fail("canceled", "Zed request canceled", rpc.WithStatus(http.StatusRequestTimeout))
-	}
-	return rpc.Fail("upstream_unreachable", "Zed request failed: "+err.Error(), rpc.WithStatus(http.StatusBadGateway))
+	return rpc.TransportFailure(displayName, err)
 }
 
 // failureEnvelope maps an error that did not start a stream. A catalog or
@@ -364,6 +360,17 @@ func failureEnvelope(err error) []byte {
 		return upstreamFailureEnvelope(failure)
 	}
 	return rpc.Fail("upstream_error", err.Error(), rpc.WithStatus(http.StatusBadGateway))
+}
+
+// completionFailure reads a failed completion. Only a model outside the
+// account's plan is a plan restriction here: any other 403 that mentions the
+// plan, such as an expired one, must keep its status so CPA moves to another
+// account.
+func completionFailure(resp pluginapi.HTTPResponse) *zedFailure {
+	failure := failureFrom(resp, "")
+	failure.PlanRestricted = resp.StatusCode == http.StatusForbidden &&
+		strings.Contains(strings.ToLower(failure.Message), "not included in your plan")
+	return failure
 }
 
 // upstreamFailureEnvelope maps a Zed error to the status CPA acts on. A plan

@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
 	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
@@ -18,17 +16,6 @@ func installHost(t *testing.T) *hosttest.Fake {
 	modelsByAuth.clear()
 	llmTokens.clear()
 	return fake
-}
-
-// handleHTTP answers host.http.do with respond.
-func handleHTTP(fake *hosttest.Fake, respond func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error)) {
-	fake.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
-		var req pluginapi.HTTPRequest
-		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
-			return nil, errUnmarshal
-		}
-		return respond(req)
-	})
 }
 
 // useSettings installs cfg for the test and restores the previous settings.

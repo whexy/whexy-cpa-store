@@ -7,6 +7,7 @@ import (
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/translate"
 )
 
 func TestPlanRouteMatrix(t *testing.T) {
@@ -27,7 +28,7 @@ func TestPlanRouteMatrix(t *testing.T) {
 		{sdktranslator.FormatOpenAIResponse, sdktranslator.FormatGemini, true},
 	}
 	for _, tc := range cases {
-		plan, errPlan := planRoute(tc.source, tc.source, tc.upstream)
+		plan, errPlan := translate.PlanRoute(tc.source, tc.source, tc.upstream)
 		if tc.ok && errPlan != nil {
 			t.Errorf("%s -> %s: %v", tc.source, tc.upstream, errPlan)
 			continue
@@ -193,7 +194,7 @@ func TestApplyRequestedEffort(t *testing.T) {
 }
 
 func TestBuildUpstreamBodyCarriesGeminiLimitsToGPT(t *testing.T) {
-	plan, errPlan := planRoute(sdktranslator.FormatGemini, sdktranslator.FormatGemini, sdktranslator.FormatOpenAIResponse)
+	plan, errPlan := translate.PlanRoute(sdktranslator.FormatGemini, sdktranslator.FormatGemini, sdktranslator.FormatOpenAIResponse)
 	if errPlan != nil {
 		t.Fatal(errPlan)
 	}
@@ -264,7 +265,7 @@ func TestNormalizeResponsesStringInput(t *testing.T) {
 	if items[0].Get("content.0.type").String() != "input_text" || items[0].Get("content.0.text").String() != "hello" {
 		t.Fatalf("content: %s", out)
 	}
-	if gjson.GetBytes(out, "max_output_tokens").Int() != minResponsesOutputTokens {
+	if gjson.GetBytes(out, "max_output_tokens").Int() != translate.MinResponsesOutputTokens {
 		t.Fatalf("max_output_tokens: %s", out)
 	}
 }
@@ -380,7 +381,7 @@ func TestBuildUpstreamBodyFlattensCodexTools(t *testing.T) {
 			map[string]any{"type": "custom_tool_call_output", "call_id": "c3", "output": "a.txt"},
 		},
 	})
-	plan, errPlan := planRoute(sdktranslator.FormatOpenAIResponse, sdktranslator.FormatOpenAIResponse, sdktranslator.FormatOpenAIResponse)
+	plan, errPlan := translate.PlanRoute(sdktranslator.FormatOpenAIResponse, sdktranslator.FormatOpenAIResponse, sdktranslator.FormatOpenAIResponse)
 	if errPlan != nil {
 		t.Fatal(errPlan)
 	}

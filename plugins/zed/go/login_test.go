@@ -51,7 +51,7 @@ func TestDecryptCallbackRejectsMissingToken(t *testing.T) {
 
 func installAccountHost(t *testing.T) {
 	t.Helper()
-	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+	installHost(t).HandleHTTP(func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		if strings.HasSuffix(req.URL, "/client/users/me") {
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{
 				"user":                    map[string]any{"legacy_user_id": 42, "username": "tester"},

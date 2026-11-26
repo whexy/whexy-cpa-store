@@ -1,31 +1,25 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/translate"
 )
 
-// routePlan says how one request travels between the client's format and the
-// model's native protocol.
-type routePlan struct {
-	Source   sdktranslator.Format
-	Response sdktranslator.Format
-	Upstream sdktranslator.Format
-	// RequestTo is the translator target for the request body, empty when the
-	// body is forwarded with only the model rewritten.
-	RequestTo sdktranslator.Format
-	// ResponseFrom is the translator source for the response, empty when the
-	// upstream response is already in the Response format.
-	ResponseFrom sdktranslator.Format
+// provider tells the shared translation that Gemini clients may name their
+// format google, and reports a failed buffered Responses object by its first
+// line, as Zed's other failures are.
+var provider = translate.Provider{
+	Name:    displayName,
+	Aliases: map[string]sdktranslator.Format{"google": sdktranslator.FormatGemini},
+	Failed:  func(body []byte) error { return errors.New(firstLine(string(body))) },
 }
 
 // splitModelSuffix removes a CPA thinking suffix such as (high) from a model
@@ -148,23 +142,6 @@ func supportedEffort(requested string, model zedModel) string {
 	return best
 }
 
-func normalizeFormat(name string) sdktranslator.Format {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "", "openai", "chat-completions", "chat_completions":
-		return sdktranslator.FormatOpenAI
-	case "openai-response", "openai-responses", "responses":
-		return sdktranslator.FormatOpenAIResponse
-	case "claude", "anthropic", "messages":
-		return sdktranslator.FormatClaude
-	case "gemini", "google":
-		return sdktranslator.FormatGemini
-	case "codex":
-		return sdktranslator.FormatCodex
-	default:
-		return sdktranslator.Format(strings.ToLower(strings.TrimSpace(name)))
-	}
-}
-
 // nativeFormat is the wire dialect a Zed model speaks.
 func nativeFormat(model zedModel) sdktranslator.Format {
 	switch model.Provider {
@@ -181,134 +158,30 @@ func nativeFormat(model zedModel) sdktranslator.Format {
 	}
 }
 
-// translatorSide names the format CPA's translators use for an upstream
-// protocol. CPA registers no pair into openai-response; Responses upstreams
-// are reached through the Codex pair, which speaks the Responses wire.
-func translatorSide(upstream sdktranslator.Format) sdktranslator.Format {
-	if upstream == sdktranslator.FormatOpenAIResponse {
-		return sdktranslator.FormatCodex
-	}
-	return upstream
-}
-
-func planRoute(source, response, upstream sdktranslator.Format) (routePlan, error) {
-	if upstream == "" {
-		return routePlan{}, errors.New("the model names no upstream protocol")
-	}
-	plan := routePlan{Source: source, Response: response, Upstream: upstream}
-	if source != upstream {
-		plan.RequestTo = translatorSide(upstream)
-		if !sdktranslator.HasRequestTransformer(source, plan.RequestTo) {
-			return routePlan{}, fmt.Errorf("no translator from %s requests to %s", source, upstream)
-		}
-	}
-	if response != upstream {
-		plan.ResponseFrom = translatorSide(upstream)
-		if !sdktranslator.HasStreamResponseTransformer(response, plan.ResponseFrom) || !sdktranslator.HasNonStreamResponseTransformer(response, plan.ResponseFrom) {
-			return routePlan{}, fmt.Errorf("no translator from %s responses to %s", upstream, response)
-		}
-	}
-	return plan, nil
-}
-
 // buildUpstreamBody turns the client's request into the model's native
 // request, without the Zed envelope. It also returns the namespaced tools
 // whose names were flattened, which the response must restore.
-func buildUpstreamBody(ctx context.Context, plan routePlan, payload []byte, model zedModel, stream bool) ([]byte, map[string]namespacedTool, error) {
-	if !gjson.ValidBytes(payload) || !gjson.ParseBytes(payload).IsObject() {
-		return nil, nil, errors.New("request body is not a JSON object")
-	}
-	body := payload
-	if plan.RequestTo != "" {
-		translated := sdktranslator.TranslateRequestEnvelope(ctx, plan.Source, plan.RequestTo, sdktranslator.RequestEnvelope{
-			Format: plan.Source,
-			Model:  model.ID,
-			Stream: stream,
-			Body:   payload,
-		})
-		if translated.Err != nil {
-			return nil, nil, translated.Err
-		}
-		body = translated.Body
-		if plan.RequestTo == sdktranslator.FormatCodex {
-			body = adaptCodexBody(body, payload, plan.Source)
-		}
-	}
-	body, errSet := setJSON(body, "model", model.ID)
-	if errSet != nil {
-		return nil, nil, errSet
+func buildUpstreamBody(ctx context.Context, plan translate.Plan, payload []byte, model zedModel, stream bool) ([]byte, map[string]namespacedTool, error) {
+	body, errBuild := translate.BuildRequest(ctx, plan, payload, model.ID, stream)
+	if errBuild != nil {
+		return nil, nil, errBuild
 	}
 	var namespaced map[string]namespacedTool
 	if plan.Upstream == sdktranslator.FormatOpenAIResponse {
 		body, namespaced = flattenResponsesTools(body)
 	}
-	body, errSet = normalizeNativeBody(plan.Upstream, body, model)
-	if errSet != nil {
-		return nil, nil, errSet
+	body, errNormalize := normalizeNativeBody(plan.Upstream, body, model)
+	if errNormalize != nil {
+		return nil, nil, errNormalize
 	}
 	// Zed's own client always streams provider events; a Responses model
 	// answers an empty 200 body to stream:false, so non-streaming clients are
 	// served by folding the stream instead.
-	body, errSet = setStream(body, true)
-	if errSet != nil {
-		return nil, nil, errSet
+	body, errStream := translate.SetStream(body, true)
+	if errStream != nil {
+		return nil, nil, errStream
 	}
 	return body, namespaced, nil
-}
-
-// minResponsesOutputTokens is the lowest max_output_tokens the Responses
-// backend accepts; Chat and Messages clients go lower, as a Claude Code
-// max_tokens 1 probe does.
-const minResponsesOutputTokens = 16
-
-// adaptCodexBody undoes Codex translator defaults written for the ChatGPT
-// backend: it drops the client's max tokens and always asks for medium
-// reasoning and parallel tool calls.
-func adaptCodexBody(body, source []byte, sourceFormat sdktranslator.Format) []byte {
-	root := gjson.ParseBytes(source)
-	if limit := sourceMaxTokens(root, sourceFormat); limit > 0 {
-		body, _ = sjson.SetBytes(body, "max_output_tokens", max(limit, minResponsesOutputTokens))
-	}
-	if !sourceAsksReasoning(root, sourceFormat) {
-		body, _ = sjson.DeleteBytes(body, "reasoning.effort")
-		if reasoning := gjson.GetBytes(body, "reasoning"); reasoning.IsObject() && len(reasoning.Map()) == 0 {
-			body, _ = sjson.DeleteBytes(body, "reasoning")
-		}
-	}
-	if tools := gjson.GetBytes(body, "tools"); !tools.IsArray() || len(tools.Array()) == 0 {
-		body, _ = sjson.DeleteBytes(body, "parallel_tool_calls")
-	} else if parallel := root.Get("parallel_tool_calls"); sourceFormat == sdktranslator.FormatOpenAI && (parallel.Type == gjson.True || parallel.Type == gjson.False) {
-		body, _ = sjson.SetBytes(body, "parallel_tool_calls", parallel.Bool())
-	}
-	return body
-}
-
-func sourceMaxTokens(root gjson.Result, format sdktranslator.Format) int64 {
-	switch format {
-	case sdktranslator.FormatOpenAI:
-		if limit := root.Get("max_completion_tokens"); limit.Exists() {
-			return limit.Int()
-		}
-	case sdktranslator.FormatGemini:
-		if limit := root.Get("generationConfig.maxOutputTokens"); limit.Exists() {
-			return limit.Int()
-		}
-		return root.Get("generationConfig.max_output_tokens").Int()
-	}
-	return root.Get("max_tokens").Int()
-}
-
-// sourceAsksReasoning reports whether the client asked for reasoning in a
-// field the translator maps to reasoning.effort.
-func sourceAsksReasoning(root gjson.Result, format sdktranslator.Format) bool {
-	switch format {
-	case sdktranslator.FormatClaude:
-		return root.Get("thinking").IsObject() || root.Get("output_config.effort").Exists()
-	case sdktranslator.FormatGemini:
-		config := root.Get("generationConfig")
-		return config.Get("thinkingConfig").IsObject() || config.Get("thinkingLevel").Exists() || config.Get("thinking_level").Exists()
-	}
-	return root.Get("reasoning_effort").Exists()
 }
 
 // normalizeNativeBody applies the request rules Zed's edge enforces.
@@ -766,8 +639,8 @@ func normalizeResponsesBody(body []byte, model zedModel) ([]byte, error) {
 			body, _ = sjson.DeleteBytes(body, "reasoning.summary")
 		}
 	}
-	if limit := gjson.GetBytes(body, "max_output_tokens"); limit.Exists() && limit.Int() < minResponsesOutputTokens {
-		body, _ = sjson.SetBytes(body, "max_output_tokens", minResponsesOutputTokens)
+	if limit := gjson.GetBytes(body, "max_output_tokens"); limit.Exists() && limit.Int() < translate.MinResponsesOutputTokens {
+		body, _ = sjson.SetBytes(body, "max_output_tokens", translate.MinResponsesOutputTokens)
 	}
 	return body, nil
 }
@@ -789,68 +662,4 @@ func normalizeChatBody(body []byte, model zedModel) ([]byte, error) {
 		body, _ = sjson.SetBytes(body, "max_tokens", model.OutputTokens)
 	}
 	return body, nil
-}
-
-func setJSON(body []byte, path string, value any) ([]byte, error) {
-	if current := gjson.GetBytes(body, path); current.Exists() && current.Value() == value {
-		return body, nil
-	}
-	updated, errSet := sjson.SetBytes(body, path, value)
-	if errSet != nil {
-		return nil, fmt.Errorf("set %s: %w", path, errSet)
-	}
-	return updated, nil
-}
-
-// setStream makes the body's stream flag match the call: the host decides
-// streaming by method, and the Claude-to-Codex translator always sets it.
-func setStream(body []byte, stream bool) ([]byte, error) {
-	current := gjson.GetBytes(body, "stream")
-	if current.Exists() && current.Bool() == stream {
-		return body, nil
-	}
-	if !current.Exists() && !stream {
-		return body, nil
-	}
-	return setJSON(body, "stream", stream)
-}
-
-// convertResponse turns a buffered native response into the client format.
-func convertResponse(ctx context.Context, plan routePlan, model string, original, request, body []byte, namespaced map[string]namespacedTool) ([]byte, error) {
-	if plan.ResponseFrom == "" {
-		return restoreToolNamespaces(body, namespaced), nil
-	}
-	if plan.ResponseFrom == sdktranslator.FormatCodex {
-		event, errEvent := codexTerminalEvent(body)
-		if errEvent != nil {
-			return nil, errEvent
-		}
-		body = event
-	}
-	var param any
-	out := sdktranslator.TranslateNonStream(ctx, plan.ResponseFrom, plan.Response, model, original, request, body, &param)
-	if len(bytes.TrimSpace(out)) == 0 {
-		return nil, fmt.Errorf("translating the %s response to %s produced nothing", plan.Upstream, plan.Response)
-	}
-	return out, nil
-}
-
-// codexTerminalEvent wraps a buffered Responses object in the terminal
-// stream event the Codex translators read.
-func codexTerminalEvent(body []byte) ([]byte, error) {
-	if !gjson.ValidBytes(body) {
-		return nil, errors.New("Zed returned a Responses body that is not JSON")
-	}
-	eventType := "response.completed"
-	switch gjson.GetBytes(body, "status").String() {
-	case "incomplete":
-		eventType = "response.incomplete"
-	case "failed":
-		return nil, errors.New(firstLine(string(body)))
-	}
-	event, errSet := sjson.SetRawBytes([]byte(`{"type":""}`), "response", body)
-	if errSet != nil {
-		return nil, errSet
-	}
-	return sjson.SetBytes(event, "type", eventType)
 }

@@ -82,7 +82,7 @@ func liveDo(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 func installLiveHost(t *testing.T) *hosttest.Fake {
 	t.Helper()
 	fake := installHost(t)
-	handleHTTP(fake, liveDo)
+	fake.HandleHTTP(liveDo)
 	return fake
 }
 
