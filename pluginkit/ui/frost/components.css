@@ -1,0 +1,167 @@
+/*
+ * Frost component classes. Reads only from tokens.css.
+ *
+ * They live in @layer components, so any Tailwind utility on the
+ * same element overrides them (`glass-card rounded-2xl p-4`).
+ * Promote an inline pattern here once it repeats three times.
+ *
+ * Extracted from www.whexy.com (whexy/blog-1999 styles/globals.css);
+ * same rendered values, with colors written as semantic tokens.
+ */
+
+/* Real utility so variants work: `group-hover:secondbg`. */
+@utility secondbg {
+  @apply bg-wash/90 border-black/10 backdrop-blur;
+}
+
+@layer base {
+  body {
+    @apply bg-canvas;
+  }
+
+  ::selection {
+    @apply bg-accent;
+  }
+}
+
+@layer components {
+  /* ================= Surfaces ================= */
+
+  /* Frosted glass: the primary card. Padding is set per instance. */
+  .glass-card {
+    @apply relative overflow-hidden rounded-3xl border border-black/5 bg-white/30 shadow-sm shadow-black/5 backdrop-blur-md backdrop-saturate-150;
+  }
+
+  /* Translucent white page container (a list of entries).
+     Page-level surfaces go full-bleed square on mobile. */
+  .panel {
+    @apply rounded-3xl border border-white/20 bg-white/80 backdrop-blur-sm backdrop-saturate-150 max-sm:rounded-none;
+  }
+
+  /* Opaque reading surface. Glass is for chrome and cards; long-form
+     text always sits on paper. */
+  .paper {
+    @apply bg-white shadow-sm shadow-black/5 sm:rounded-3xl;
+  }
+
+  /* ================= Card decorations =================
+     DOM order inside a card: tint, blobs, shine, then content in
+     `relative z-10`. */
+
+  /* Full-card gradient wash; color stops inline, opacity <= 40. */
+  .glass-tint {
+    @apply absolute inset-0 -z-10 bg-gradient-to-br;
+  }
+
+  /* Top-left light sweep. */
+  .glass-shine {
+    @apply absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-60;
+  }
+
+  /* Blurred gradient circle; position, size, stops, blur inline. */
+  .glow-blob {
+    @apply absolute -z-10 rounded-full bg-gradient-to-r;
+  }
+
+  /* ================= Buttons ================= */
+
+  /* Translucent button for actions on glass. */
+  .btn-glass {
+    @apply font-title focus-visible:outline-accent text-ink-glass flex items-center gap-2 rounded-xl border border-white/30 bg-white/20 px-4 py-2 text-sm font-medium tracking-wide backdrop-blur-sm transition-all duration-200 hover:scale-[1.02] hover:border-white/50 hover:bg-white/40 focus-visible:outline-2 focus-visible:outline-offset-2;
+  }
+
+  /* Solid ink button: the one primary action in a group. */
+  .btn-solid {
+    @apply bg-ink font-title text-on-ink focus-visible:outline-accent rounded-xl border border-white/30 px-4 py-2 text-sm font-medium tracking-wide focus-visible:outline-2 focus-visible:outline-offset-2;
+  }
+
+  /* ================= Chat bubbles (iMessage style) ================= */
+
+  .bubble {
+    @apply relative max-w-xs overflow-hidden rounded-3xl bg-gradient-to-br px-4 py-3 text-base leading-snug shadow-md backdrop-blur-xl;
+  }
+
+  /* Tail */
+  .bubble::after {
+    content: "";
+    @apply absolute -bottom-0.5 h-3 w-3 bg-gradient-to-br;
+  }
+
+  .bubble a {
+    @apply underline transition-colors;
+  }
+
+  .bubble a::after {
+    content: "↗";
+    @apply ml-1 text-xs;
+  }
+
+  /* Outgoing (the author): blue, tail bottom-right. */
+  .bubble-me {
+    @apply rounded-br-md from-blue-500/90 to-blue-600/90 text-white;
+  }
+
+  .bubble-me::after {
+    @apply -right-0.5 rounded-br-md from-blue-500/90 to-blue-600/90;
+  }
+
+  .bubble-me a {
+    @apply text-blue-100 hover:text-white;
+  }
+
+  /* Incoming (the other voice): gray, tail bottom-left. */
+  .bubble-peer {
+    @apply text-ink-glass rounded-bl-md from-neutral-200/90 to-neutral-300/80;
+  }
+
+  .bubble-peer::after {
+    @apply -left-0.5 rounded-bl-md from-neutral-200/90 to-neutral-300/80;
+  }
+
+  .bubble-peer a {
+    @apply text-ink-subtle hover:text-ink-strong;
+  }
+
+  /* ================= Controls ================= */
+
+  /* 40px tile framing a 20px icon; gradient stops inline. */
+  .icon-tile {
+    @apply flex h-10 w-10 items-center justify-center rounded-xl backdrop-blur-sm;
+  }
+
+  /* iOS-style segmented control: black/5 track, raised white
+     active segment. */
+  .segmented {
+    @apply relative flex rounded-lg bg-black/5 p-1;
+  }
+
+  .segmented-item {
+    @apply font-title focus-visible:outline-accent relative z-10 flex-shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2;
+  }
+
+  .segmented-active {
+    @apply text-ink-strong bg-white shadow-sm;
+  }
+
+  .segmented-idle {
+    @apply text-ink-subtle hover:text-ink-strong;
+  }
+
+  /* Header navigation link. */
+  .nav-link {
+    @apply font-title focus-visible:outline-accent text-ink-soft hover:text-ink-strong text-sm font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2;
+  }
+
+  /* Pure black, as on the site; see open-questions.md ("Pure black
+     vs ink"). */
+  .nav-link-active {
+    @apply text-black;
+  }
+
+  /* ================= Chrome ================= */
+
+  /* Sticky blurred site header. */
+  .header-bar {
+    @apply sticky top-0 z-50 w-full bg-white/80 backdrop-blur-sm backdrop-saturate-150;
+  }
+}

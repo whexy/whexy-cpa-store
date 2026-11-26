@@ -1,0 +1,174 @@
+/*
+ * Frost tokens: the single source of design values.
+ *
+ * AGENTS: take every color, font, radius and shadow from this file.
+ * Never write a new raw value (a hex code, a px size, an arbitrary
+ * `[...]` class, a Tailwind color this file does not declare). If no
+ * token fits, stop and ask the user; the open questions are listed in
+ * ../references/open-questions.md.
+ *
+ * Extracted from www.whexy.com (whexy/blog-1999, styles/globals.css
+ * and every component). Every value renders exactly as on the site.
+ *
+ * Load order in the project stylesheet:
+ *   @import "tailwindcss";
+ *   @plugin "@tailwindcss/typography";
+ *   @import "./frost/tokens.css";
+ *   @import "./frost/components.css";
+ */
+
+/* ------------------------------------------------------------------
+ * 1. Primitives: raw values. Components should use the semantic
+ *    tokens in section 2; primitives exist to feed them, plus the
+ *    decorative palette, which is only for glass-tint / glow-blob /
+ *    icon-tile / bubble gradients.
+ * ------------------------------------------------------------------ */
+
+@theme {
+  /* `initial` empties Tailwind's default ramps, so a color that is
+   * not declared below generates no CSS. The site uses exactly these.
+   * (@tailwindcss/typography reads its own palette, so `prose-neutral`
+   * is unaffected.) */
+  --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+  --color-white: #fff;
+  --color-black: #000;
+
+  /* Brand */
+  --color-white-readable: #f5f5f7; /* canvas */
+  --color-black-readable: #1d1d1f; /* ink */
+  --color-secondary: #f6f6f6; /* hover wash */
+  --color-highlight: #eecfcf; /* dusty rose: the only functional color */
+
+  /* Gray ramp: neutral only, chroma 0 (Tailwind's neutral values).
+   * gray/slate/zinc/stone do not exist here on purpose: their
+   * undertones fight the decorations. */
+  --color-neutral-50: oklch(98.5% 0 0);
+  --color-neutral-100: oklch(97% 0 0);
+  --color-neutral-200: oklch(92.2% 0 0);
+  --color-neutral-300: oklch(87% 0 0);
+  --color-neutral-400: oklch(70.8% 0 0);
+  --color-neutral-500: oklch(55.6% 0 0);
+  --color-neutral-600: oklch(43.9% 0 0);
+  --color-neutral-700: oklch(37.1% 0 0);
+  --color-neutral-800: oklch(26.9% 0 0);
+  --color-neutral-900: oklch(20.5% 0 0);
+
+  /* Decorative palette: gradient stops behind glass, the two colored
+   * components (bubble-me, the series card), and the chart series
+   * slots (section 2). Never for text meaning or status. Tailwind's own
+   * values; only the steps in use. */
+  --color-blue-100: oklch(93.2% 0.032 255.585);
+  --color-blue-200: oklch(88.2% 0.059 254.128);
+  --color-blue-500: oklch(62.3% 0.214 259.815);
+  --color-blue-600: oklch(54.6% 0.245 262.881);
+  --color-cyan-200: oklch(91.7% 0.08 205.041);
+  --color-cyan-600: oklch(60.9% 0.126 221.723);
+  --color-purple-50: oklch(97.7% 0.014 308.299);
+  --color-purple-200: oklch(90.2% 0.063 306.703);
+  --color-purple-500: oklch(62.7% 0.265 303.9);
+  --color-pink-100: oklch(94.8% 0.028 342.258);
+  --color-pink-200: oklch(89.9% 0.061 343.231);
+  --color-pink-500: oklch(65.6% 0.241 354.308);
+  --color-yellow-200: oklch(94.5% 0.129 101.54);
+  --color-yellow-600: oklch(68.1% 0.162 75.834);
+  --color-orange-100: oklch(95.4% 0.038 75.164);
+  --color-orange-200: oklch(90.1% 0.076 70.697);
+  --color-orange-500: oklch(70.5% 0.213 47.604);
+  --color-orange-600: oklch(64.6% 0.222 41.116);
+  --color-red-50: oklch(97.1% 0.013 17.38);
+  --color-red-100: oklch(93.6% 0.032 17.717);
+  --color-red-200: oklch(88.5% 0.062 18.334);
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-red-700: oklch(50.5% 0.213 27.518);
+
+  /* Radius: md (6) lg (8) xl (12) 2xl (16) 3xl (24), plus the
+   * built-in rounded-full / rounded-none. Nesting steps down:
+   * 3xl surface > 2xl inner card > xl control > lg chip > md. */
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+
+  /* Shadow: sm for cards and raised segments (usually tinted
+   * `shadow-black/5`), md for bubbles and the active series badge. */
+  --shadow-sm:
+    0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md:
+    0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+/* Fonts and layout. `inline` because the font variables come from
+ * next/font classes on <html> (assets/fonts.ts) and must resolve
+ * there, not on :root. */
+@theme inline {
+  --font-*: initial;
+  --font-sans:
+    var(--font-fira), var(--font-notosans), system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-article:
+    var(--font-fira), var(--font-notosans), var(--font-sans);
+  --font-title:
+    var(--font-lato), var(--font-notosans), var(--font-sans);
+  --font-mono:
+    var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  /* Only for the decorative quote marks in Quote. */
+  --font-serif:
+    ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+
+  /* The single centered column: `max-w-content`. */
+  --container-content: 720px;
+}
+
+/* ------------------------------------------------------------------
+ * 2. Semantic tokens: name a color by its job. Use these in
+ *    components (`text-ink-muted`, not `text-neutral-500`). Each one
+ *    is the value the site already uses for that job.
+ * ------------------------------------------------------------------ */
+
+@theme inline {
+  /* Surfaces. Translucent surfaces (glass, panel, paper, header)
+   * are component classes in components.css, not colors. */
+  --color-canvas: var(--color-white-readable); /* page background */
+  --color-wash: var(--color-secondary); /* hover wash on rows/embeds */
+  --color-placeholder: var(--color-neutral-200); /* missing-avatar disc */
+  --color-rule: var(--color-neutral-200); /* hairline rails (TOC) */
+
+  /* Text, strongest to faintest. */
+  --color-ink: var(--color-black-readable); /* body text, headings, solid fill */
+  --color-ink-strong: var(--color-neutral-900); /* hover/active text of a neutral control */
+  --color-ink-glass: var(--color-neutral-800); /* text on glass: btn-glass, peer bubble, card titles, quotes */
+  --color-ink-soft: var(--color-neutral-700); /* idle nav links and list rows */
+  --color-ink-subtle: var(--color-neutral-600); /* idle segment, citation, fallback notice */
+  --color-ink-muted: var(--color-neutral-500); /* metadata, "unavailable" messages, idle TOC */
+  --color-ink-faint: var(--color-neutral-400); /* placeholder icons and values */
+  --color-on-ink: var(--color-white-readable); /* text on a solid ink fill */
+
+  /* Accent: link highlighter, focus ring, text selection and a
+   * selected chart range. Nothing else. Darker accent shades are
+   * undecided; see open-questions.md ("Accent strong"). */
+  --color-accent: var(--color-highlight);
+
+  /* Chart series (references/charts.md). Slots are assigned in this
+   * order and follow the entity, never its rank. The order is the
+   * color-blind safety: every adjacent pair, and every pair among the
+   * first three, stays apart under protan, deutan and tritan vision.
+   * Re-run that validation before reordering or swapping a step. */
+  --color-series-1: var(--color-blue-500);
+  --color-series-2: var(--color-orange-500);
+  --color-series-3: var(--color-pink-500);
+  --color-series-4: var(--color-cyan-600);
+  --color-series-5: var(--color-purple-500);
+  --color-series-6: var(--color-yellow-600);
+  --color-series-other: var(--color-neutral-400); /* the folded tail past slot 6 */
+  --color-series-total: var(--color-neutral-800); /* aggregates that belong to no one entity */
+  --color-series-muted: var(--color-neutral-300); /* series pushed back while another is emphasized */
+  --color-axis: var(--color-neutral-300); /* chart baseline, crosshair, marker hairlines */
+
+  /* Status (success / warning / danger / info): the site has none.
+   * Check with the user first; do not reach for green/amber/red. */
+}

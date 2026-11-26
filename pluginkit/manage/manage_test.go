@@ -61,8 +61,13 @@ func TestRegisterWireShape(t *testing.T) {
 		t.Error("route handler is serialized")
 	}
 	resources := env.Result.Resources
-	if len(resources) != 2 || resources[0]["Path"] != "/v0/resource/plugins/demo/index.html" || resources[0]["Menu"] != "Demo" || resources[1]["Path"] != "/v0/resource/plugins/demo/logo.svg" {
-		t.Errorf("resources = %v", resources)
+	if len(resources) < 3 || resources[0]["Path"] != "/v0/resource/plugins/demo/index.html" || resources[0]["Menu"] != "Demo" || resources[1]["Path"] != "/v0/resource/plugins/demo/logo.svg" {
+		t.Fatalf("resources = %v", resources)
+	}
+	for _, font := range resources[2:] {
+		if path, _ := font["Path"].(string); !strings.HasPrefix(path, "/v0/resource/plugins/demo/fonts/") || font["Menu"] != nil {
+			t.Errorf("font resource = %v", font)
+		}
 	}
 }
 
@@ -73,12 +78,12 @@ func TestServePageInlinesTheKitUnderItsCSP(t *testing.T) {
 		t.Fatalf("page %d %v", resp.StatusCode, resp.Headers)
 	}
 	body := string(resp.Body)
-	if !strings.Contains(body, "globalThis.kit") || strings.Index(body, "--bg-page") > strings.Index(body, ".own{}") {
+	if !strings.Contains(body, "globalThis.kit") || strings.Index(body, "--color-canvas") > strings.Index(body, ".own{}") {
 		t.Error("page lacks the kit ahead of its own blocks")
 	}
 	csp := resp.Headers.Get("Content-Security-Policy")
-	if strings.Count(csp, "'sha256-") != 5 || strings.Contains(csp, "unsafe-inline") {
-		t.Errorf("CSP %q, want a hash per inline block", csp)
+	if strings.Count(csp, "'sha256-") != 5 || strings.Contains(csp, "unsafe-inline") || !strings.Contains(csp, "font-src 'self'") {
+		t.Errorf("CSP %q, want a hash per inline block and same-origin fonts", csp)
 	}
 }
 
@@ -87,6 +92,21 @@ func TestServeLogo(t *testing.T) {
 	resp := get(r, http.MethodGet, r.LogoPath())
 	if resp.StatusCode != http.StatusOK || string(resp.Body) != "<svg/>" || resp.Headers.Get("Content-Type") != "image/svg+xml" {
 		t.Errorf("logo %d %v %s", resp.StatusCode, resp.Headers, resp.Body)
+	}
+}
+
+func TestServeFonts(t *testing.T) {
+	r := newTestRouter()
+	resp := get(r, http.MethodGet, ResourcePath("demo", "fonts/lato-latin-400-normal.woff2"))
+	if resp.StatusCode != http.StatusOK || resp.Headers.Get("Content-Type") != "font/woff2" || !strings.HasPrefix(string(resp.Body), "wOF2") {
+		t.Errorf("font %d %v", resp.StatusCode, resp.Headers)
+	}
+	if missing := get(r, http.MethodGet, ResourcePath("demo", "fonts/none.woff2")); missing.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown font %d", missing.StatusCode)
+	}
+	logoOnly := NewRouter(Config{PluginID: "demo", Logo: []byte("<svg/>")})
+	if resp := get(logoOnly, http.MethodGet, ResourcePath("demo", "fonts/lato-latin-400-normal.woff2")); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("a router without a page serves fonts: %d", resp.StatusCode)
 	}
 }
 
@@ -138,6 +158,17 @@ func TestJSONRedacts(t *testing.T) {
 	rpc.SetRedactor(func(s string) string { return strings.ReplaceAll(s, "secret", "[redacted]") })
 	t.Cleanup(func() { rpc.SetRedactor(nil) })
 	if body := string(JSON(http.StatusOK, map[string]string{"k": "a secret"}).Body); body != `{"k":"a [redacted]"}` {
+		t.Errorf("body = %s", body)
+	}
+}
+
+func TestErrorsAreRedactedBeforeEscaping(t *testing.T) {
+	rpc.SetRedactor(func(s string) string { return strings.ReplaceAll(s, `"token":"sk-1"`, `"token":"[redacted]"`) })
+	t.Cleanup(func() { rpc.SetRedactor(nil) })
+	r := NewRouter(Config{PluginID: "demo", Routes: []Route{{Method: http.MethodGet, Path: "/p", Handle: func(Request) (int, any, error) {
+		return 0, nil, Errorf(http.StatusBadGateway, `upstream said {"token":"sk-1"}`)
+	}}}})
+	if body := string(get(r, http.MethodGet, "/p").Body); strings.Contains(body, "sk-1") {
 		t.Errorf("body = %s", body)
 	}
 }

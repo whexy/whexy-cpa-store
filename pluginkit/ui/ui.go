@@ -1,5 +1,5 @@
-// Package ui holds the stylesheet and script every store page shares, so
-// the pages look and behave alike inside Management Center.
+// Package ui holds the stylesheet, script and fonts every store page
+// shares, so the pages carry one design, Frost, inside Management Center.
 //
 // Pages are served under a CSP that admits only hashed inline blocks, so the
 // kit is inlined rather than linked: Page places kit.css ahead of the page's
@@ -10,10 +10,11 @@ package ui
 
 import (
 	"bytes"
-	_ "embed"
+	"embed"
 )
 
-// CSS is the shared stylesheet; see kit.css for its tokens and components.
+// CSS is the shared stylesheet, compiled from kit.src.css, which lists its
+// tokens and components.
 //
 //go:embed kit.css
 var CSS []byte
@@ -22,6 +23,12 @@ var CSS []byte
 //
 //go:embed kit.js
 var JS []byte
+
+// Fonts holds the font files CSS names, under fonts/. Pages are served
+// beside them, so CSS refers to them by relative URL.
+//
+//go:embed fonts/*.woff2
+var Fonts embed.FS
 
 // Page returns html with the kit inlined. A page without <style> gets the
 // stylesheet before </head>; one without <script> gets the runtime before

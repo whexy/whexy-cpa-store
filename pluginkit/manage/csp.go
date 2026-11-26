@@ -7,14 +7,15 @@ import (
 	"strings"
 )
 
-// PageCSP admits only the page's own inline scripts and styles and requests
-// to its own origin, so injected markup can neither run nor send the
-// management key elsewhere. It sets no frame-ancestors because Management
-// Center may be served from another origin than CLIProxyAPI.
+// PageCSP admits only the page's own inline scripts and styles, and fonts,
+// images and requests from its own origin, so injected markup can neither
+// run nor send the management key elsewhere. It sets no frame-ancestors
+// because Management Center may be served from another origin than
+// CLIProxyAPI.
 func PageCSP(page []byte) string {
 	return "default-src 'none'; script-src " + inlineHashes(page, "script") +
 		"; style-src " + inlineHashes(page, "style") +
-		"; connect-src 'self'; base-uri 'none'; form-action 'none'"
+		"; font-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'"
 }
 
 // inlineHashes lists the CSP hash source of every bare <tag> block in page.

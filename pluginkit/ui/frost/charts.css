@@ -1,0 +1,186 @@
+/*
+ * Frost chart classes. Reads only from tokens.css; import it after
+ * components.css in projects that draw charts.
+ *
+ * The plot itself is SVG drawn by the page (geometry helpers in
+ * charts.ts); these classes style the HTML around it and the SVG text.
+ * Rules and measurements: ../references/charts.md.
+ */
+
+@layer components {
+  /* ================= Figures ================= */
+
+  /* The one headline number of a view. */
+  .figure-hero {
+    @apply font-title text-ink text-6xl leading-none font-bold tracking-tight;
+  }
+
+  /* Unit after a figure: `77.0<span class="figure-unit">kg</span>`. */
+  .figure-unit {
+    @apply text-ink-muted ml-1 text-2xl font-normal tracking-normal;
+  }
+
+  /* Signed change. Neutral on purpose: direction is the arrow, never
+     green or red. */
+  .delta-chip {
+    @apply text-ink-glass inline-flex items-center gap-1.5 rounded-full bg-black/5 px-3 py-1 text-sm font-medium;
+  }
+
+  /* ================= Chart card ================= */
+
+  .chart-title {
+    @apply font-title text-ink-glass text-lg font-bold;
+  }
+
+  /* Wrapper of the <svg>; positions the tooltip. Focusable for
+     keyboard reading. */
+  .chart-plot {
+    @apply focus-visible:outline-accent relative touch-pan-y rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4;
+  }
+
+  .chart-plot svg {
+    @apply block overflow-visible;
+  }
+
+  /* Axis labels, ticks, annotations. */
+  .chart-plot text {
+    @apply fill-ink-muted font-sans text-xs tabular-nums;
+  }
+
+  /* Phase or marker label at the foot of the plot ("5 MG"). */
+  .chart-plot text.chart-mark {
+    @apply fill-ink-faint tracking-wide uppercase;
+  }
+
+  /* ================= Legend ================= */
+
+  .chart-legend {
+    @apply flex flex-wrap gap-x-4 gap-y-1 text-sm;
+  }
+
+  /* A button: hover or focus emphasizes its series. */
+  .chart-legend-item {
+    @apply text-ink-subtle hover:text-ink-strong focus-visible:outline-accent inline-flex items-center gap-1.5 font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2;
+  }
+
+  .chart-legend-value {
+    @apply text-ink tabular-nums;
+  }
+
+  /* Series identity beside text; color via `bg-series-N`. */
+  .chart-key {
+    @apply size-2 shrink-0 rounded-full;
+  }
+
+  .chart-key-line {
+    @apply h-0.5 w-4 shrink-0 rounded-full;
+  }
+
+  /* Projected values; color via `border-series-N`. */
+  .chart-key-dash {
+    @apply w-4 shrink-0 border-t-2 border-dashed;
+  }
+
+  /* ================= Tooltip =================
+     The only glass inside a chart: it floats over the marks. */
+
+  .chart-tip {
+    @apply text-ink-glass pointer-events-none absolute top-0 left-0 z-10 min-w-36 rounded-xl border border-black/5 bg-white/70 px-3 py-2 text-sm opacity-0 shadow-md shadow-black/5 backdrop-blur-xl backdrop-saturate-150 transition-opacity duration-150;
+  }
+
+  .chart-tip-show {
+    @apply opacity-100;
+  }
+
+  .chart-tip-when {
+    @apply text-ink-muted mb-0.5 text-xs;
+  }
+
+  .chart-tip-row {
+    @apply flex items-center gap-1.5;
+  }
+
+  .chart-tip-name {
+    @apply text-ink-subtle flex-1 whitespace-nowrap;
+  }
+
+  .chart-tip-value {
+    @apply text-ink pl-3 font-medium tabular-nums;
+  }
+
+  /* Sum row under the series rows. */
+  .chart-tip-total {
+    @apply border-rule mt-1 border-t pt-1;
+  }
+
+  /* Summary of a selected range, centered above it. */
+  .chart-range-chip {
+    @apply text-ink-glass pointer-events-none absolute top-0 z-10 -translate-x-1/2 -translate-y-2 rounded-full border border-black/5 bg-white/80 px-3 py-1 text-sm font-medium whitespace-nowrap shadow-sm shadow-black/5 backdrop-blur-md;
+  }
+
+  /* ================= Stat row =================
+     Two columns on phones, four from sm, hairline dividers. */
+
+  .stat-row {
+    @apply grid grid-cols-2 sm:grid-cols-4;
+  }
+
+  .stat {
+    @apply border-rule border-t py-3 pr-2 max-sm:even:border-l max-sm:even:pl-4 sm:not-first:border-l sm:not-first:pl-4;
+  }
+
+  .stat-label {
+    @apply text-ink-muted text-sm;
+  }
+
+  .stat-value {
+    @apply font-title text-ink mt-0.5 text-2xl font-bold tracking-tight;
+  }
+
+  .stat-note {
+    @apply text-ink-muted mt-0.5 text-xs;
+  }
+
+  /* No data: same shape, faint dash. */
+  .stat-value-none {
+    @apply text-ink-faint;
+  }
+
+  /* ================= Ranked bars ================= */
+
+  .rank-row {
+    @apply -mx-3 rounded-xl px-3 py-2 transition-colors duration-200 hover:bg-wash;
+  }
+
+  .rank-track {
+    @apply mt-1.5 h-1.5 overflow-hidden rounded-full bg-black/5;
+  }
+
+  /* Width inline as a share of the largest value; color `bg-series-N`. */
+  .rank-fill {
+    @apply h-full min-w-1.5 rounded-full;
+  }
+
+  /* ================= Segmented whole ================= */
+
+  .whole {
+    @apply flex h-7 gap-0.5;
+  }
+
+  /* Grow inline (`flex: <share> 1 0`); fill from the neutral ramp or a
+     series. A label goes inside only when it fits. */
+  .whole-part {
+    @apply flex min-w-1 items-center rounded-md pl-2 text-xs font-semibold whitespace-nowrap text-white transition-opacity duration-200;
+  }
+
+  .whole:hover > .whole-part:not(:hover) {
+    @apply opacity-50;
+  }
+
+  /* ================= Empty ================= */
+
+  /* Centered over the plot area of an empty chart frame. */
+  .chart-empty {
+    @apply text-ink-muted pointer-events-none absolute inset-0 bottom-7 left-10 flex items-center justify-center text-sm;
+  }
+}

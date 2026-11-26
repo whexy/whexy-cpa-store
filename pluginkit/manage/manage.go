@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"path"
+	"slices"
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
@@ -91,6 +94,8 @@ type Router struct {
 	logoPath string
 	page     []byte
 	pageCSP  string
+	// fonts maps the resource path of each kit font to its file.
+	fonts map[string][]byte
 }
 
 // NewRouter builds a router. It assembles the page once, so build routers
@@ -104,8 +109,22 @@ func NewRouter(cfg Config) *Router {
 	if cfg.Page != nil {
 		r.page = ui.Page(cfg.Page.HTML)
 		r.pageCSP = PageCSP(r.page)
+		r.fonts = kitFonts(cfg.PluginID)
 	}
 	return r
+}
+
+func kitFonts(pluginID string) map[string][]byte {
+	fonts := map[string][]byte{}
+	files, _ := fs.Glob(ui.Fonts, "fonts/*.woff2")
+	for _, file := range files {
+		raw, errRead := fs.ReadFile(ui.Fonts, file)
+		if errRead != nil {
+			panic("manage: read embedded " + file + ": " + errRead.Error())
+		}
+		fonts[ResourcePath(pluginID, file)] = raw
+	}
+	return fonts
 }
 
 // PagePath is the browser path of the page.
@@ -113,6 +132,16 @@ func (r *Router) PagePath() string { return r.pagePath }
 
 // LogoPath is the browser path of the logo, which Metadata.Logo names.
 func (r *Router) LogoPath() string { return r.logoPath }
+
+// fontPaths lists the font resources in a stable order.
+func (r *Router) fontPaths() []string {
+	paths := make([]string, 0, len(r.fonts))
+	for fontPath := range r.fonts {
+		paths = append(paths, fontPath)
+	}
+	slices.Sort(paths)
+	return paths
+}
 
 // PageHTML is the page as served, with the kit inlined.
 func (r *Router) PageHTML() []byte { return r.page }
@@ -136,6 +165,9 @@ func (r *Router) Register() ([]byte, error) {
 	}
 	if r.cfg.Logo != nil {
 		reg.Resources = append(reg.Resources, resource{Path: r.logoPath, Description: r.cfg.Name + " logo."})
+	}
+	for _, fontPath := range r.fontPaths() {
+		reg.Resources = append(reg.Resources, resource{Path: fontPath, Description: "Font of the " + r.cfg.Name + " page: " + path.Base(fontPath) + "."})
 	}
 	return rpc.OK(reg)
 }
@@ -177,6 +209,18 @@ func (r *Router) Serve(req Request) pluginapi.ManagementResponse {
 			Body: r.cfg.Logo,
 		}
 	}
+	if font, ok := r.fonts[req.Path]; ok && method == http.MethodGet {
+		return pluginapi.ManagementResponse{
+			StatusCode: http.StatusOK,
+			Headers: http.Header{
+				"Content-Type":            {"font/woff2"},
+				"Cache-Control":           {"public, max-age=86400"},
+				"Content-Security-Policy": {"default-src 'none'"},
+				"X-Content-Type-Options":  {"nosniff"},
+			},
+			Body: font,
+		}
+	}
 	var allowed []string
 	for _, route := range r.cfg.Routes {
 		if route.Path != req.Path {
@@ -206,8 +250,10 @@ func respond(status int, body any, errHandle error) pluginapi.ManagementResponse
 	return JSON(http.StatusInternalServerError, errorBody(errHandle.Error()))
 }
 
+// errorBody redacts message before JSON escapes it, because a redactor that
+// matches JSON fields would not match their escaped quotes.
 func errorBody(message string) map[string]string {
-	return map[string]string{"error": message}
+	return map[string]string{"error": rpc.Redact(message)}
 }
 
 // JSON encodes body as an uncacheable JSON response. The encoded body passes
