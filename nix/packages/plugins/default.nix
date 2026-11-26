@@ -7,6 +7,8 @@
 let
   inherit (pkgs) lib;
   pluginsDir = flake + "/plugins";
+  # lib.fileset needs a path, which the flake's store path string is not.
+  repoRoot = ../../..;
   # Artifacts carry the version the plugin reports to the host: the
   # pluginVersion constant in go/main.go, 0.0.0 until its first release.
   versionOf =
@@ -48,12 +50,20 @@ let
     pkgs.buildGoModule {
       pname = id;
       version = versionOf id;
-      # Rename the source root: the directory is called "go", which would
-      # otherwise land on buildGoModule's GOPATH and make Go ignore go.mod.
-      src = builtins.path {
-        name = id;
-        path = pluginsDir + "/${id}/go";
+      # The source holds only the plugin and the shared kit its go.mod
+      # replaces, so a change elsewhere in the repository rebuilds nothing.
+      src = lib.fileset.toSource {
+        root = repoRoot;
+        fileset = lib.fileset.unions [
+          (repoRoot + "/pluginkit")
+          (repoRoot + "/plugins/${id}/go")
+        ];
       };
+      modRoot = "plugins/${id}/go";
+      # The vendor hash covers only downloaded modules: pluginkit, a local
+      # replacement, is read from src, so changing it leaves every plugin's
+      # vendor-hash.nix valid.
+      proxyVendor = true;
       vendorHash = import (pluginsDir + "/${id}/vendor-hash.nix");
 
       # Plugins are loaded through the CLIProxyAPI C ABI, so the artifact is a
