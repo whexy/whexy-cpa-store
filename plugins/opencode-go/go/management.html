@@ -6,139 +6,131 @@
     <meta name="referrer" content="no-referrer" />
     <title>OpenCode Go</title>
     <style>
-      :root {
-        --meter-high: #10b981;
-        --meter-medium: #e0aa14;
-        --meter-low: #c65746;
-      }
-
-      [data-theme="dark"] {
-        --meter-high: #0fae78;
-        --meter-medium: #ffd862;
-        --meter-low: #cf4b3a;
-      }
-
       /* Tabs differ in height, so the page keeps the scrollbar's room even
          when one needs none, and switching tabs does not shift it. */
       html {
         scrollbar-gutter: stable;
       }
 
-      a {
-        color: inherit;
-        text-underline-offset: 2px;
-      }
-
-      /* The baseline is an inset shadow rather than a border, so the
-         selected tab's underline covers it without overflowing the strip,
-         which scrolls when the frame is narrow. */
+      /* Tabs are nav links in a row; the current one is the active link. */
       .tabs {
         display: flex;
-        gap: 4px;
-        margin-bottom: 20px;
+        gap: calc(var(--spacing) * 6);
+        padding-inline: var(--gutter);
         overflow-x: auto;
         scrollbar-width: none;
-        box-shadow: inset 0 -1px 0 var(--border);
+        & .nav-link {
+          padding: calc(var(--spacing) * 2) 0;
+          border: 0;
+          background: none;
+          white-space: nowrap;
+          cursor: pointer;
+        }
       }
 
-      .tab {
-        border: 0;
-        border-bottom: 2px solid transparent;
-        padding: 8px 12px;
-        background: transparent;
-        color: var(--text-secondary);
-        font-weight: 600;
-        white-space: nowrap;
-        cursor: pointer;
-        transition:
-          border-color 150ms ease,
-          color 150ms ease;
+      #content,
+      #models,
+      [role="tabpanel"] {
+        display: flex;
+        flex-direction: column;
+        gap: calc(var(--spacing) * 6);
       }
 
-      .tab:hover {
-        color: var(--text-primary);
-      }
-
-      .tab[aria-selected="true"] {
-        border-bottom-color: var(--text-primary);
-        color: var(--text-primary);
-      }
-
-      .tab:focus-visible {
-        outline-offset: -2px;
-        border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-      }
-
-      .btn.danger.solid {
-        background: var(--error);
-        border-color: var(--error);
-        color: #ffffff;
+      #content[hidden],
+      #models[hidden],
+      [role="tabpanel"][hidden] {
+        display: none;
       }
 
       .ok-text {
-        color: var(--ok-text);
+        color: var(--color-ok-ink);
       }
 
-      .warn-text {
-        color: var(--warn-text);
+      h2 {
+        margin: 0;
+        font-size: var(--text-base);
+      }
+
+      h3 {
+        margin: 0;
+        font-family: var(--font-title);
+        font-size: var(--text-sm);
+        font-weight: var(--font-weight-bold);
+        color: var(--color-ink-glass);
       }
 
       .add {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
-        gap: 12px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
         align-items: end;
-        margin-bottom: 16px;
-      }
-
-      .add .error {
-        grid-column: 1 / -1;
-      }
-
-      #empty {
-        margin: 8px 0 16px;
-      }
-
-      .logins:not(:empty) {
-        margin-bottom: 12px;
+        & .row,
+        & .error {
+          grid-column: 1 / -1;
+        }
       }
 
       .keys {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: calc(var(--spacing) * 4);
         margin: 0;
         padding: 0;
         list-style: none;
       }
 
-      .key {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
+      .keys:empty {
+        display: none;
+      }
+
+      /* The tab panels put the page's blocks one level below .page, out of
+         reach of the kit's phone layout, so #content repeats it: surfaces go
+         square and edge to edge, and text outside them keeps the gutter. */
+      #content {
+        --gutter: calc(var(--spacing) * 2);
+      }
+
+      [role="tabpanel"] > p:not(.panel),
+      .workspace > p {
+        padding-inline: var(--gutter);
+      }
+
+      @media (width < 40rem) {
+        #content {
+          --gutter: calc(var(--spacing) * 4);
+          margin-inline: 0;
+        }
+
+        [role="tabpanel"] .glass-card {
+          border-radius: 0;
+        }
+
+        .stack {
+          margin-inline: var(--gutter);
+        }
       }
 
       .key-head {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 8px 10px;
-      }
-
-      .key-head input {
-        flex: 1 1 220px;
-        width: auto;
+        gap: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+        & input {
+          flex: 1 1 14rem;
+          width: auto;
+        }
       }
 
       .name {
         min-width: 0;
-        font-size: 14px;
-        font-weight: 650;
+        font-family: var(--font-title);
+        font-size: var(--text-base);
+        font-weight: var(--font-weight-bold);
+        color: var(--color-ink-glass);
         overflow-wrap: anywhere;
       }
 
       .name.mono {
-        font-size: 13px;
+        font-family: var(--font-mono);
       }
 
       .is-disabled .name,
@@ -149,22 +141,22 @@
       .key-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 2px;
+        gap: calc(var(--spacing) * 0.5);
         margin-left: auto;
       }
 
       .meta {
         display: flex;
         flex-wrap: wrap;
-        gap: 2px 14px;
-        color: var(--text-secondary);
+        gap: calc(var(--spacing) * 0.5) calc(var(--spacing) * 4);
+        color: var(--color-ink-muted);
       }
 
       .key-note {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 8px;
+        gap: calc(var(--spacing) * 2);
       }
 
       .key-note:empty,
@@ -172,122 +164,100 @@
         display: none;
       }
 
+      .families {
+        display: flex;
+        flex-wrap: wrap;
+        gap: calc(var(--spacing) * 1) calc(var(--spacing) * 6);
+        color: var(--color-ink-soft);
+        & label {
+          display: inline-flex;
+          align-items: center;
+          gap: calc(var(--spacing) * 2);
+          cursor: pointer;
+        }
+      }
+
+      /* Quota meters: a fill track whose bar takes the status of what is
+         left. */
       .usage {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px 20px;
-      }
-
-      .usage > .error {
-        grid-column: 1 / -1;
+        gap: calc(var(--spacing) * 3) calc(var(--spacing) * 5);
+        & > .error {
+          grid-column: 1 / -1;
+        }
       }
 
       .meter-head {
         display: flex;
         align-items: baseline;
         justify-content: space-between;
-        gap: 8px;
+        gap: calc(var(--spacing) * 2);
       }
 
       .meter-name {
-        font-weight: 600;
+        font-family: var(--font-title);
+        font-weight: var(--font-weight-bold);
+        color: var(--color-ink-glass);
       }
 
       .meter-value {
-        font-weight: 650;
+        font-weight: var(--font-weight-medium);
         font-variant-numeric: tabular-nums;
       }
 
       .meter-value.is-bad {
-        color: var(--error-text);
+        color: var(--color-danger-ink);
       }
 
-      .track {
-        height: 6px;
-        margin: 6px 0 4px;
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-        overflow: hidden;
-      }
-
-      .fill {
-        width: 0;
-        height: 100%;
-        border-radius: 999px;
-        transition: width 360ms cubic-bezier(0.23, 1, 0.32, 1);
-      }
-
-      .fill-high {
-        background: var(--meter-high);
-      }
-
-      .fill-medium {
-        background: var(--meter-medium);
-      }
-
-      .fill-low {
-        background: var(--meter-low);
+      .meter .track {
+        margin: calc(var(--spacing) * 1.5) 0 calc(var(--spacing) * 1);
       }
 
       .reset {
-        color: var(--text-quaternary);
-        font-size: 12px;
+        color: var(--color-ink-faint);
+        font-size: var(--text-xs);
         font-variant-numeric: tabular-nums;
       }
 
       .reset-relative {
-        color: var(--text-tertiary);
+        color: var(--color-ink-muted);
+        &::before {
+          content: "·";
+          margin: 0 calc(var(--spacing) * 1);
+          color: var(--color-ink-faint);
+        }
       }
 
-      .reset-relative::before {
-        content: "·";
-        margin: 0 4px;
-        color: var(--text-quaternary);
-      }
-
-      h3 {
-        margin: 0;
-        font-size: 14px;
-        font-weight: 650;
-      }
-
-      /* One catalog's list on the Models tab: the OpenCode Zen, Go and Free
-         models. */
       .list {
-        margin-top: 20px;
-      }
-
-      #models[hidden] + .list {
-        margin-top: 0;
+        display: flex;
+        flex-direction: column;
+        gap: calc(var(--spacing) * 3);
       }
 
       .section-head {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 6px 12px;
-        margin-bottom: 12px;
-      }
-
-      .section-head > .btn,
-      .section-head > .section-actions {
-        margin-left: auto;
+        gap: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+        padding-inline: var(--gutter);
       }
 
       .section-actions {
         display: flex;
-        gap: 8px;
+        flex-wrap: wrap;
+        gap: calc(var(--spacing) * 2);
+        margin-left: auto;
       }
 
       .section-meta {
-        color: var(--text-tertiary);
+        color: var(--color-ink-muted);
       }
 
       .stack {
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        margin-bottom: 12px;
+        gap: calc(var(--spacing) * 2);
       }
 
       .stack:empty {
@@ -299,15 +269,25 @@
         overflow-wrap: anywhere;
       }
 
+      .list > h3,
+      .list > .hint,
+      .list > .error,
+      .stack > .hint {
+        margin: 0;
+        padding-inline: var(--gutter);
+      }
+
+      /* Wide tables scroll inside their paper rather than widen the
+         page. */
       .table-card {
-        padding: 4px 10px;
+        padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
         overflow-x: auto;
       }
 
       .table th[title] {
         cursor: help;
-        text-decoration: underline dotted var(--text-quaternary);
-        text-underline-offset: 3px;
+        text-decoration: underline dotted var(--color-ink-faint);
+        text-underline-offset: 0.2em;
       }
 
       .table .num {
@@ -323,17 +303,22 @@
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 4px 8px;
+        gap: calc(var(--spacing) * 1) calc(var(--spacing) * 2);
+      }
+
+      .model-head.nowrap {
+        flex-wrap: nowrap;
+        white-space: nowrap;
       }
 
       .model-name {
-        font-weight: 600;
+        font-weight: var(--font-weight-medium);
       }
 
       .model-id,
       .served {
-        color: var(--text-tertiary);
-        font-size: 12px;
+        color: var(--color-ink-muted);
+        font-size: var(--text-xs);
         overflow-wrap: anywhere;
       }
 
@@ -347,13 +332,14 @@
       }
 
       input[type="checkbox"] {
-        width: 16px;
-        height: 16px;
+        width: calc(var(--spacing) * 4);
+        height: calc(var(--spacing) * 4);
         margin: 0;
         cursor: pointer;
       }
 
       input[type="checkbox"]:disabled {
+        opacity: 0.5;
         cursor: not-allowed;
       }
 
@@ -361,60 +347,48 @@
          a cross: a checkmark reads as "kept". */
       .cross input[type="checkbox"] {
         appearance: none;
-        border: 1px solid var(--primary);
-        border-radius: 4px;
-        background: var(--bg-input);
+        border: 1px solid var(--color-line-strong);
+        border-radius: var(--radius-md);
+        background-color: color-mix(
+          in oklab,
+          var(--color-white) 60%,
+          transparent
+        );
+        transition: background-color 150ms;
       }
 
       .cross input[type="checkbox"]:checked {
-        background-color: var(--primary);
+        border-color: var(--color-ink);
+        background-color: var(--color-ink);
         background-image:
           linear-gradient(
             45deg,
             transparent 45%,
-            var(--primary-contrast) 45%,
-            var(--primary-contrast) 55%,
+            var(--color-on-ink) 45%,
+            var(--color-on-ink) 55%,
             transparent 55%
           ),
           linear-gradient(
             -45deg,
             transparent 45%,
-            var(--primary-contrast) 45%,
-            var(--primary-contrast) 55%,
+            var(--color-on-ink) 45%,
+            var(--color-on-ink) 55%,
             transparent 55%
           );
       }
 
-      .families {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px 16px;
-        color: var(--text-secondary);
-      }
-
-      .families label {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        cursor: pointer;
-      }
-
-      .routing {
-        display: grid;
-        gap: 12px;
-      }
-
       .routing-grid {
         display: grid;
-        grid-template-columns: max-content repeat(2, minmax(0, 160px));
-        gap: 8px 12px;
+        grid-template-columns: max-content repeat(2, minmax(0, 10rem));
+        gap: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
         align-items: center;
         justify-content: start;
       }
 
       .routing-label {
-        color: var(--text-secondary);
-        font-weight: 600;
+        color: var(--color-ink-soft);
+        font-family: var(--font-title);
+        font-weight: var(--font-weight-medium);
       }
 
       /* Workspace usage: one block per workspace, its range picker in the
@@ -422,175 +396,72 @@
       .workspace {
         display: flex;
         flex-direction: column;
-        gap: 12px;
-      }
-
-      .workspace + .workspace {
-        margin-top: 28px;
+        gap: calc(var(--spacing) * 4);
       }
 
       .workspace-body {
         display: flex;
         flex-direction: column;
-        gap: 12px;
-        transition: opacity 150ms ease;
+        gap: calc(var(--spacing) * 4);
+        transition: opacity 200ms;
       }
 
       .workspace-body.is-loading {
         opacity: 0.6;
       }
 
-      .workspace h4 {
-        margin: 0;
-        font-size: 13px;
-        font-weight: 650;
-      }
-
-      .usage-part {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
       .usage-line {
         display: flex;
         flex-wrap: wrap;
         align-items: baseline;
-        gap: 4px 12px;
-      }
-
-      .usage-line > p {
-        margin: 0;
+        gap: calc(var(--spacing) * 1) calc(var(--spacing) * 3);
+        padding-inline: var(--gutter);
       }
 
       td.time {
-        color: var(--text-secondary);
+        color: var(--color-ink-subtle);
         white-space: nowrap;
-      }
-
-      .workspace .section-head {
-        margin-bottom: 0;
-      }
-
-      .tiles {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-      }
-
-      .tile {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-
-      .tile-label {
-        color: var(--text-secondary);
-        font-weight: 600;
-      }
-
-      .tile-value {
-        font-size: 22px;
-        font-weight: 650;
-        overflow-wrap: anywhere;
       }
 
       .chart-head {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        gap: 8px;
-        margin-bottom: 6px;
+        justify-content: space-between;
+        gap: calc(var(--spacing) * 3);
       }
 
-      .chart-head .seg {
-        margin-left: auto;
+      /* Columns are one total per period, so they wear series-total; the
+         column under the pointer stays, the rest step back. */
+      .chart-plot .bar {
+        fill: var(--color-series-total);
+        transition: fill 150ms;
       }
 
-      /* The bar color is the reference palette's first categorical slot,
-         stepped per theme and checked against the card surfaces. */
-      .chart {
-        --chart-bar: #2a78d6;
-        --chart-bar-active: #5598e7;
-        position: relative;
-        min-height: 180px;
-        outline: none;
+      .chart-plot.is-pointing .bar:not(.is-active) {
+        fill: var(--color-series-muted);
       }
 
-      [data-theme="dark"] .chart {
-        --chart-bar: #3987e5;
-        --chart-bar-active: #6da7ec;
-      }
-
-      .chart:focus-visible {
-        outline: 2px solid var(--primary);
-        outline-offset: 2px;
-        border-radius: 4px;
-      }
-
-      .chart svg {
-        display: block;
-        overflow: visible;
-      }
-
-      .chart .bar {
-        fill: var(--chart-bar);
-      }
-
-      .chart .bar.is-active {
-        fill: var(--chart-bar-active);
-      }
-
-      .chart .grid {
-        stroke: var(--border);
+      .chart-plot .grid {
+        stroke: var(--color-rule);
         stroke-width: 1;
         shape-rendering: crispEdges;
       }
 
-      .chart text {
-        fill: var(--text-tertiary);
-        font-size: 11px;
-        font-variant-numeric: tabular-nums;
+      .chart-plot .baseline {
+        stroke: var(--color-axis);
+        stroke-width: 1;
+        shape-rendering: crispEdges;
       }
 
-      .chart text.peak {
-        fill: var(--text-secondary);
-        font-weight: 600;
+      .chart-plot text.peak {
+        fill: var(--color-ink-subtle);
+        font-weight: var(--font-weight-medium);
       }
 
-      .chart-empty {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 180px;
-        margin: 0;
-      }
-
-      .chart-tip {
-        position: absolute;
-        top: 0;
-        z-index: 1;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 6px 10px;
-        background: var(--bg-card);
-        box-shadow: var(--shadow-pop);
-        color: var(--text-secondary);
-        font-size: 12px;
-        white-space: nowrap;
-        pointer-events: none;
-      }
-
-      .chart-tip strong {
-        display: block;
-        color: var(--text-primary);
-        font-size: 13px;
-        font-weight: 650;
-      }
-
-      @media (max-width: 640px) {
+      @media (width < 40rem) {
         .add,
-        .usage,
-        .tiles {
+        .usage {
           grid-template-columns: minmax(0, 1fr);
         }
 
@@ -598,20 +469,8 @@
           grid-template-columns: max-content repeat(2, minmax(0, 1fr));
         }
 
-        .tab {
-          padding-inline: 8px;
-        }
-
         .key-actions {
           margin-left: 0;
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .fill,
-        .tab,
-        .workspace-body {
-          transition: none;
         }
       }
     </style>
@@ -619,9 +478,10 @@
   <body>
     <main class="page">
       <div class="head">
+        <img class="head-logo" src="logo.svg" alt="" />
         <h1>OpenCode Go</h1>
         <span class="spacer"></span>
-        <button class="btn ghost" id="reload" type="button" hidden>
+        <button class="btn-ghost" id="reload" type="button" hidden>
           Reload
         </button>
       </div>
@@ -635,14 +495,14 @@
           spellcheck="false"
           title="Kept in this tab only."
           required
-        /><button class="btn primary" type="submit">Continue</button>
+        /><button class="btn-solid" type="submit">Continue</button>
         <p class="error" id="auth-error" role="alert" hidden></p>
       </form>
 
       <div id="content" hidden>
         <div class="tabs" role="tablist" aria-label="OpenCode Go">
           <button
-            class="tab"
+            class="nav-link"
             id="tab-credentials"
             type="button"
             role="tab"
@@ -651,7 +511,7 @@
             Logins &amp; keys
           </button>
           <button
-            class="tab"
+            class="nav-link"
             id="tab-usage"
             type="button"
             role="tab"
@@ -660,7 +520,7 @@
             Usage
           </button>
           <button
-            class="tab"
+            class="nav-link"
             id="tab-models"
             type="button"
             role="tab"
@@ -669,7 +529,7 @@
             Models
           </button>
           <button
-            class="tab"
+            class="nav-link"
             id="tab-routing"
             type="button"
             role="tab"
@@ -688,12 +548,14 @@
         >
           <div class="section-head">
             <p class="hint" id="login-hint" hidden></p>
-            <button class="btn primary" id="add-open" type="button">
-              Add key
-            </button>
+            <div class="section-actions">
+              <button class="btn-solid" id="add-open" type="button">
+                Add key
+              </button>
+            </div>
           </div>
 
-          <p class="empty" id="empty" hidden>
+          <p class="panel empty" id="empty" hidden>
             Nothing added yet. Log in from Management Center → OAuth Login →
             OpenCode Go, no key needed, or add a service-account key
             (<code>oc_sk_…</code>) from the workspace that holds the Go
@@ -706,7 +568,7 @@
             >
           </p>
 
-          <form class="card add" id="add" hidden>
+          <form class="glass-card card add" id="add" hidden>
             <div class="field">
               <label for="add-label">Label</label
               ><input
@@ -729,10 +591,10 @@
               />
             </div>
             <div class="row">
-              <button class="btn primary" id="add-submit" type="submit">
+              <button class="btn-solid" id="add-submit" type="submit">
                 Add
               </button>
-              <button class="btn ghost" id="add-cancel" type="button">
+              <button class="btn-ghost" id="add-cancel" type="button">
                 Cancel
               </button>
             </div>
@@ -765,7 +627,7 @@
             <div class="section-head">
               <span class="section-meta" id="models-meta"></span>
               <div class="section-actions">
-                <button class="btn ghost" id="models-refresh" type="button">
+                <button class="btn-ghost" id="models-refresh" type="button">
                   Refresh models
                 </button>
               </div>
@@ -778,10 +640,10 @@
                 <h3>OpenCode Zen models</h3>
                 <span class="section-meta" id="zen-meta"></span>
                 <div class="section-actions">
-                  <button class="btn ghost" id="zen-enable-all" type="button">
+                  <button class="btn-ghost" id="zen-enable-all" type="button">
                     Enable all
                   </button>
-                  <button class="btn ghost" id="zen-disable-all" type="button">
+                  <button class="btn-ghost" id="zen-disable-all" type="button">
                     Disable all
                   </button>
                 </div>
@@ -792,7 +654,7 @@
                 CLIProxyAPI for every login and key with OpenCode Zen on, and
                 sends its requests to OpenCode Zen, which bills Console credits.
               </p>
-              <div class="card table-card">
+              <div class="paper card table-card">
                 <table class="table">
                   <thead>
                     <tr>
@@ -818,7 +680,7 @@
                 <span class="section-meta" id="go-meta"></span>
                 <div class="section-actions">
                   <button
-                    class="btn ghost"
+                    class="btn-ghost"
                     id="models-disable-all"
                     type="button"
                   >
@@ -826,7 +688,7 @@
                   </button>
                 </div>
               </div>
-              <div class="card table-card">
+              <div class="paper card table-card">
                 <table class="table">
                   <thead>
                     <tr>
@@ -853,14 +715,14 @@
               <span class="section-meta" id="free-meta"></span>
               <div class="section-actions">
                 <button
-                  class="btn ghost"
+                  class="btn-ghost"
                   id="free-refresh"
                   type="button"
                   hidden
                 >
                   Refresh models
                 </button>
-                <button class="btn primary" id="free-toggle" type="button">
+                <button class="btn-solid" id="free-toggle" type="button">
                   Turn on
                 </button>
               </div>
@@ -873,7 +735,7 @@
               CLIProxyAPI.
             </p>
             <div class="stack" id="free-notices"></div>
-            <div class="card table-card" id="free-table" hidden>
+            <div class="paper card table-card" id="free-table" hidden>
               <table class="table">
                 <thead>
                   <tr>
@@ -901,7 +763,7 @@
           hidden
         >
           <p class="hint" id="routing-empty">Loading…</p>
-          <form class="card routing" id="routing-form" hidden>
+          <form class="glass-card card" id="routing-form" hidden>
             <p class="hint" id="routing-strategy"></p>
             <div class="routing-grid">
               <span></span>
@@ -977,7 +839,7 @@
               />
             </div>
             <div class="row">
-              <button class="btn primary" id="routing-save" type="submit">
+              <button class="btn-solid" id="routing-save" type="submit">
                 Save
               </button>
             </div>
@@ -1496,7 +1358,7 @@
         if (runtime.unavailable)
           return badge(prefix + "Unavailable", "warn", runtime.message);
         if (runtime.state === "error")
-          return badge(prefix + "Error", "error", runtime.message);
+          return badge(prefix + "Error", "danger", runtime.message);
         if (runtime.state === "active") return badge(prefix + "Active", "ok");
         return badge(prefix + (runtime.state || "Unknown"));
       }
@@ -1546,7 +1408,7 @@
         return h(
           "button",
           {
-            class: "btn ghost small" + (extra ? " " + extra : ""),
+            class: "btn-ghost small" + (extra ? " " + extra : ""),
             type: "button",
             onclick,
             disabled,
@@ -1582,7 +1444,7 @@
             h(
               "button",
               {
-                class: "btn primary small",
+                class: "btn-solid small",
                 type: "button",
                 onclick: () => saveRename(key),
                 disabled: working,
@@ -1655,9 +1517,9 @@
 
       function meter(bucket) {
         const left = Math.max(0, Math.min(100, 100 - bucket.used_percent));
-        const tone = left >= 70 ? "high" : left >= 30 ? "medium" : "low";
-        const fill = h("div", { class: "fill fill-" + tone });
-        fill.style.width = left + "%";
+        const tone = left >= 70 ? "ok" : left >= 30 ? "warn" : "danger";
+        const fill = h("div", { class: "fill " + tone });
+        fill.style.setProperty("--value", left + "%");
         const shown = left > 0 && left < 1 ? "<1" : String(Math.round(left));
         const value =
           bucket.exhausted && bucket.status && bucket.status !== "ok"
@@ -1733,7 +1595,7 @@
             h(
               "button",
               {
-                class: "btn danger solid small",
+                class: "btn-solid danger small",
                 type: "button",
                 onclick: () => deleteKey(key),
                 disabled: working,
@@ -1759,7 +1621,9 @@
         fillNotice(noticeEl, key);
         const card = h(
           "li",
-          { class: "card key" + (key.disabled ? " is-disabled" : "") },
+          {
+            class: "glass-card card key" + (key.disabled ? " is-disabled" : ""),
+          },
           buildHead(key),
           buildMeta(key),
           familySwitches(key),
@@ -1781,7 +1645,7 @@
         if (login.expired && !login.disabled) {
           return badge(
             "Login expired",
-            "error",
+            "danger",
             "Log in again from OAuth Login → OpenCode Go.",
           );
         }
@@ -1813,7 +1677,10 @@
         items.push(...requestCounts(login));
         const card = h(
           "li",
-          { class: "card key" + (login.disabled ? " is-disabled" : "") },
+          {
+            class:
+              "glass-card card key" + (login.disabled ? " is-disabled" : ""),
+          },
           h(
             "div",
             { class: "key-head" },
@@ -2511,17 +2378,23 @@
         );
       }
 
-      const NOTICE_CLASS = { ok: "ok-text", warn: "warn-text", error: "error" };
+      const NOTICE_CLASS = {
+        ok: "notice ok",
+        warn: "notice warn",
+        error: "notice danger",
+        hint: "hint",
+      };
 
+      // note is a message in a section's stack: a tinted notice, or a hint.
       function note(tone, ...text) {
-        return h("p", { class: tone }, ...text);
+        return h("p", { class: NOTICE_CLASS[tone] }, ...text);
       }
 
       function modelNotices() {
         const view = models.view;
         const out = [];
         if (models.notice) {
-          out.push(note(NOTICE_CLASS[models.notice.tone], models.notice.text));
+          out.push(note(models.notice.tone, models.notice.text));
         }
         if (view.error) {
           out.push(
@@ -2550,7 +2423,7 @@
         if (pending.length > 0 && !models.notice) {
           out.push(
             note(
-              "warn-text",
+              "warn",
               "CLIProxyAPI has not registered this list yet (" +
                 pending.join("; ") +
                 "). Refresh models registers it.",
@@ -2880,7 +2753,7 @@
         const on = present && !view.disabled;
         const toggle = $("free-toggle");
         toggle.textContent = on ? "Turn off" : "Turn on";
-        toggle.className = on ? "btn ghost" : "btn primary";
+        toggle.className = on ? "btn-glass" : "btn-solid";
         toggle.disabled = free.working || !view;
         $("free-refresh").hidden = !on || modelsListed();
         $("free-refresh").disabled = free.working || models.refreshing;
@@ -2889,7 +2762,7 @@
         );
         const notices = [];
         if (free.notice) {
-          notices.push(note(NOTICE_CLASS[free.notice.tone], free.notice.text));
+          notices.push(note(free.notice.tone, free.notice.text));
         }
         if (on && view.error)
           notices.push(
@@ -2902,7 +2775,7 @@
         if (on && view.unregistered.length + view.unlisted.length > 0)
           notices.push(
             note(
-              "warn-text",
+              "warn",
               "CLIProxyAPI has not registered this list yet. Refresh models registers it.",
             ),
           );
@@ -3149,7 +3022,7 @@
       };
       const OUTCOMES = {
         succeeded: ["Succeeded", "ok"],
-        failed: ["Failed", "error"],
+        failed: ["Failed", "danger"],
         rejected: ["Rejected", "warn"],
         cancelled: ["Cancelled", "warn"],
       };
@@ -3299,11 +3172,12 @@
       function segmented(options, current, label, onpick) {
         return h(
           "div",
-          { class: "seg", role: "group", "aria-label": label },
+          { class: "segmented", role: "group", "aria-label": label },
           ...options.map(([value, text]) =>
             h(
               "button",
               {
+                class: "segmented-item",
                 type: "button",
                 "aria-pressed": String(value === current),
                 onclick: () => onpick(value),
@@ -3351,7 +3225,6 @@
             class: "workspace-body" + (view.loading ? " is-loading" : ""),
             "aria-busy": view.loading ? "true" : null,
           },
-          summaryTiles(data.summary),
           chartCard(view),
           modelPart(data.models),
           webSearchPart(data.summary),
@@ -3359,19 +3232,19 @@
         );
       }
 
-      function tile(label, value, title) {
+      function stat(label, value, title) {
         return h(
           "div",
-          { class: "card tile", title },
-          h("span", { class: "tile-label" }, label),
-          h("span", { class: "tile-value" }, value),
+          { class: "stat", title },
+          h("p", { class: "stat-label" }, label),
+          h("p", { class: "stat-value" }, value),
         );
       }
 
       const plural = (count, one, many) =>
         count.toLocaleString("en-US") + " " + (count === 1 ? one : many);
 
-      function summaryTiles(summary) {
+      function summaryStats(summary) {
         if (summary.error)
           return h(
             "p",
@@ -3386,10 +3259,10 @@
         ];
         return h(
           "div",
-          { class: "tiles" },
-          tile("Cost", usd(summary.cost)),
-          tile("Requests", summary.requests.toLocaleString("en-US")),
-          tile(
+          { class: "stat-row" },
+          stat("Cost", usd(summary.cost)),
+          stat("Requests", summary.requests.toLocaleString("en-US")),
+          stat(
             "Tokens",
             compact(summary.tokens),
             parts
@@ -3401,18 +3274,21 @@
         );
       }
 
+      // chartCard is the range's totals over its columns of cost or tokens
+      // per hour or day, on one paper card.
       function chartCard(view) {
         const chart = view.data.chart;
         const title =
           (chart.bucket === "hour" ? "Hourly " : "Daily ") +
           (view.metric === "cost" ? "cost" : "tokens");
         const card = h(
-          "div",
-          { class: "card chart-card" },
+          "section",
+          { class: "paper card" },
+          summaryStats(view.data.summary),
           h(
             "div",
             { class: "chart-head" },
-            h("h4", {}, title),
+            h("h3", { class: "chart-title" }, title),
             segmented(METRICS, view.metric, "Chart value", (metric) =>
               setMetric(view, metric),
             ),
@@ -3425,7 +3301,7 @@
           return card;
         }
         const host = h("div", {
-          class: "chart",
+          class: "chart-plot",
           role: "group",
           "aria-label": title,
         });
@@ -3459,9 +3335,10 @@
         return el;
       }
 
-      // drawChart draws one bar per bucket at the host's width: thin bars
-      // with rounded tops, hairline ticks at zero, half and the axis top, the
-      // peak labelled, and every value in a tooltip and a hidden table.
+      // drawChart draws one column per bucket at the host's width: columns
+      // band − 4px wide, with round data-end corners, hairline grid at zero, half
+      // and the axis top, the peak labelled, and every value in a tooltip
+      // and a hidden table. A range with nothing in it keeps the frame.
       function drawChart(host, chart, metric) {
         const buckets = chart.buckets;
         const hourly = chart.bucket === "hour";
@@ -3473,39 +3350,27 @@
           if (value(bucket) > value(buckets[peakAt])) peakAt = i;
         });
         const peak = buckets.length > 0 ? value(buckets[peakAt]) : 0;
+        const empty = !(peak > 0);
         host.onkeydown = null;
         host.onfocus = null;
         host.onblur = null;
-        if (!(peak > 0)) {
-          host.removeAttribute("tabindex");
-          host.replaceChildren(
-            h(
-              "p",
-              { class: "hint chart-empty" },
-              metric === "cost"
-                ? "No cost in this range."
-                : "No tokens in this range.",
-            ),
-          );
-          return;
-        }
         const width = Math.max(host.clientWidth, 240);
-        const height = 180;
+        const height = 220;
         const top = axisMax(peak);
         const ticks = [0, top / 2, top].map((tick) => [tick, format(tick)]);
-        // The gutter fits the longest tick label at 11px, about 6.5px a
-        // character.
+        // The gutter fits the longest tick label at 12px, about 7px a
+        // character; an empty frame has no y labels.
         const longest = Math.max(...ticks.map(([, label]) => label.length));
         const gutter = {
           top: 18,
-          bottom: 22,
-          left: Math.max(40, longest * 6.5 + 12),
+          bottom: 24,
+          left: empty ? 0 : Math.max(40, longest * 7 + 8),
         };
         const plotWidth = width - gutter.left;
         const plotHeight = height - gutter.top - gutter.bottom;
         const base = gutter.top + plotHeight;
-        const band = plotWidth / buckets.length;
-        const barWidth = Math.max(1, Math.min(24, band - 2));
+        const band = plotWidth / Math.max(1, buckets.length);
+        const barWidth = Math.max(1, Math.min(24, band - 4));
         const y = (amount) => gutter.top + plotHeight * (1 - amount / top);
         const centre = (i) => gutter.left + band * (i + 0.5);
         const root = svg("svg", {
@@ -3518,36 +3383,22 @@
           const at = Math.round(y(tick)) + 0.5;
           root.append(
             svg("line", {
-              class: "grid",
+              class: tick === 0 ? "baseline" : "grid",
               x1: gutter.left,
               x2: width,
               y1: at,
               y2: at,
             }),
-            svg(
-              "text",
-              { x: gutter.left - 8, y: y(tick) + 4, "text-anchor": "end" },
-              label,
-            ),
           );
+          if (!empty)
+            root.append(
+              svg(
+                "text",
+                { x: gutter.left - 8, y: y(tick) + 4, "text-anchor": "end" },
+                label,
+              ),
+            );
         }
-        const bars = buckets.map((bucket, i) => {
-          const amount = value(bucket);
-          if (!(amount > 0)) return null;
-          const tall = Math.max(1, (plotHeight * amount) / top);
-          const left = centre(i) - barWidth / 2;
-          const right = left + barWidth;
-          const crest = base - tall;
-          const r = Math.min(4, barWidth / 2, tall);
-          const bar = svg("path", {
-            class: "bar",
-            d:
-              `M${left},${base}V${crest + r}Q${left},${crest} ${left + r},${crest}` +
-              `H${right - r}Q${right},${crest} ${right},${crest + r}V${base}Z`,
-          });
-          root.append(bar);
-          return bar;
-        });
         const every = labelEvery(
           buckets.length,
           Math.floor(plotWidth / 48),
@@ -3566,6 +3417,38 @@
                 bucketName(bucket.date, hourly, true),
               ),
             );
+        });
+        if (empty) {
+          host.removeAttribute("tabindex");
+          host.classList.remove("is-pointing");
+          host.replaceChildren(
+            root,
+            h(
+              "p",
+              { class: "chart-empty" },
+              metric === "cost"
+                ? "No cost in this range."
+                : "No tokens in this range.",
+            ),
+          );
+          return;
+        }
+        const bars = buckets.map((bucket, i) => {
+          const amount = value(bucket);
+          if (!(amount > 0)) return null;
+          const tall = Math.max(1, (plotHeight * amount) / top);
+          const left = centre(i) - barWidth / 2;
+          const right = left + barWidth;
+          const crest = base - tall;
+          const r = Math.min(6, barWidth / 2, tall);
+          const bar = svg("path", {
+            class: "bar",
+            d:
+              `M${left},${base}V${crest + r}Q${left},${crest} ${left + r},${crest}` +
+              `H${right - r}Q${right},${crest} ${right},${crest + r}V${base}Z`,
+          });
+          root.append(bar);
+          return bar;
         });
         const peakX = centre(peakAt);
         const anchor =
@@ -3600,29 +3483,39 @@
         });
         root.append(hit);
 
-        const tip = h("div", { class: "chart-tip", hidden: true });
+        const tip = h("div", { class: "chart-tip" });
         let active = -1;
         const show = (i) => {
           if (active >= 0 && bars[active])
             bars[active].classList.remove("is-active");
           active = i;
+          host.classList.toggle("is-pointing", i >= 0);
           if (i < 0) {
-            tip.hidden = true;
+            tip.classList.remove("chart-tip-show");
             return;
           }
           if (bars[i]) bars[i].classList.add("is-active");
           const bucket = buckets[i];
+          const row = (name, text) =>
+            h(
+              "div",
+              { class: "chart-tip-row" },
+              h("span", { class: "chart-tip-name" }, name),
+              h("span", { class: "chart-tip-value" }, text),
+            );
           tip.replaceChildren(
-            h("strong", {}, format(value(bucket))),
-            [
+            h(
+              "div",
+              { class: "chart-tip-when" },
               bucketName(bucket.date, hourly, false),
-              plural(bucket.requests, "request", "requests"),
-              metric === "cost"
-                ? compact(bucket.tokens) + " tokens"
-                : usd(bucket.cost),
-            ].join(" · "),
+            ),
+            row(metric === "cost" ? "Cost" : "Tokens", format(value(bucket))),
+            metric === "cost"
+              ? row("Tokens", compact(bucket.tokens))
+              : row("Cost", usd(bucket.cost)),
+            row("Requests", bucket.requests.toLocaleString("en-US")),
           );
-          tip.hidden = false;
+          tip.classList.add("chart-tip-show");
           const left = centre(i) - tip.offsetWidth / 2;
           tip.style.left =
             Math.max(0, Math.min(left, width - tip.offsetWidth)) + "px";
@@ -3641,6 +3534,7 @@
         host.onfocus = () => show(buckets.length - 1);
         host.onblur = () => show(-1);
         host.onkeydown = (event) => {
+          if (event.key === "Escape") return show(-1);
           const move = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
           if (!move) return;
           event.preventDefault();
@@ -3698,7 +3592,7 @@
       }
 
       function modelPart(list) {
-        const part = h("div", { class: "usage-part" }, h("h4", {}, "By model"));
+        const part = h("div", { class: "list" }, h("h3", {}, "By model"));
         if (list.error) {
           part.append(
             h("p", { class: "error" }, "Models unavailable: " + list.error),
@@ -3722,7 +3616,7 @@
         part.append(
           h(
             "div",
-            { class: "card table-card" },
+            { class: "paper card table-card" },
             h(
               "table",
               { class: "table" },
@@ -3748,7 +3642,7 @@
                       {},
                       h(
                         "div",
-                        { class: "model-head" },
+                        { class: "model-head nowrap" },
                         row.model,
                         familyBadge(row.family),
                       ),
@@ -3785,7 +3679,7 @@
         return h(
           "div",
           { class: "usage-line" },
-          h("h4", {}, "Web search"),
+          h("h3", {}, "Web search"),
           h(
             "span",
             { class: "section-meta" },
@@ -3820,7 +3714,7 @@
             {},
             h(
               "div",
-              { class: "model-head" },
+              { class: "model-head nowrap" },
               entry.model,
               familyBadge(entry.family),
             ),
@@ -3850,11 +3744,11 @@
         const listed = !log.needs_login && !log.error && log.entries.length > 0;
         const part = h(
           "div",
-          { class: "usage-part" },
+          { class: "list" },
           h(
             "div",
             { class: "usage-line" },
-            h("h4", {}, "Latest requests"),
+            h("h3", {}, "Latest requests"),
             listed
               ? h(
                   "span",
@@ -3890,7 +3784,7 @@
           part.append(
             h(
               "div",
-              { class: "card table-card" },
+              { class: "paper card table-card" },
               h(
                 "table",
                 { class: "table" },
@@ -3924,6 +3818,9 @@
         for (const other of tabs) {
           const selected = other === tab;
           other.setAttribute("aria-selected", String(selected));
+          other.classList.toggle("nav-link-active", selected);
+          if (selected) other.setAttribute("aria-current", "true");
+          else other.removeAttribute("aria-current");
           other.tabIndex = selected ? 0 : -1;
           $(other.getAttribute("aria-controls")).hidden = !selected;
         }

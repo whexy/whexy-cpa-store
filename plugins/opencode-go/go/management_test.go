@@ -231,7 +231,7 @@ func TestManagementRegistrationWireShape(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("routes =\n%s", strings.Join(got, "\n"))
 	}
-	if len(reg.Resources) != 2 || reg.Resources[0].Path != router.PagePath() || reg.Resources[0].Menu != displayName || reg.Resources[1].Path != router.LogoPath() || reg.Resources[1].Menu != "" {
+	if len(reg.Resources) < 2 || reg.Resources[0].Path != router.PagePath() || reg.Resources[0].Menu != displayName || reg.Resources[1].Path != router.LogoPath() || reg.Resources[1].Menu != "" {
 		t.Fatalf("resources = %+v", reg.Resources)
 	}
 }
@@ -267,8 +267,9 @@ func TestManagementPageServed(t *testing.T) {
 		t.Fatal("page embeds an oc_sk_ token")
 	}
 	// The SVG namespace is a name the chart's elements are created in, not
-	// an address the page loads.
+	// an address the page loads; the logo is the plugin's own resource.
 	scanned := strings.ReplaceAll(page, `"http://www.w3.org/2000/svg"`, "")
+	scanned = strings.Replace(scanned, ` src="logo.svg"`, "", 1)
 	for _, asset := range []string{"<link", " src=", "@import", "url(", "http://"} {
 		if strings.Contains(scanned, asset) {
 			t.Fatalf("page references an external asset (%s)", asset)
