@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
 // Each provider's quota pool: the longest window its accounts report,
@@ -855,19 +858,20 @@ type poolDrainView struct {
 }
 
 // quotaPools answers the pools route from live state.
-func quotaPools(query poolsQuery) (poolsView, int, error) {
+// A failure is a *manage.Error carrying the status it answers with.
+func quotaPools(query poolsQuery) (poolsView, error) {
 	req, errQuery := parsePoolsQuery(query)
 	if errQuery != nil {
-		return poolsView{}, http.StatusBadRequest, errQuery
+		return poolsView{}, manage.Errorf(http.StatusBadRequest, "%v", errQuery)
 	}
 	now := time.Now()
 	from, until, errSpan := req.span(now)
 	if errSpan != nil {
-		return poolsView{}, http.StatusBadRequest, errSpan
+		return poolsView{}, manage.Errorf(http.StatusBadRequest, "%v", errSpan)
 	}
 	active := activeStore()
 	if active == nil {
-		return poolsView{}, http.StatusServiceUnavailable, fmt.Errorf("usage store is not running")
+		return poolsView{}, manage.Errorf(http.StatusServiceUnavailable, "%v", errStoreNotRunning)
 	}
 	// The burn and the drain series look back from the span's start.
 	readFrom := from
@@ -876,9 +880,9 @@ func quotaPools(query poolsQuery) (poolsView, int, error) {
 	}
 	readFrom = readFrom.Add(-req.lookback - req.step)
 	samples, saved := active.quotaSnapshot(readFrom.UnixMilli())
-	entries, errList := hostAuthList()
+	entries, errList := host.AuthList()
 	report := buildQuotaReport(now, samples, saved, entries, errList == nil)
-	return buildPoolsView(now, from, until, req, report.Accounts), http.StatusOK, nil
+	return buildPoolsView(now, from, until, req, report.Accounts), nil
 }
 
 func buildPoolsView(now, from, until time.Time, req poolsRequest, accounts []quotaAccountView) poolsView {

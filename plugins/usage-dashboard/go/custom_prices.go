@@ -103,10 +103,8 @@ func (c *customPricing) configure(dataDir string) {
 	}
 	models, errLoad := decodeCustomPrices(raw, errRead)
 	if errLoad != nil {
-		// Keep the file for inspection; saving from the page starts afresh.
-		aside := path + ".corrupt-" + c.now().UTC().Format("20060102T150405")
-		_ = os.Rename(path, aside)
-		hostLog("warn", fmt.Sprintf("custom prices: %s is unreadable (%v), moved to %s", customPricesFileName, errLoad, filepath.Base(aside)))
+		// Saving from the page starts afresh.
+		moveAside(path, c.now(), "custom prices", errLoad)
 		return
 	}
 	c.models = models
@@ -146,10 +144,7 @@ func (c *customPricing) save(models map[string]price) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.path == "" {
-		return errors.New("usage store is not running")
-	}
-	if errMkdir := os.MkdirAll(filepath.Dir(c.path), 0o700); errMkdir != nil {
-		return fmt.Errorf("create %s: %w", filepath.Dir(c.path), errMkdir)
+		return errStoreNotRunning
 	}
 	if errWrite := writeFileAtomic(c.path, raw); errWrite != nil {
 		return errWrite
@@ -228,7 +223,7 @@ func buildPriceList(history []storedRow, catalog *priceCatalog, custom map[strin
 func priceList() (priceListView, error) {
 	active := activeStore()
 	if active == nil {
-		return priceListView{}, errors.New("usage store is not running")
+		return priceListView{}, errStoreNotRunning
 	}
 	all, _ := active.snapshot(time.Time{}, time.Now().Add(48*time.Hour))
 	catalog, _ := prices.current()

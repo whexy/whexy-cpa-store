@@ -3,81 +3,76 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
 )
 
-// fakeQuotaHost answers the host callbacks the poller makes.
-type fakeQuotaHost struct {
-	mu       sync.Mutex
-	auths    []pluginapi.HostAuthFileEntry
-	files    map[string]string
-	answers  map[string]pluginapi.HTTPResponse
-	requests []hostHTTPRequest
-	opened   int
+// quotaHost answers the host callbacks the poller makes: auth files by
+// index and upstream responses by URL.
+type quotaHost struct {
+	*hosttest.Fake
+	files   map[string]string
+	answers map[string]pluginapi.HTTPResponse
 }
 
-func newFakeQuotaHost() *fakeQuotaHost {
-	return &fakeQuotaHost{files: map[string]string{}, answers: map[string]pluginapi.HTTPResponse{}}
+// httpCall is what the tests check of one host.http.do call.
+type httpCall struct {
+	OperationID string      `json:"operation_id"`
+	Method      string      `json:"method"`
+	URL         string      `json:"url"`
+	Headers     http.Header `json:"headers"`
+	Body        []byte      `json:"body"`
 }
 
-func (h *fakeQuotaHost) install(t *testing.T) {
+func installQuotaHost(t *testing.T) *quotaHost {
 	t.Helper()
-	callHost = h.call
-	t.Cleanup(func() { callHost = nil })
-}
-
-func (h *fakeQuotaHost) call(method string, payload []byte) ([]byte, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	switch method {
-	case pluginabi.MethodHostAuthList:
-		return okEnvelope(hostAuthListResponse{Files: h.auths})
-	case pluginabi.MethodHostAuthGet:
-		var req hostAuthIndexRequest
-		_ = json.Unmarshal(payload, &req)
+	h := &quotaHost{Fake: hosttest.Install(t), files: map[string]string{}, answers: map[string]pluginapi.HTTPResponse{}}
+	h.Handle(pluginabi.MethodHostAuthGet, func(payload json.RawMessage) (any, error) {
+		var req pluginapi.HostAuthGetRequest
+		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
+			return nil, errUnmarshal
+		}
 		file, ok := h.files[req.AuthIndex]
 		if !ok {
-			return errorEnvelope("not_found", "no auth "+req.AuthIndex), nil
+			return nil, &host.CallError{Code: "not_found", Message: "no auth " + req.AuthIndex}
 		}
-		return okEnvelope(hostAuthGetResponse{JSON: json.RawMessage(file)})
-	case pluginabi.MethodHostHTTPOperationOpen:
-		h.opened++
-		return okEnvelope(hostOperation{OperationID: fmt.Sprintf("op-%d", h.opened)})
-	case pluginabi.MethodHostHTTPCancel, pluginabi.MethodHostLog:
-		return okEnvelope(struct{}{})
-	case pluginabi.MethodHostHTTPDo:
-		var req hostHTTPRequest
-		_ = json.Unmarshal(payload, &req)
-		h.requests = append(h.requests, req)
+		return pluginapi.HostAuthGetResponse{AuthIndex: req.AuthIndex, JSON: json.RawMessage(file)}, nil
+	})
+	h.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req httpCall
+		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
+			return nil, errUnmarshal
+		}
 		answer, ok := h.answers[req.URL]
 		if !ok {
-			return errorEnvelope("http_error", "connection refused"), nil
+			return nil, errors.New("connection refused")
 		}
-		return okEnvelope(answer)
-	}
-	return errorEnvelope("unknown_method", method), nil
+		return answer, nil
+	})
+	return h
 }
 
-func (h *fakeQuotaHost) answer(url string, status int, body string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+func (h *quotaHost) answer(url string, status int, body string) {
 	h.answers[url] = pluginapi.HTTPResponse{StatusCode: status, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(body)}
 }
 
-func (h *fakeQuotaHost) requestsTo(url string) []hostHTTPRequest {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	var out []hostHTTPRequest
-	for _, req := range h.requests {
+func (h *quotaHost) requestsTo(t *testing.T, url string) []httpCall {
+	t.Helper()
+	var out []httpCall
+	for _, payload := range h.Calls(pluginabi.MethodHostHTTPDo) {
+		var req httpCall
+		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
+			t.Fatal(errUnmarshal)
+		}
 		if req.URL == url {
 			out = append(out, req)
 		}
@@ -169,33 +164,32 @@ func TestOpenCodeGoQuotaFromUsage(t *testing.T) {
 }
 
 func TestPollRecordsEveryPolledProvider(t *testing.T) {
-	host := newFakeQuotaHost()
-	host.install(t)
+	fake := installQuotaHost(t)
 	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
-	host.auths = []pluginapi.HostAuthFileEntry{
-		{ID: "meta-a", AuthIndex: "m1", Provider: "meta", Email: "meta@example.com"},
-		{ID: "xai-a", AuthIndex: "x1", Provider: "xai", Email: "grok@example.com"},
-		{ID: "keys#key-b", AuthIndex: "g1", Provider: "opencode-go", Label: "second key"},
-		{ID: "keys#key-b#zen", AuthIndex: "g2", Provider: "opencode-go", Label: "second key · OpenCode Zen"},
-		{ID: "login-a", AuthIndex: "g3", Provider: "opencode-go", Label: "workspace"},
-		{ID: "claude-a", AuthIndex: "c1", Provider: "claude", Email: "claude@example.com"},
-		{ID: "meta-off", AuthIndex: "m2", Provider: "meta", Disabled: true},
-		{ID: "xai-proxied", AuthIndex: "x2", Provider: "xai"},
-		{ID: "xai-relay", AuthIndex: "x3", Provider: "xai"},
-		{ID: "meta-relay", AuthIndex: "m3", Provider: "meta"},
-	}
+	fake.HandleAuths(
+		pluginapi.HostAuthFileEntry{ID: "meta-a", AuthIndex: "m1", Provider: "meta", Email: "meta@example.com"},
+		pluginapi.HostAuthFileEntry{ID: "xai-a", AuthIndex: "x1", Provider: "xai", Email: "grok@example.com"},
+		pluginapi.HostAuthFileEntry{ID: "keys#key-b", AuthIndex: "g1", Provider: "opencode-go", Label: "second key"},
+		pluginapi.HostAuthFileEntry{ID: "keys#key-b#zen", AuthIndex: "g2", Provider: "opencode-go", Label: "second key · OpenCode Zen"},
+		pluginapi.HostAuthFileEntry{ID: "login-a", AuthIndex: "g3", Provider: "opencode-go", Label: "workspace"},
+		pluginapi.HostAuthFileEntry{ID: "claude-a", AuthIndex: "c1", Provider: "claude", Email: "claude@example.com"},
+		pluginapi.HostAuthFileEntry{ID: "meta-off", AuthIndex: "m2", Provider: "meta", Disabled: true},
+		pluginapi.HostAuthFileEntry{ID: "xai-proxied", AuthIndex: "x2", Provider: "xai"},
+		pluginapi.HostAuthFileEntry{ID: "xai-relay", AuthIndex: "x3", Provider: "xai"},
+		pluginapi.HostAuthFileEntry{ID: "meta-relay", AuthIndex: "m3", Provider: "meta"},
+	)
 	// Logins as CLIProxyAPI writes them, with the provider's own base_url.
-	host.files["m1"] = `{"type":"meta","dca_token":"dca:meta-token","base_url":"https://api.meta.ai/v1"}`
-	host.files["x1"] = `{"type":"xai","access_token":"xai-token","sub":"user-9","base_url":"https://api.x.ai/v1"}`
-	host.files["g1"] = `{"type":"opencode-go","keys":[{"id":"key-a","api_key":"oc_sk_first"},{"id":"key-b","api_key":"oc_sk_second"}]}`
-	host.files["g3"] = `{"type":"opencode-go","auth_method":"oauth","access_token":"login-token","refresh_token":"refresh","org_id":"org-1"}`
-	host.files["x2"] = `{"type":"xai","access_token":"proxied-token","proxy_url":"socks5://10.0.0.1:1080"}`
-	host.files["x3"] = `{"type":"xai","access_token":"relay-token","base_url":"https://x.ai.relay.example/v1"}`
-	host.files["m3"] = `{"type":"meta","dca_token":"dca:relay-token","base_url":"https://relay.example/meta.ai/v1"}`
-	host.answer(metaQuotaURL, 200, metaUsageBody)
-	host.answer(xaiBillingWeeklyURL, 200, xaiWeeklyBody)
-	host.answer(xaiBillingMonthlyURL, 200, xaiMonthlyBody)
-	host.answer(openCodeGoUsageURL, 200, openCodeGoUsageBody)
+	fake.files["m1"] = `{"type":"meta","dca_token":"dca:meta-token","base_url":"https://api.meta.ai/v1"}`
+	fake.files["x1"] = `{"type":"xai","access_token":"xai-token","sub":"user-9","base_url":"https://api.x.ai/v1"}`
+	fake.files["g1"] = `{"type":"opencode-go","keys":[{"id":"key-a","api_key":"oc_sk_first"},{"id":"key-b","api_key":"oc_sk_second"}]}`
+	fake.files["g3"] = `{"type":"opencode-go","auth_method":"oauth","access_token":"login-token","refresh_token":"refresh","org_id":"org-1"}`
+	fake.files["x2"] = `{"type":"xai","access_token":"proxied-token","proxy_url":"socks5://10.0.0.1:1080"}`
+	fake.files["x3"] = `{"type":"xai","access_token":"relay-token","base_url":"https://x.ai.relay.example/v1"}`
+	fake.files["m3"] = `{"type":"meta","dca_token":"dca:relay-token","base_url":"https://relay.example/meta.ai/v1"}`
+	fake.answer(metaQuotaURL, 200, metaUsageBody)
+	fake.answer(xaiBillingWeeklyURL, 200, xaiWeeklyBody)
+	fake.answer(xaiBillingMonthlyURL, 200, xaiMonthlyBody)
+	fake.answer(openCodeGoUsageURL, 200, openCodeGoUsageBody)
 
 	active := newStore(t.TempDir(), 30)
 	active.now = fixedClock(now)
@@ -231,18 +225,18 @@ func TestPollRecordsEveryPolledProvider(t *testing.T) {
 		t.Errorf("opencode-go login sample = %+v", sample)
 	}
 
-	metaReqs := host.requestsTo(metaQuotaURL)
+	metaReqs := fake.requestsTo(t, metaQuotaURL)
 	if len(metaReqs) != 1 || metaReqs[0].Method != http.MethodPost ||
 		metaReqs[0].Headers.Get("Authorization") != "Bearer dca:meta-token" ||
 		metaReqs[0].Headers.Get("X-Api-Version") != "1.0.0" || string(metaReqs[0].Body) != "{}" {
 		t.Errorf("meta requests = %+v", metaReqs)
 	}
-	weeklyReqs := host.requestsTo(xaiBillingWeeklyURL)
+	weeklyReqs := fake.requestsTo(t, xaiBillingWeeklyURL)
 	if len(weeklyReqs) != 1 || weeklyReqs[0].Headers.Get("Authorization") != "Bearer xai-token" ||
 		weeklyReqs[0].Headers.Get("X-Userid") != "user-9" || weeklyReqs[0].Headers.Get("X-Xai-Token-Auth") != "xai-grok-cli" {
 		t.Errorf("xai weekly requests = %+v", weeklyReqs)
 	}
-	goReqs := host.requestsTo(openCodeGoUsageURL)
+	goReqs := fake.requestsTo(t, openCodeGoUsageURL)
 	var bearers []string
 	for _, req := range goReqs {
 		bearers = append(bearers, req.Headers.Get("Authorization"))
@@ -267,11 +261,10 @@ func TestPollRecordsEveryPolledProvider(t *testing.T) {
 }
 
 func TestPollIfDueHonoursIntervalAndOff(t *testing.T) {
-	host := newFakeQuotaHost()
-	host.install(t)
-	host.auths = []pluginapi.HostAuthFileEntry{{ID: "meta-a", AuthIndex: "m1", Provider: "meta"}}
-	host.files["m1"] = `{"type":"meta","dca_token":"dca:tok"}`
-	host.answer(metaQuotaURL, 200, metaUsageBody)
+	fake := installQuotaHost(t)
+	fake.HandleAuths(pluginapi.HostAuthFileEntry{ID: "meta-a", AuthIndex: "m1", Provider: "meta"})
+	fake.files["m1"] = `{"type":"meta","dca_token":"dca:tok"}`
+	fake.answer(metaQuotaURL, 200, metaUsageBody)
 	active := newStore(t.TempDir(), 30)
 	previous := current.Load()
 	current.Store(active)
@@ -287,7 +280,7 @@ func TestPollIfDueHonoursIntervalAndOff(t *testing.T) {
 	t.Cleanup(func() { currentConfig.Store(nil) })
 	poller.pollIfDue(context.Background())
 	poller.pollIfDue(context.Background())
-	if got := len(host.requestsTo(metaQuotaURL)); got != 1 {
+	if got := len(fake.requestsTo(t, metaQuotaURL)); got != 1 {
 		t.Fatalf("polls within one interval sent %d requests", got)
 	}
 
@@ -295,17 +288,17 @@ func TestPollIfDueHonoursIntervalAndOff(t *testing.T) {
 	currentConfig.Store(&off)
 	fresh := &quotaPoller{now: fixedClock(now)}
 	fresh.pollIfDue(context.Background())
-	if got := len(host.requestsTo(metaQuotaURL)); got != 1 {
+	if got := len(fake.requestsTo(t, metaQuotaURL)); got != 1 {
 		t.Fatalf("polling off sent %d more requests", got-1)
 	}
 }
 
 func TestParseQuotaPollIntervalSetting(t *testing.T) {
-	cfg, errParse := parseSettings([]byte("quota_poll_interval: off\n"))
+	cfg, errParse := parseSettings(lifecycle("quota_poll_interval: off\n"))
 	if errParse != nil || cfg.QuotaPollInterval != 0 {
 		t.Fatalf("off: cfg = %+v, err = %v", cfg, errParse)
 	}
-	cfg, errParse = parseSettings([]byte("quota_poll_interval: 5m\n"))
+	cfg, errParse = parseSettings(lifecycle("quota_poll_interval: 5m\n"))
 	if errParse != nil || cfg.QuotaPollInterval != 5*time.Minute {
 		t.Fatalf("5m: cfg = %+v, err = %v", cfg, errParse)
 	}
@@ -313,7 +306,7 @@ func TestParseQuotaPollIntervalSetting(t *testing.T) {
 	if errParse != nil || cfg.QuotaPollInterval != defaultQuotaPollInterval {
 		t.Fatalf("default: cfg = %+v, err = %v", cfg, errParse)
 	}
-	if _, errParse := parseSettings([]byte("quota_poll_interval: soon\n")); errParse == nil {
+	if _, errParse := parseSettings(lifecycle("quota_poll_interval: soon\n")); errParse == nil {
 		t.Fatal("an unreadable interval must be rejected")
 	}
 }

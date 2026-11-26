@@ -12,7 +12,12 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
+
+func serve(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
+	return router.Serve(manage.Request{ManagementRequest: req})
+}
 
 func TestManagementResources(t *testing.T) {
 	raw, errRegister := handleMethod(pluginabi.MethodManagementRegister, []byte(`{}`))
@@ -34,7 +39,7 @@ func TestManagementResources(t *testing.T) {
 }
 
 func TestLogo(t *testing.T) {
-	resp := routeManagement(pluginapi.ManagementRequest{Method: "get", Path: logoPath})
+	resp := serve(pluginapi.ManagementRequest{Method: "get", Path: router.LogoPath()})
 	if resp.StatusCode != http.StatusOK || !bytes.Equal(resp.Body, logoSVG) || resp.Headers.Get("Content-Type") != "image/svg+xml" || resp.Headers.Get("Content-Security-Policy") != "default-src 'none'" {
 		t.Fatalf("logo = %d %v", resp.StatusCode, resp.Headers)
 	}
@@ -45,17 +50,26 @@ func TestLogo(t *testing.T) {
 	if errParse := xml.Unmarshal(logoSVG, &svg); errParse != nil || svg.XMLName.Local != "svg" || svg.ViewBox != "0 0 24 24" {
 		t.Fatalf("logo is not a 24x24 SVG: %+v %v", svg, errParse)
 	}
-	if pluginRegistration().Metadata.Logo != logoPath {
+	if pluginRegistration().Metadata.Logo != router.LogoPath() {
 		t.Fatalf("Metadata.Logo = %q", pluginRegistration().Metadata.Logo)
 	}
 }
 
+// The page keeps its chart model in a <script> of its own, and the CSP
+// admits only bare inline blocks it has hashed.
 func TestPageAdmitsEveryScript(t *testing.T) {
-	resp := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: pagePath})
-	scripts := bytes.Count(dashboardPage, []byte("<script>"))
+	resp := serve(pluginapi.ManagementRequest{Method: http.MethodGet, Path: router.PagePath()})
+	blocks := bytes.Count(resp.Body, []byte("</script>")) + bytes.Count(resp.Body, []byte("</style>"))
 	csp := resp.Headers.Get("Content-Security-Policy")
-	if scripts < 2 || strings.Count(csp, "'sha256-") != scripts+1 {
-		t.Fatalf("%d scripts, CSP %q", scripts, csp)
+	if bytes.Count(dashboardPage, []byte("<script>")) < 2 || strings.Count(csp, "'sha256-") != blocks {
+		t.Fatalf("%d blocks, CSP %q", blocks, csp)
+	}
+}
+
+func TestRoutesRejectOtherMethods(t *testing.T) {
+	resp := serve(pluginapi.ManagementRequest{Method: http.MethodPost, Path: pricesPath})
+	if resp.StatusCode != http.StatusMethodNotAllowed || resp.Headers.Get("Allow") != "GET, PUT" {
+		t.Fatalf("POST prices = %d %v", resp.StatusCode, resp.Headers)
 	}
 }
 

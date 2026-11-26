@@ -1,14 +1,16 @@
 # Usage Dashboard API
 
-The Usage page reads two routes of CLIProxyAPI's Management API, and any
-other client can read them the same way. Field names are stable; new fields
-may be added.
+The Usage page reads these two routes of CLIProxyAPI's Management API, and
+any other client can read them the same way. Field names are stable; new
+fields may be added. The plugin's other routes, `GET quota` and `GET`/`PUT
+prices`, serve the page and are not covered here.
 
-Both take the management key, as `Authorization: Bearer <key>` or
+Every route takes the management key, as `Authorization: Bearer <key>` or
 `X-Management-Key: <key>`. CLIProxyAPI blocks an address for 30 minutes after
 five wrong keys, and answers only local requests unless
 `remote-management.allow-remote` is on. Answers carry
-`Cache-Control: no-store`; each call reads the plugin's state anew.
+`Cache-Control: no-store`; each call reads the plugin's state anew. A route
+answers any other method with 405 and an `Allow` header.
 
 Times are Unix milliseconds unless they are RFC 3339 strings.
 

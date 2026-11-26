@@ -158,7 +158,7 @@ func TestPricesRoutes(t *testing.T) {
 	customPrices.configure(dir)
 
 	put := func(body string) pluginapi.ManagementResponse {
-		return routeManagement(pluginapi.ManagementRequest{Method: http.MethodPut, Path: pricesPath, Body: []byte(body)})
+		return serve(pluginapi.ManagementRequest{Method: http.MethodPut, Path: pricesPath, Body: []byte(body)})
 	}
 	for _, body := range []string{`not json`, `{}`, `{"models":{"kimi-k3":{"output":1}}}`} {
 		if resp := put(body); resp.StatusCode != http.StatusBadRequest {
@@ -169,7 +169,7 @@ func TestPricesRoutes(t *testing.T) {
 		t.Fatalf("PUT = %d %s", resp.StatusCode, resp.Body)
 	}
 
-	resp := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: pricesPath})
+	resp := serve(pluginapi.ManagementRequest{Method: http.MethodGet, Path: pricesPath})
 	var list priceListView
 	if errUnmarshal := json.Unmarshal(resp.Body, &list); errUnmarshal != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET = %d %s: %v", resp.StatusCode, resp.Body, errUnmarshal)

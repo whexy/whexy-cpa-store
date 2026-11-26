@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // Grok, Meta and OpenCode Go send no subscription quota in response
@@ -31,7 +32,20 @@ const (
 	openCodeGoUsageURL    = "https://opencode.ai/inference/go/v1/usage"
 	xaiGrokClientVersion  = "1.0.46"
 	metaWindowFallbackMin = 5 * 60
+
+	userAgent = "whexy-cpa-usage-dashboard/" + pluginVersion
+	// upstreamTimeout bounds one request so a stalled endpoint cannot hold
+	// up a poll round or the price refresh.
+	upstreamTimeout = 20 * time.Second
 )
+
+// upstreamDo sends one request through CLIProxyAPI, so its global proxy
+// applies; an account's own proxy_url never does.
+func upstreamDo(ctx context.Context, req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, upstreamTimeout)
+	defer cancel()
+	return host.Detached().Do(ctx, req)
+}
 
 // pollProviders are the providers read from their usage endpoints.
 var pollProviders = map[string]func(context.Context, pluginapi.HostAuthFileEntry) []quotaWindow{
@@ -84,7 +98,7 @@ func (p *quotaPoller) poll(ctx context.Context) {
 	if active == nil {
 		return
 	}
-	entries, errList := hostAuthList()
+	entries, errList := host.AuthList()
 	if errList != nil {
 		return
 	}
@@ -114,7 +128,8 @@ func (p *quotaPoller) poll(ctx context.Context) {
 // or hand a relay's credential to the provider. CLIProxyAPI writes the
 // provider's default base_url into every Grok and Meta login.
 func pollAuthFile(entry pluginapi.HostAuthFileEntry, ownDomains ...string) (json.RawMessage, bool) {
-	raw, errFile := hostAuthFile(strings.TrimSpace(entry.AuthIndex))
+	file, errFile := host.AuthGet(strings.TrimSpace(entry.AuthIndex))
+	raw := file.JSON
 	if errFile != nil || len(raw) == 0 {
 		return nil, false
 	}
@@ -163,12 +178,17 @@ func pollMeta(ctx context.Context, entry pluginapi.HostAuthFileEntry) []quotaWin
 	if !strings.HasPrefix(token, "dca:") {
 		return nil
 	}
-	resp, errPost := hostDo(ctx, http.MethodPost, metaQuotaURL, http.Header{
-		"Accept":        {"application/json"},
-		"Content-Type":  {"application/json"},
-		"Authorization": {"Bearer " + token},
-		"X-Api-Version": {"1.0.0"},
-	}, []byte("{}"))
+	resp, errPost := upstreamDo(ctx, pluginapi.HTTPRequest{
+		Method: http.MethodPost,
+		URL:    metaQuotaURL,
+		Headers: http.Header{
+			"Accept":        {"application/json"},
+			"Content-Type":  {"application/json"},
+			"Authorization": {"Bearer " + token},
+			"X-Api-Version": {"1.0.0"},
+		},
+		Body: []byte("{}"),
+	})
 	if errPost != nil || resp.StatusCode != http.StatusOK {
 		return nil
 	}
@@ -240,7 +260,7 @@ func pollXAI(ctx context.Context, entry pluginapi.HostAuthFileEntry) []quotaWind
 		headers.Set("X-Userid", subject)
 	}
 	get := func(url string) []byte {
-		resp, errGet := hostDo(ctx, http.MethodGet, url, headers, nil)
+		resp, errGet := upstreamDo(ctx, pluginapi.HTTPRequest{Method: http.MethodGet, URL: url, Headers: headers})
 		if errGet != nil || resp.StatusCode != http.StatusOK {
 			return nil
 		}
@@ -317,9 +337,9 @@ func xaiBillingConfig(body []byte) (xaiConfig, bool) {
 	}
 	raw := doc.Config
 	config := xaiConfig{
-		creditUsedPercent: flexFloatValue(raw.CreditUsagePercent, raw.CreditUsagePercentS),
-		monthlyLimit:      flexCentsValue(raw.MonthlyLimit, raw.MonthlyLimitS),
-		used:              flexCentsValue(raw.Used),
+		creditUsedPercent: firstFloat(raw.CreditUsagePercent, raw.CreditUsagePercentS),
+		monthlyLimit:      firstFloat(raw.MonthlyLimit, raw.MonthlyLimitS),
+		used:              firstFloat(raw.Used),
 		billingStart:      flexInstantValue(raw.BillingStart, raw.BillingStartS),
 		billingEnd:        flexInstantValue(raw.BillingEnd, raw.BillingEndS),
 	}
@@ -361,11 +381,15 @@ func pollOpenCodeGo(ctx context.Context, entry pluginapi.HostAuthFileEntry) []qu
 	if bearer == "" {
 		return nil
 	}
-	resp, errGet := hostDo(ctx, http.MethodGet, openCodeGoUsageURL, http.Header{
-		"Authorization": {"Bearer " + bearer},
-		"Accept":        {"application/json"},
-		"User-Agent":    {"whexy-cpa-usage-dashboard/" + pluginVersion},
-	}, nil)
+	resp, errGet := upstreamDo(ctx, pluginapi.HTTPRequest{
+		Method: http.MethodGet,
+		URL:    openCodeGoUsageURL,
+		Headers: http.Header{
+			"Authorization": {"Bearer " + bearer},
+			"Accept":        {"application/json"},
+			"User-Agent":    {userAgent},
+		},
+	})
 	if errGet != nil || resp.StatusCode != http.StatusOK {
 		return nil
 	}
@@ -468,7 +492,9 @@ func (f *flexFloat) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-func flexFloatValue(values ...*flexFloat) *float64 {
+// firstFloat returns the first of values that is set, for fields an
+// endpoint sends under either of two names.
+func firstFloat[T ~float64](values ...*T) *float64 {
 	for _, value := range values {
 		if value != nil {
 			plain := float64(*value)
@@ -495,16 +521,6 @@ func (f *flexCents) UnmarshalJSON(raw []byte) error {
 		return nil
 	}
 	return strconv.ErrSyntax
-}
-
-func flexCentsValue(values ...*flexCents) *float64 {
-	for _, value := range values {
-		if value != nil {
-			plain := float64(*value)
-			return &plain
-		}
-	}
-	return nil
 }
 
 // flexInstant is a time sent as RFC 3339 or as Unix seconds.

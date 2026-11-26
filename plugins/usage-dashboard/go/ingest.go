@@ -9,7 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // counters are mutually exclusive token buckets: Input excludes cache reads
@@ -146,7 +149,7 @@ func handleUsage(raw []byte) ([]byte, error) {
 			active.addQuota(sample)
 		}
 	}
-	return okEnvelope(struct{}{})
+	return rpc.OK(struct{}{})
 }
 
 func eventFromRecord(record pluginapi.UsageRecord, identify func(string) accountInfo) (usageEvent, bool) {
@@ -285,7 +288,15 @@ type cachedIdentity struct {
 	expires time.Time
 }
 
-var identities = &identityCache{now: time.Now, resolve: hostAuthRuntime}
+var identities = &identityCache{now: time.Now, resolve: authRuntime}
+
+// authRuntime reads one credential's runtime entry, which carries its
+// provider, label and account fields but no secrets.
+func authRuntime(authIndex string) (pluginapi.HostAuthFileEntry, error) {
+	var resp pluginapi.HostAuthGetRuntimeResponse
+	errCall := host.Invoke(pluginabi.MethodHostAuthGetRuntime, pluginapi.HostAuthGetRequest{AuthIndex: authIndex}, &resp)
+	return resp.Auth, errCall
+}
 
 func (c *identityCache) lookup(authIndex string) accountInfo {
 	c.mu.Lock()

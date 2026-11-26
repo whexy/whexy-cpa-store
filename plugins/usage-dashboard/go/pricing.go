@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,6 +13,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 const (
@@ -208,11 +212,18 @@ type pricing struct {
 var prices = &pricing{fetch: fetchCatalog, now: time.Now}
 
 func fetchCatalog(url string) ([]byte, error) {
-	resp, errGet := hostHTTPGet(url)
+	resp, errGet := upstreamDo(context.Background(), pluginapi.HTTPRequest{
+		Method: http.MethodGet,
+		URL:    url,
+		Headers: http.Header{
+			"Accept":     {"application/json"},
+			"User-Agent": {userAgent},
+		},
+	})
 	if errGet != nil {
 		return nil, errGet
 	}
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s answered HTTP %d", url, resp.StatusCode)
 	}
 	return resp.Body, nil
@@ -279,7 +290,7 @@ func (p *pricing) refreshIfDue() {
 	}
 	if errRefresh != nil {
 		if errRefresh.Error() != p.lastError {
-			hostLog("warn", "price catalog: "+errRefresh.Error())
+			host.Log("warn", "price catalog: "+errRefresh.Error(), nil)
 		}
 		p.lastError = errRefresh.Error()
 		return
@@ -288,9 +299,7 @@ func (p *pricing) refreshIfDue() {
 	p.lastError = ""
 	p.nextFetch = catalog.FetchedAt.Add(pricesMaxAge)
 	if raw, errMarshal := json.Marshal(catalog); errMarshal == nil {
-		if errMkdir := os.MkdirAll(filepath.Dir(cachePath), 0o700); errMkdir == nil {
-			_ = writeFileAtomic(cachePath, raw)
-		}
+		_ = writeFileAtomic(cachePath, raw)
 	}
 }
 

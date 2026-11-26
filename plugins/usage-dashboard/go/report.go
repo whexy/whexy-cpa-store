@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // the page's IANA zone must load even in images without tzdata
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 const (
@@ -71,16 +73,6 @@ func (a *aggregate) add(r storedRow, p price, priced bool) {
 	} else {
 		a.unpricedTokens += r.Counters.processed()
 	}
-}
-
-func (a *aggregate) merge(other *aggregate) {
-	a.counters.add(other.counters)
-	for session := range other.sessions {
-		a.sessions[session] = struct{}{}
-	}
-	a.cost += other.cost
-	a.savings += other.savings
-	a.unpricedTokens += other.unpricedTokens
 }
 
 // totalsView is an aggregate as the page reads it.
@@ -480,7 +472,7 @@ func summary(query reportQuery) (reportView, error) {
 	}
 	active := activeStore()
 	if active == nil {
-		return reportView{}, fmt.Errorf("usage store is not running")
+		return reportView{}, errStoreNotRunning
 	}
 	cfg := currentSettings()
 	now := time.Now()
@@ -495,7 +487,7 @@ func summary(query reportQuery) (reportView, error) {
 	}
 	if groupBy == groupByAccount {
 		in.Live = make(map[string]accountInfo)
-		if entries, errList := hostAuthList(); errList == nil {
+		if entries, errList := host.AuthList(); errList == nil {
 			for _, entry := range entries {
 				if index := strings.TrimSpace(entry.AuthIndex); index != "" {
 					in.Live[index] = accountInfoFromEntry(entry)

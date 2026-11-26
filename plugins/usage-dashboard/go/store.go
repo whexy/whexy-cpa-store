@@ -14,6 +14,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 const (
@@ -48,6 +51,15 @@ type day struct {
 
 func newDay() *day {
 	return &day{accounts: make(map[string]accountInfo), rows: make(map[rowKey]*row)}
+}
+
+// sessionList returns the row's session digests in no particular order.
+func (r *row) sessionList() []string {
+	sessions := make([]string, 0, len(r.sessions))
+	for session := range r.sessions {
+		sessions = append(sessions, session)
+	}
+	return sessions
 }
 
 func (d *day) addRow(key rowKey, c counters, sessions ...string) {
@@ -128,17 +140,20 @@ func newStore(dir string, retentionDays int) *store {
 	}
 }
 
+var errStoreNotRunning = errors.New("usage store is not running")
+
 var (
 	current        atomic.Pointer[store]
 	runtimeMu      sync.Mutex
 	backgroundOnce sync.Once
+	shutdownOnce   sync.Once
 )
 
 func activeStore() *store { return current.Load() }
 
 // startRuntime points the plugin at cfg's data directory, keeping the store
 // across reconfigurations that do not move it.
-func startRuntime(cfg settings) error {
+func startRuntime(cfg settings) {
 	runtimeMu.Lock()
 	defer runtimeMu.Unlock()
 	if existing := current.Load(); existing != nil && existing.dir == cfg.DataDir {
@@ -157,7 +172,7 @@ func startRuntime(cfg settings) error {
 	prices.configure(cfg.PricingURL, cfg.DataDir)
 	customPrices.configure(cfg.DataDir)
 	backgroundOnce.Do(func() {
-		startBackground(func(ctx context.Context) {
+		background.Go(func(ctx context.Context) {
 			ticker := time.NewTicker(flushInterval)
 			defer ticker.Stop()
 			for {
@@ -171,10 +186,20 @@ func startRuntime(cfg settings) error {
 				}
 			}
 		})
-		startBackground(prices.run)
-		startBackground(quotaPolls.run)
+		background.Go(prices.run)
+		background.Go(quotaPolls.run)
 	})
-	return nil
+}
+
+// shutdown stops background work and writes everything still in memory. The
+// host may call it twice: plugin.shutdown, then the C shutdown hook.
+func shutdown() {
+	shutdownOnce.Do(func() {
+		background.Close(shutdownGrace)
+		if active := activeStore(); active != nil {
+			active.close()
+		}
+	})
 }
 
 func (s *store) setRetention(days int) {
@@ -188,11 +213,7 @@ func (s *store) add(event usageEvent) {
 	date := event.At.Format(dayLayout)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	d := s.days[date]
-	if d == nil {
-		d = newDay()
-		s.days[date] = d
-	}
+	d := s.dayLocked(date)
 	if event.Account != "" && event.Identity.Label != "" {
 		d.accounts[event.Account] = event.Identity
 	}
@@ -209,13 +230,19 @@ func (s *store) addQuota(sample quotaSample) {
 	}
 	s.lastQuota[sample.Account] = sample
 	date := time.UnixMilli(sample.At).UTC().Format(dayLayout)
+	d := s.dayLocked(date)
+	d.quota = append(d.quota, sample)
+	s.dirty[date] = true
+}
+
+// dayLocked returns the day of date, creating it if it holds nothing yet.
+func (s *store) dayLocked(date string) *day {
 	d := s.days[date]
 	if d == nil {
 		d = newDay()
 		s.days[date] = d
 	}
-	d.quota = append(d.quota, sample)
-	s.dirty[date] = true
+	return d
 }
 
 // tick runs the periodic work: take the lock and load, merge spill files,
@@ -270,7 +297,7 @@ func (s *store) releaseLocked() {
 	}
 	s.flushLocked()
 	if len(s.dirty) > 0 {
-		hostLog("warn", fmt.Sprintf("usage store: releasing %s with %d unwritten days", s.dir, len(s.dirty)))
+		host.Log("warn", fmt.Sprintf("usage store: releasing %s with %d unwritten days", s.dir, len(s.dirty)), nil)
 	}
 	if s.lock != nil {
 		_ = syscall.Flock(int(s.lock.Fd()), syscall.LOCK_UN)
@@ -327,7 +354,7 @@ func (s *store) mergeSpillsLocked() {
 		}
 		spilled, errLoad := readDayFile(filepath.Join(s.dir, name))
 		if errLoad != nil {
-			s.moveAsideLocked(name, errLoad)
+			moveAside(filepath.Join(s.dir, name), s.now(), "usage store", errLoad)
 			continue
 		}
 		s.mergeLocked(date, spilled)
@@ -336,10 +363,12 @@ func (s *store) mergeSpillsLocked() {
 	}
 }
 
-func (s *store) moveAsideLocked(name string, cause error) {
-	aside := name + ".corrupt-" + s.now().UTC().Format("20060102T150405")
-	_ = os.Rename(filepath.Join(s.dir, name), filepath.Join(s.dir, aside))
-	hostLog("warn", fmt.Sprintf("usage store: %s is unreadable (%v), moved to %s", name, cause, aside))
+// moveAside renames an unreadable file out of the way, keeping it for
+// inspection, and logs why under what.
+func moveAside(path string, now time.Time, what string, cause error) {
+	aside := path + ".corrupt-" + now.UTC().Format("20060102T150405")
+	_ = os.Rename(path, aside)
+	host.Log("warn", fmt.Sprintf("%s: %s is unreadable (%v), moved to %s", what, filepath.Base(path), cause, filepath.Base(aside)), nil)
 }
 
 func (s *store) setErrorLocked(err error) {
@@ -348,7 +377,7 @@ func (s *store) setErrorLocked(err error) {
 		message = err.Error()
 	}
 	if message != "" && message != s.lastError {
-		hostLog("warn", "usage store: "+message)
+		host.Log("warn", "usage store: "+message, nil)
 	}
 	s.lastError = message
 }
@@ -378,18 +407,15 @@ func (s *store) loadLocked() {
 		return
 	}
 	for _, entry := range entries {
+		date, ok := dayFileDate(entry)
+		if !ok {
+			continue
+		}
 		name := entry.Name()
-		if entry.IsDir() || !strings.HasPrefix(name, dayFilePrefix) || !strings.HasSuffix(name, dayFileSuffix) {
-			continue
-		}
-		date := strings.TrimSuffix(strings.TrimPrefix(name, dayFilePrefix), dayFileSuffix)
-		if _, errDate := time.Parse(dayLayout, date); errDate != nil {
-			continue
-		}
 		loaded, errLoad := readDayFile(filepath.Join(s.dir, name))
 		if errLoad != nil {
-			// Keep the unreadable file for inspection; the day restarts empty.
-			s.moveAsideLocked(name, errLoad)
+			// The day restarts empty.
+			moveAside(filepath.Join(s.dir, name), s.now(), "usage store", errLoad)
 			continue
 		}
 		s.mergeLocked(date, loaded)
@@ -422,14 +448,24 @@ func (s *store) mergeLocked(date string, loaded *day) {
 		}
 	}
 	for key, r := range loaded.rows {
-		sessions := make([]string, 0, len(r.sessions))
-		for session := range r.sessions {
-			sessions = append(sessions, session)
-		}
-		d.addRow(key, r.counters, sessions...)
+		d.addRow(key, r.counters, r.sessionList()...)
 	}
 	d.quota = append(d.quota, loaded.quota...)
 	s.dirty[date] = true
+}
+
+// dayFileDate returns the date a day file holds, or false for any other
+// entry.
+func dayFileDate(entry os.DirEntry) (string, bool) {
+	name := entry.Name()
+	if entry.IsDir() || !strings.HasPrefix(name, dayFilePrefix) || !strings.HasSuffix(name, dayFileSuffix) {
+		return "", false
+	}
+	date := strings.TrimSuffix(strings.TrimPrefix(name, dayFilePrefix), dayFileSuffix)
+	if _, errDate := time.Parse(dayLayout, date); errDate != nil {
+		return "", false
+	}
+	return date, true
 }
 
 func readDayFile(path string) (*day, error) {
@@ -494,10 +530,7 @@ func writeDayFileAs(dir, name, date string, d *day) error {
 	d.quota = sortQuotaSamples(d.quota)
 	file := dayFile{Version: dayFileVersion, Date: date, Accounts: d.accounts, Rows: make([]rowFile, 0, len(d.rows)), Quota: d.quota}
 	for key, r := range d.rows {
-		sessions := make([]string, 0, len(r.sessions))
-		for session := range r.sessions {
-			sessions = append(sessions, session)
-		}
+		sessions := r.sessionList()
 		sort.Strings(sessions)
 		file.Rows = append(file.Rows, rowFile{Hour: key.Hour, Account: key.Account, Provider: key.Provider, Model: key.Model, counters: r.counters, Sessions: sessions})
 	}
@@ -521,9 +554,12 @@ func writeDayFileAs(dir, name, date string, d *day) error {
 	return writeFileAtomic(filepath.Join(dir, name), raw)
 }
 
-// writeFileAtomic replaces path so that a crash leaves either the old or the
-// new content, never a torn file.
+// writeFileAtomic replaces path, creating its directory, so that a crash
+// leaves either the old or the new content, never a torn file.
 func writeFileAtomic(path string, raw []byte) error {
+	if errMkdir := os.MkdirAll(filepath.Dir(path), 0o700); errMkdir != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(path), errMkdir)
+	}
 	tmp, errCreate := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if errCreate != nil {
 		return fmt.Errorf("write %s: %w", filepath.Base(path), errCreate)
@@ -569,14 +605,11 @@ func (s *store) pruneLocked() {
 		return
 	}
 	for _, entry := range entries {
+		date, ok := dayFileDate(entry)
+		if !ok || date >= cutoff {
+			continue
+		}
 		name := entry.Name()
-		if !strings.HasPrefix(name, dayFilePrefix) || !strings.HasSuffix(name, dayFileSuffix) {
-			continue
-		}
-		date := strings.TrimSuffix(strings.TrimPrefix(name, dayFilePrefix), dayFileSuffix)
-		if _, errDate := time.Parse(dayLayout, date); errDate != nil || date >= cutoff {
-			continue
-		}
 		if errRemove := os.Remove(filepath.Join(s.dir, name)); errRemove != nil && !errors.Is(errRemove, os.ErrNotExist) {
 			s.setErrorLocked(fmt.Errorf("remove %s: %w", name, errRemove))
 		}
@@ -618,11 +651,7 @@ func (s *store) snapshot(from, to time.Time) ([]storedRow, map[string]accountInf
 			if at.Before(from) || !at.Before(to) {
 				continue
 			}
-			sessions := make([]string, 0, len(r.sessions))
-			for session := range r.sessions {
-				sessions = append(sessions, session)
-			}
-			rows = append(rows, storedRow{At: at, Key: key, Counters: r.counters, Sessions: sessions})
+			rows = append(rows, storedRow{At: at, Key: key, Counters: r.counters, Sessions: r.sessionList()})
 		}
 	}
 	return rows, accounts

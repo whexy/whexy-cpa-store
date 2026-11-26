@@ -405,11 +405,11 @@ func TestPoolsRoute(t *testing.T) {
 		{ID: "7d", Remaining: 40, ResetAt: at.Add(48 * time.Hour).UnixMilli(), PeriodMinutes: 10080},
 	}})
 	query := url.Values{"burn": {"never"}}
-	resp := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: poolsPath, Query: query})
+	resp := serve(pluginapi.ManagementRequest{Method: http.MethodGet, Path: poolsPath, Query: query})
 	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(resp.Body), "burn must be a duration") {
 		t.Fatalf("bad burn = %d %s", resp.StatusCode, resp.Body)
 	}
-	resp = routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: poolsPath})
+	resp = serve(pluginapi.ManagementRequest{Method: http.MethodGet, Path: poolsPath})
 	var view poolsView
 	if errUnmarshal := json.Unmarshal(resp.Body, &view); resp.StatusCode != http.StatusOK || errUnmarshal != nil {
 		t.Fatalf("pools = %d %s", resp.StatusCode, resp.Body)

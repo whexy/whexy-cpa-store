@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // Claude and Codex report each subscription window's use in the headers of
@@ -282,10 +283,10 @@ func quotaReport(fromParam string) (quotaReportView, error) {
 	}
 	active := activeStore()
 	if active == nil {
-		return quotaReportView{}, fmt.Errorf("usage store is not running")
+		return quotaReportView{}, errStoreNotRunning
 	}
 	samples, saved := active.quotaSnapshot(from.UnixMilli())
-	entries, errList := hostAuthList()
+	entries, errList := host.AuthList()
 	return buildQuotaReport(now, samples, saved, entries, errList == nil), nil
 }
 

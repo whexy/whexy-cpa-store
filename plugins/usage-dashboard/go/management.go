@@ -1,40 +1,18 @@
 package main
 
 import (
-	"bytes"
-	"crypto/sha256"
 	_ "embed"
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
-const (
-	// pagePath is the page Management Center embeds under the "Usage" menu.
-	// Resource routes are not authenticated, so the page holds no data.
-	pagePath = "/v0/resource/plugins/" + pluginID + "/index.html"
-	// logoPath is Metadata.Logo: Management Center shows it on the sidebar
-	// entry and on the Plugins page.
-	logoPath = "/v0/resource/plugins/" + pluginID + "/logo.svg"
-	// summaryPath is the authenticated route the page reads.
-	summaryPath = "/v0/management/" + pluginID + "/summary"
-	// pricesPath reads and replaces the prices set on the page.
-	pricesPath = "/v0/management/" + pluginID + "/prices"
-	// quotaPath reads the quota samples behind the page's Quota section.
-	quotaPath = "/v0/management/" + pluginID + "/quota"
-	// poolsPath serves each provider's pool, recorded and projected, ready
-	// to draw.
-	poolsPath = quotaPath + "/pools"
-)
-
+// dashboardPage holds no data: resource routes are not authenticated, so it
+// reads everything through the routes below.
+//
 //go:embed dashboard.html
 var dashboardPage []byte
-
-var dashboardCSP = pageCSP(dashboardPage)
 
 // logoSVG is the plugin mark; ../logo.svg is the copy the store registry
 // links to.
@@ -42,203 +20,83 @@ var dashboardCSP = pageCSP(dashboardPage)
 //go:embed logo.svg
 var logoSVG []byte
 
-type rpcManagementRequest struct {
-	pluginapi.ManagementRequest
-	HostCallbackID string `json:"host_callback_id,omitempty"`
-}
+var (
+	summaryPath = manage.APIPath(pluginID, "summary")
+	pricesPath  = manage.APIPath(pluginID, "prices")
+	quotaPath   = manage.APIPath(pluginID, "quota")
+	poolsPath   = manage.APIPath(pluginID, "quota/pools")
+)
 
-type managementRegistration struct {
-	Routes    []managementRoute `json:"routes,omitempty"`
-	Resources []resourceRoute   `json:"resources,omitempty"`
-}
+var router = manage.NewRouter(manage.Config{
+	PluginID: pluginID,
+	Name:     displayName,
+	Page:     &manage.Page{Menu: menuLabel, Description: "Token usage and estimated cost by model family or account, and the quota left in each provider's accounts.", HTML: dashboardPage},
+	Logo:     logoSVG,
+	Routes: []manage.Route{
+		{Method: http.MethodGet, Path: summaryPath, Description: "Usage totals, per-group series and per-model rows: ?range=24h|7d|30d|90d&group=family|account&tz=<IANA zone>.", Handle: handleSummary},
+		{Method: http.MethodGet, Path: pricesPath, Description: "Every model in retained usage with its custom and models.dev price.", Handle: handlePrices},
+		{Method: http.MethodGet, Path: quotaPath, Description: "Accounts of every provider whose quota is recorded, with their readings: ?from=<RFC 3339 time>.", Handle: handleQuota},
+		{Method: http.MethodGet, Path: poolsPath, Description: "Each provider's quota pool, recorded and projected: ?burn=24h&usage=1&from=<RFC 3339>&until=<RFC 3339>&step=10m&series=accounts|pool|none.", Handle: handlePools},
+		{Method: http.MethodPut, Path: pricesPath, Description: `Replace the custom prices: {"models":{"<model>":{"input":..,"output":..,"cache_read":..,"cache_write":..}}}, USD per million tokens.`, Handle: handleSavePrices},
+	},
+})
 
-type managementRoute struct {
-	Method      string
-	Path        string
-	Description string
-}
-
-type resourceRoute struct {
-	Path        string
-	Menu        string
-	Description string
-}
-
-func managementRegister(_ []byte) ([]byte, error) {
-	return okEnvelope(managementRegistration{
-		Routes: []managementRoute{
-			{
-				Method:      http.MethodGet,
-				Path:        summaryPath,
-				Description: "Usage totals, per-group series and per-model rows: ?range=24h|7d|30d|90d&group=family|account&tz=<IANA zone>.",
-			},
-			{
-				Method:      http.MethodGet,
-				Path:        pricesPath,
-				Description: "Every model in retained usage with its custom and models.dev price.",
-			},
-			{
-				Method:      http.MethodGet,
-				Path:        quotaPath,
-				Description: "Accounts of every provider whose quota is recorded, with their readings: ?from=<RFC 3339 time>.",
-			},
-			{
-				Method:      http.MethodGet,
-				Path:        poolsPath,
-				Description: "Each provider's quota pool, recorded and projected: ?burn=24h&usage=1&from=<RFC 3339>&until=<RFC 3339>&step=10m&series=accounts|pool|none.",
-			},
-			{
-				Method:      http.MethodPut,
-				Path:        pricesPath,
-				Description: `Replace the custom prices: {"models":{"<model>":{"input":..,"output":..,"cache_read":..,"cache_write":..}}}, USD per million tokens.`,
-			},
-		},
-		Resources: []resourceRoute{
-			{Path: pagePath, Menu: menuLabel, Description: "Token usage and estimated cost by model family or account, and the quota left in each provider's accounts."},
-			{Path: logoPath, Description: displayName + " logo."},
-		},
+func handleSummary(req manage.Request) (int, any, error) {
+	report, errReport := summary(reportQuery{
+		Range:    req.Query.Get("range"),
+		GroupBy:  req.Query.Get("group"),
+		TimeZone: req.Query.Get("tz"),
 	})
-}
-
-func managementHandle(raw []byte) ([]byte, error) {
-	var req rpcManagementRequest
-	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-		return nil, fmt.Errorf("decode management request: %w", errUnmarshal)
+	if errReport != nil {
+		return 0, nil, manage.Errorf(http.StatusBadRequest, "%v", errReport)
 	}
-	return okEnvelope(routeManagement(req.ManagementRequest))
+	return http.StatusOK, report, nil
 }
 
-func routeManagement(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
-	method := strings.ToUpper(strings.TrimSpace(req.Method))
-	switch {
-	case method == http.MethodGet && req.Path == pagePath:
-		return pluginapi.ManagementResponse{
-			StatusCode: http.StatusOK,
-			Headers: http.Header{
-				"Content-Type":            {"text/html; charset=utf-8"},
-				"Cache-Control":           {"no-cache"},
-				"Content-Security-Policy": {dashboardCSP},
-				"X-Content-Type-Options":  {"nosniff"},
-				"Referrer-Policy":         {"no-referrer"},
-			},
-			Body: dashboardPage,
-		}
-	case method == http.MethodGet && req.Path == logoPath:
-		return pluginapi.ManagementResponse{
-			StatusCode: http.StatusOK,
-			Headers: http.Header{
-				"Content-Type":            {"image/svg+xml"},
-				"Cache-Control":           {"public, max-age=3600"},
-				"Content-Security-Policy": {"default-src 'none'"},
-				"X-Content-Type-Options":  {"nosniff"},
-			},
-			Body: logoSVG,
-		}
-	case method == http.MethodGet && req.Path == summaryPath:
-		report, errReport := summary(reportQuery{
-			Range:    req.Query.Get("range"),
-			GroupBy:  req.Query.Get("group"),
-			TimeZone: req.Query.Get("tz"),
-		})
-		if errReport != nil {
-			return managementJSON(http.StatusBadRequest, map[string]string{"error": errReport.Error()})
-		}
-		return managementJSON(http.StatusOK, report)
-	case method == http.MethodGet && req.Path == quotaPath:
-		report, errReport := quotaReport(req.Query.Get("from"))
-		if errReport != nil {
-			return managementJSON(http.StatusBadRequest, map[string]string{"error": errReport.Error()})
-		}
-		return managementJSON(http.StatusOK, report)
-	case method == http.MethodGet && req.Path == poolsPath:
-		view, status, errPools := quotaPools(poolsQuery{
-			Burn:   req.Query.Get("burn"),
-			Usage:  req.Query.Get("usage"),
-			From:   req.Query.Get("from"),
-			Until:  req.Query.Get("until"),
-			Step:   req.Query.Get("step"),
-			Series: req.Query.Get("series"),
-		})
-		if errPools != nil {
-			return managementJSON(status, map[string]string{"error": errPools.Error()})
-		}
-		return managementJSON(http.StatusOK, view)
-	case method == http.MethodGet && req.Path == pricesPath:
-		return priceListResponse()
-	case method == http.MethodPut && req.Path == pricesPath:
-		var body struct {
-			Models map[string]customPriceInput `json:"models"`
-		}
-		if errUnmarshal := json.Unmarshal(req.Body, &body); errUnmarshal != nil || body.Models == nil {
-			return managementJSON(http.StatusBadRequest, map[string]string{"error": `body must be {"models": {"<model>": {"input": .., "output": ..}}}`})
-		}
-		models, errValidate := validateCustomPrices(body.Models)
-		if errValidate != nil {
-			return managementJSON(http.StatusBadRequest, map[string]string{"error": errValidate.Error()})
-		}
-		if errSave := customPrices.save(models); errSave != nil {
-			return managementJSON(http.StatusInternalServerError, map[string]string{"error": errSave.Error()})
-		}
-		return priceListResponse()
+func handleQuota(req manage.Request) (int, any, error) {
+	report, errReport := quotaReport(req.Query.Get("from"))
+	if errReport != nil {
+		return 0, nil, manage.Errorf(http.StatusBadRequest, "%v", errReport)
 	}
-	return managementJSON(http.StatusNotFound, map[string]string{"error": "no " + displayName + " route " + method + " " + req.Path})
+	return http.StatusOK, report, nil
 }
 
-func priceListResponse() pluginapi.ManagementResponse {
+func handlePools(req manage.Request) (int, any, error) {
+	view, errPools := quotaPools(poolsQuery{
+		Burn:   req.Query.Get("burn"),
+		Usage:  req.Query.Get("usage"),
+		From:   req.Query.Get("from"),
+		Until:  req.Query.Get("until"),
+		Step:   req.Query.Get("step"),
+		Series: req.Query.Get("series"),
+	})
+	if errPools != nil {
+		return 0, nil, errPools
+	}
+	return http.StatusOK, view, nil
+}
+
+func handlePrices(manage.Request) (int, any, error) {
 	list, errList := priceList()
 	if errList != nil {
-		return managementJSON(http.StatusServiceUnavailable, map[string]string{"error": errList.Error()})
+		return 0, nil, manage.Errorf(http.StatusServiceUnavailable, "%v", errList)
 	}
-	return managementJSON(http.StatusOK, list)
+	return http.StatusOK, list, nil
 }
 
-func managementJSON(status int, body any) pluginapi.ManagementResponse {
-	raw, errMarshal := json.Marshal(body)
-	if errMarshal != nil {
-		status = http.StatusInternalServerError
-		raw, _ = json.Marshal(map[string]string{"error": "encode response: " + errMarshal.Error()})
+func handleSavePrices(req manage.Request) (int, any, error) {
+	var body struct {
+		Models map[string]customPriceInput `json:"models"`
 	}
-	return pluginapi.ManagementResponse{
-		StatusCode: status,
-		Headers: http.Header{
-			"Content-Type":           {"application/json; charset=utf-8"},
-			"Cache-Control":          {"no-store"},
-			"X-Content-Type-Options": {"nosniff"},
-		},
-		Body: raw,
+	if errUnmarshal := json.Unmarshal(req.Body, &body); errUnmarshal != nil || body.Models == nil {
+		return 0, nil, manage.Errorf(http.StatusBadRequest, `body must be {"models": {"<model>": {"input": .., "output": ..}}}`)
 	}
-}
-
-// pageCSP admits only the page's own inline scripts and style and requests
-// to its own origin, so injected markup can neither run nor send the
-// management key elsewhere. It sets no frame-ancestors because Management
-// Center may be served from another origin than CLIProxyAPI.
-func pageCSP(page []byte) string {
-	return "default-src 'none'; script-src " + inlineHashes(page, "script") +
-		"; style-src " + inlineHashes(page, "style") +
-		"; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'"
-}
-
-// inlineHashes lists the hash of every <tag> block of the page.
-func inlineHashes(page []byte, tag string) string {
-	open, end := []byte("<"+tag+">"), []byte("</"+tag+">")
-	var hashes []string
-	for {
-		start := bytes.Index(page, open)
-		if start < 0 {
-			break
-		}
-		page = page[start+len(open):]
-		stop := bytes.Index(page, end)
-		if stop < 0 {
-			break
-		}
-		sum := sha256.Sum256(page[:stop])
-		hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'")
-		page = page[stop+len(end):]
+	models, errValidate := validateCustomPrices(body.Models)
+	if errValidate != nil {
+		return 0, nil, manage.Errorf(http.StatusBadRequest, "%v", errValidate)
 	}
-	if len(hashes) == 0 {
-		return "'none'"
+	if errSave := customPrices.save(models); errSave != nil {
+		return 0, nil, errSave
 	}
-	return strings.Join(hashes, " ")
+	return handlePrices(req)
 }
