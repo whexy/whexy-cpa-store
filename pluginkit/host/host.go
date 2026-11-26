@@ -180,6 +180,14 @@ func AuthGet(authIndex string) (pluginapi.HostAuthGetResponse, error) {
 	return resp, errCall
 }
 
+// AuthGetRuntime returns the runtime entry of an auth: its provider, label
+// and routing state.
+func AuthGetRuntime(authIndex string) (pluginapi.HostAuthGetRuntimeResponse, error) {
+	var resp pluginapi.HostAuthGetRuntimeResponse
+	errCall := Invoke(pluginabi.MethodHostAuthGetRuntime, pluginapi.HostAuthGetRequest{AuthIndex: authIndex}, &resp)
+	return resp, errCall
+}
+
 // AuthSave writes name in the auth directory and re-registers its auths
 // through auth.parse.
 func AuthSave(name string, raw []byte) (pluginapi.HostAuthSaveResponse, error) {

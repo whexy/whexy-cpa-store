@@ -211,21 +211,24 @@ globalThis.kit = (() => {
       rejectedListeners.push(listener);
     },
 
+    // ask shows the #auth prompt with an optional message.
+    ask(message) {
+      const error = $("auth-error");
+      $("auth").hidden = false;
+      if (error) {
+        error.textContent = message || "";
+        error.hidden = !message;
+      }
+      $("auth-key").focus();
+    },
+
     // init wires the page's #auth form (#auth-key, optional #auth-error):
     // it calls onReady once a key is available and asks again whenever the
     // host rejects the key.
     init(onReady) {
       const form = $("auth");
       const input = $("auth-key");
-      const error = $("auth-error");
-      const ask = (message) => {
-        form.hidden = false;
-        if (error) {
-          error.textContent = message || "";
-          error.hidden = !message;
-        }
-        input.focus();
-      };
+      const ask = (message) => this.ask(message);
       form.addEventListener("submit", (event) => {
         event.preventDefault();
         const key = input.value.trim();
@@ -241,9 +244,12 @@ globalThis.kit = (() => {
     },
   };
 
-  // request calls a management route with the key in use. A 404 answers
-  // `missing` when one is given; a rejected key throws AuthError after the
-  // page's rejection listeners run; other failures throw ApiError.
+  // request calls a management route with the key in use. CPA's config API
+  // answering exactly {"error":"not_found"} for an absent node returns
+  // `missing` when one is given; any other 404, or a body that is not JSON,
+  // say from a proxy in front of CPA, throws, so a save never mistakes an
+  // unreadable list for an empty one. A rejected key throws AuthError after
+  // the page's rejection listeners run; other failures throw ApiError.
   async function request(url, { method = "GET", body, missing } = {}) {
     if (!auth.key) throw new AuthError("No management key.");
     const headers = { Authorization: "Bearer " + auth.key };
@@ -261,19 +267,37 @@ globalThis.kit = (() => {
       throw new Error("CLIProxyAPI did not answer: " + err.message);
     }
     let data = null;
+    let unreadable = false;
     try {
-      data = await response.json();
-    } catch (_) {}
-    const message = typeof data?.error === "string" ? data.error : "";
+      // Every CPA and plugin management route answers a JSON body.
+      data = JSON.parse(await response.text());
+    } catch (_) {
+      unreadable = true;
+    }
+    // CPA's config API names the failure in `error` and explains it in
+    // `message`; plugin routes answer only `error`.
+    const message =
+      [data?.message, data?.error].find(
+        (text) => typeof text === "string" && text,
+      ) || "";
     if (response.status === 401) {
       auth.forget();
       for (const listener of rejectedListeners) listener(REJECTED_MESSAGE);
       throw new AuthError(REJECTED_MESSAGE);
     }
-    if (response.status === 404 && missing !== undefined) return missing;
+    const absent =
+      response.status === 404 &&
+      data?.error === "not_found" &&
+      Object.keys(data).length === 1;
+    if (absent && missing !== undefined) return missing;
     if (!response.ok)
       throw new ApiError(
         message || "CLIProxyAPI answered HTTP " + response.status + ".",
+        response.status,
+      );
+    if (unreadable)
+      throw new ApiError(
+        "CLIProxyAPI answered HTTP " + response.status + " without JSON.",
         response.status,
       );
     return data;
@@ -283,6 +307,18 @@ globalThis.kit = (() => {
   const api = (path, options) => request(paths.plugin + path, options);
   // cpa calls CLIProxyAPI's v8 management API.
   const cpa = (path, options) => request(paths.cpa + path, options);
+
+  // toast shows a short-lived .notice at the bottom of the page; kind is
+  // "ok", "warn" or "danger".
+  function toast(message, kind = "") {
+    const el = h(
+      "div",
+      { class: "notice toast " + kind, role: "status" },
+      message,
+    );
+    document.body.append(el);
+    setTimeout(() => el.remove(), 5000);
+  }
 
   if (hasDOM) followTheme();
 
@@ -300,5 +336,6 @@ globalThis.kit = (() => {
     request,
     api,
     cpa,
+    toast,
   });
 })();

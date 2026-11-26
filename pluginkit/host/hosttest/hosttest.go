@@ -70,6 +70,18 @@ func (f *Fake) HandleAuths(entries ...pluginapi.HostAuthFileEntry) {
 	})
 }
 
+// HandleHTTP answers host.http.do with fn, decoding the request the plugin
+// sent.
+func (f *Fake) HandleHTTP(fn func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error)) {
+	f.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req pluginapi.HTTPRequest
+		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
+			return nil, errUnmarshal
+		}
+		return fn(req)
+	})
+}
+
 // Call is the host transport the Fake installs.
 func (f *Fake) Call(method string, payload []byte) ([]byte, error) {
 	f.mu.Lock()

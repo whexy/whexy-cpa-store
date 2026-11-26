@@ -27,10 +27,12 @@ function load({ local = {}, session = {}, respond } = {}) {
       return {
         status,
         ok: status >= 200 && status < 300,
-        json: async () => {
-          if (body === undefined) throw new SyntaxError("no body");
-          return body;
-        },
+        text: async () =>
+          body === undefined
+            ? ""
+            : typeof body === "string"
+              ? body
+              : JSON.stringify(body),
       };
     },
   });
@@ -70,16 +72,27 @@ test("Management Center's key is used until it is rejected", async () => {
 });
 
 test("request encodes bodies and maps failures", async () => {
+  const answers = {
+    "/missing": { status: 404, body: { error: "not_found" } },
+    "/elsewhere": { status: 404 },
+    "/proxied": {
+      status: 404,
+      body: { error: "not_found", message: "No matching proxy route" },
+    },
+    "/html": { body: "<!doctype html><title>Sign in</title>" },
+    "/empty": {},
+    "/no-content": { status: 204 },
+    "/broken": { status: 500, body: { error: "it broke" } },
+    "/bare": { status: 502 },
+    "/config": {
+      status: 422,
+      body: { error: "invalid_config", message: "rules must be a list" },
+    },
+  };
   const { kit, calls } = load({
     session: { ".management-key": "k" },
     respond: (url) =>
-      url.endsWith("/missing")
-        ? { status: 404, body: { error: "not_found" } }
-        : url.endsWith("/broken")
-          ? { status: 500, body: { error: "it broke" } }
-          : url.endsWith("/bare")
-            ? { status: 502 }
-            : { body: { saved: true } },
+      answers[url.slice(url.lastIndexOf("/"))] ?? { body: { saved: true } },
   });
   kit.auth.resolve();
   assert.deepEqual(
@@ -90,6 +103,13 @@ test("request encodes bodies and maps failures", async () => {
   assert.equal(calls[0].init.headers["Content-Type"], "application/json");
   assert.equal(calls[0].init.credentials, "omit");
   assert.deepEqual(await kit.cpa("/missing", { missing: [] }), []);
+  for (const path of ["/elsewhere", "/proxied"])
+    await assert.rejects(kit.cpa(path, { missing: [] }), (err) => {
+      assert.equal(err.status, 404);
+      return true;
+    });
+  for (const path of ["/html", "/empty", "/no-content"])
+    await assert.rejects(kit.cpa(path, { missing: [] }), /without JSON/);
   await assert.rejects(kit.api("/broken"), (err) => {
     assert.ok(err instanceof kit.ApiError);
     assert.equal(err.status, 500);
@@ -97,6 +117,7 @@ test("request encodes bodies and maps failures", async () => {
     return true;
   });
   await assert.rejects(kit.api("/bare"), /answered HTTP 502/);
+  await assert.rejects(kit.cpa("/config"), /^Error: rules must be a list$/);
 });
 
 test("request without a key fails before fetching", async () => {
