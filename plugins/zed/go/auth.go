@@ -9,11 +9,14 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 const (
@@ -237,15 +240,15 @@ func handleAuthParse(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode auth parse request: %w", errUnmarshal)
 	}
 	if !isZedFile(req.RawJSON) {
-		return okEnvelope(pluginapi.AuthParseResponse{})
+		return rpc.OK(pluginapi.AuthParseResponse{})
 	}
 	base := authFileBase(req.Path, req.FileName)
 	file, errParse := parseAuthFile(req.RawJSON)
 	if errParse != nil {
-		return okEnvelope(pluginapi.AuthParseResponse{Handled: true, Auth: placeholderAuth(base, displayName+" (invalid auth file)", req.RawJSON)})
+		return rpc.OK(pluginapi.AuthParseResponse{Handled: true, Auth: placeholderAuth(base, displayName+" (invalid auth file)", req.RawJSON)})
 	}
 	auth := file.authData(base, req.RawJSON)
-	return okEnvelope(pluginapi.AuthParseResponse{Handled: true, Auth: auth})
+	return rpc.OK(pluginapi.AuthParseResponse{Handled: true, Auth: auth})
 }
 
 // placeholderAuth keeps a file the plugin owns but cannot use visible to the
@@ -344,14 +347,14 @@ func metadataString(metadata map[string]any, name string) string {
 	return ""
 }
 
-// handleAuthRefresh validates a stored account and refreshes its plan and
-// organization. A Zed access token does not rotate, so this is a health
-// check rather than a token exchange.
 type rpcAuthRefreshRequest struct {
 	pluginapi.AuthRefreshRequest
 	HostCallbackID string `json:"host_callback_id,omitempty"`
 }
 
+// handleAuthRefresh validates a stored account and refreshes its plan and
+// organization. A Zed access token does not rotate, so this is a health
+// check rather than a token exchange.
 func handleAuthRefresh(raw []byte) ([]byte, error) {
 	var req rpcAuthRefreshRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
@@ -359,22 +362,24 @@ func handleAuthRefresh(raw []byte) ([]byte, error) {
 	}
 	cred, errCred := resolveCredential(req.StorageJSON, req.Attributes, req.Metadata)
 	if errCred != nil {
-		return errorEnvelope("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), http.StatusUnauthorized), nil
+		return rpc.Fail("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), rpc.WithStatus(http.StatusUnauthorized)), nil
 	}
-	h := newHost(req.HostCallbackID)
-	cfg := currentSettings()
-	info, errInfo := fetchAccountInfo(context.Background(), h, cfg, cred)
+	info, errInfo := fetchAccountInfo(context.Background(), host.New(req.HostCallbackID), currentSettings(), cred)
 	if errInfo != nil {
 		status := http.StatusBadGateway
 		var failure *zedFailure
 		if errors.As(errInfo, &failure) {
 			status = failure.Status
 		}
-		return errorEnvelope("refresh_failed", "Zed auth "+req.AuthID+": "+errInfo.Error(), status), nil
+		return rpc.Fail("refresh_failed", "Zed auth "+req.AuthID+": "+errInfo.Error(), rpc.WithStatus(status)), nil
 	}
-	file, errFile := authFileFromStorage(req.StorageJSON, cred)
-	if errFile != nil {
-		return errorEnvelope("refresh_failed", errFile.Error(), http.StatusInternalServerError), nil
+	file := fileFromCredential(cred)
+	if isZedFile(req.StorageJSON) {
+		parsed, errParse := parseAuthFile(req.StorageJSON)
+		if errParse != nil {
+			return rpc.Fail("refresh_failed", errParse.Error(), rpc.WithStatus(http.StatusInternalServerError)), nil
+		}
+		file = parsed
 	}
 	file.Username = info.Username
 	file.Plan = info.Plan
@@ -388,16 +393,15 @@ func handleAuthRefresh(raw []byte) ([]byte, error) {
 	if !strings.HasSuffix(base, ".json") {
 		base = fileNameFor("", file)
 	}
-	return okEnvelope(pluginapi.AuthRefreshResponse{
+	return rpc.OK(pluginapi.AuthRefreshResponse{
 		Auth:             file.authData(base, storage),
 		NextRefreshAfter: time.Now().Add(accessTokenExpiry),
 	})
 }
 
-func authFileFromStorage(storageJSON []byte, cred credential) (authFile, error) {
-	if len(bytes.TrimSpace(storageJSON)) > 0 && isZedFile(storageJSON) {
-		return parseAuthFile(storageJSON)
-	}
+// fileFromCredential is a new auth file for an account known only by its
+// credential.
+func fileFromCredential(cred credential) authFile {
 	return authFile{
 		UserID:         cred.UserID,
 		AccessToken:    cred.AccessToken,
@@ -407,7 +411,23 @@ func authFileFromStorage(storageJSON []byte, cred credential) (authFile, error) 
 		Plan:           cred.Plan,
 		AddedAt:        time.Now().UTC().Format(time.RFC3339),
 		extra:          make(map[string]json.RawMessage),
-	}, nil
+	}
+}
+
+var (
+	// jwtPattern matches a Zed LLM JWT, which is a long three-part base64
+	// string beginning with an HS256 header.
+	jwtPattern = regexp.MustCompile(`eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}`)
+	// secretFieldPattern matches the JSON fields that carry an access token
+	// or the dashboard cookie.
+	secretFieldPattern = regexp.MustCompile(`"(access_token|dashboard_cookie)"\s*:\s*"[^"]{16,}"`)
+)
+
+// redactSecrets removes Zed tokens and the dashboard cookie from text the
+// plugin returns or logs; upstream error bodies may echo them back.
+func redactSecrets(text string) string {
+	text = jwtPattern.ReplaceAllString(text, "eyJ[redacted]")
+	return secretFieldPattern.ReplaceAllString(text, `"$1":"[redacted]"`)
 }
 
 // modelCache keeps the last catalog per account for a few minutes. The host

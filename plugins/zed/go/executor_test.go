@@ -1,13 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
 )
@@ -41,18 +39,9 @@ func base64Raw(raw []byte) string {
 	return out.String()
 }
 
-func installZedHost(t *testing.T) *fakeHost {
+func installZedHost(t *testing.T) {
 	t.Helper()
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return map[string]any{"operation_id": "op-1"}, nil
-	})
-	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
-		var req hostHTTPRequest
-		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
-			return nil, errUnmarshal
-		}
+	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
@@ -75,7 +64,6 @@ func installZedHost(t *testing.T) *fakeHost {
 		}
 		return pluginapi.HTTPResponse{StatusCode: 404, Body: []byte("unexpected " + req.URL)}, nil
 	})
-	return fake
 }
 
 func TestExecutorExecuteClaude(t *testing.T) {
@@ -109,14 +97,7 @@ func TestExecutorExecuteClaude(t *testing.T) {
 }
 
 func TestExecutorPlanRestrictionIsNotAuthFailure(t *testing.T) {
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return map[string]any{"operation_id": "op"}, nil
-	})
-	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
-		var req hostHTTPRequest
-		_ = json.Unmarshal(payload, &req)
+	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
@@ -147,16 +128,9 @@ func TestExecutorPlanRestrictionIsNotAuthFailure(t *testing.T) {
 	}
 }
 
-func claudeModelHost(t *testing.T, completions string) *fakeHost {
+func claudeModelHost(t *testing.T, completions string) {
 	t.Helper()
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return map[string]any{"operation_id": "op"}, nil
-	})
-	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
-		var req hostHTTPRequest
-		_ = json.Unmarshal(payload, &req)
+	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
@@ -167,7 +141,6 @@ func claudeModelHost(t *testing.T, completions string) *fakeHost {
 		}
 		return pluginapi.HTTPResponse{StatusCode: 404}, nil
 	})
-	return fake
 }
 
 func TestExecutorRejectsFailedNonStreamingGeneration(t *testing.T) {
@@ -204,14 +177,7 @@ func TestExecutorRejectsTruncatedNonStreamingGeneration(t *testing.T) {
 }
 
 func TestExecutorCatalogFailureKeepsStatus(t *testing.T) {
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return map[string]any{"operation_id": "op"}, nil
-	})
-	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
-		var req hostHTTPRequest
-		_ = json.Unmarshal(payload, &req)
+	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil
@@ -237,15 +203,9 @@ func TestExecutorCatalogFailureKeepsStatus(t *testing.T) {
 }
 
 func TestExecutorRevokedLoginIsUnauthorized(t *testing.T) {
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return map[string]any{"operation_id": "op"}, nil
-	})
-	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
+	fake := installHost(t)
 	mints := 0
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
-		var req hostHTTPRequest
-		_ = json.Unmarshal(payload, &req)
+	handleHTTP(fake, func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			// The first JWT serves the catalog; the login is revoked before
@@ -276,15 +236,9 @@ func TestExecutorRevokedLoginIsUnauthorized(t *testing.T) {
 }
 
 func TestExecutorAppliesThinkingSuffix(t *testing.T) {
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return map[string]any{"operation_id": "op"}, nil
-	})
-	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
+	fake := installHost(t)
 	var completions gjson.Result
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
-		var req hostHTTPRequest
-		_ = json.Unmarshal(payload, &req)
+	handleHTTP(fake, func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		switch {
 		case strings.HasSuffix(req.URL, "/client/llm_tokens"):
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{"token": fakeJWTExpiring(t, time.Hour)})}, nil

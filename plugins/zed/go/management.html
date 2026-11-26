@@ -6,320 +6,140 @@
     <meta name="referrer" content="no-referrer" />
     <title>Zed</title>
     <style>
-      :root {
-        --bg: #faf9f5;
-        --card: #ffffff;
-        --subtle: #f0eee8;
-        --text: #2d2a26;
-        --muted: #6d6760;
-        --border: #e3e1db;
-        --accent: #2563eb;
-        --accent-text: #ffffff;
-        --ok: #067647;
-        --bad: #b42318;
-        --warn: #92400e;
-        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-        --sans:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu,
-          sans-serif;
-      }
-      [data-theme="dark"] {
-        --bg: #151412;
-        --card: #1d1b18;
-        --subtle: #262320;
-        --text: #ece9e4;
-        --muted: #a8a29a;
-        --border: #38342e;
-        --accent: #7aa2f7;
-        --accent-text: #10131a;
-        --ok: #6ee7b7;
-        --bad: #fca5a5;
-        --warn: #fcd34d;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--text);
-        font-family: var(--sans);
-        font-size: 14px;
-        line-height: 1.45;
-      }
-      .wrap {
-        max-width: 1060px;
-        margin: 0 auto;
-        padding: 28px 22px 60px;
-      }
-      header {
+      .stack {
         display: flex;
-        align-items: baseline;
+        flex-direction: column;
         gap: 12px;
-        margin-bottom: 6px;
       }
-      h1 {
-        font-size: 22px;
+      .card h2 {
         margin: 0;
-        letter-spacing: -0.01em;
-      }
-      .sub {
-        color: var(--muted);
-        margin-bottom: 22px;
-      }
-      nav {
-        display: flex;
-        gap: 4px;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 22px;
-      }
-      nav button {
-        background: none;
-        border: 0;
-        border-bottom: 2px solid transparent;
-        color: var(--muted);
-        padding: 9px 12px;
-        font: inherit;
-        cursor: pointer;
-      }
-      nav button.active {
-        color: var(--text);
-        border-bottom-color: var(--accent);
-      }
-      .card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 18px;
-        margin-bottom: 14px;
-      }
-      .row {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: wrap;
-      }
-      .grow {
-        flex: 1;
-      }
-      .muted {
-        color: var(--muted);
-      }
-      .mono {
-        font-family: var(--mono);
-        font-size: 12.5px;
-      }
-      .badge {
-        display: inline-block;
-        padding: 1px 7px;
-        border-radius: 999px;
-        border: 1px solid var(--border);
-        background: var(--subtle);
-        font-size: 12px;
-      }
-      .badge.ok {
-        color: var(--ok);
-        border-color: color-mix(in srgb, var(--ok) 40%, transparent);
-      }
-      .badge.bad {
-        color: var(--bad);
-        border-color: color-mix(in srgb, var(--bad) 40%, transparent);
-      }
-      button.primary {
-        background: var(--accent);
-        color: var(--accent-text);
-        border: 0;
-        border-radius: 7px;
-        padding: 8px 14px;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      button.ghost {
-        background: transparent;
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 7px;
-        padding: 7px 12px;
-        font: inherit;
-        cursor: pointer;
-      }
-      button:disabled {
-        opacity: 0.55;
-        cursor: default;
-      }
-      input[type="text"],
-      input[type="password"],
-      textarea {
-        width: 100%;
-        background: var(--bg);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 7px;
-        padding: 8px 10px;
-        font: inherit;
-      }
-      textarea {
-        font-family: var(--mono);
-        font-size: 12.5px;
-        min-height: 62px;
-        resize: vertical;
-      }
-      label.field {
-        display: block;
-        margin: 12px 0 5px;
-        color: var(--muted);
         font-size: 13px;
+        font-weight: 600;
       }
-      table {
-        width: 100%;
-        border-collapse: collapse;
+      .account .title {
+        flex: 1;
+        min-width: 0;
+        font-weight: 600;
+        overflow-wrap: anywhere;
       }
-      th,
-      td {
-        text-align: left;
-        padding: 8px 8px;
-        border-bottom: 1px solid var(--border);
-      }
-      th {
-        color: var(--muted);
-        font-weight: 500;
-        font-size: 12.5px;
-      }
-      tr:last-child td {
-        border-bottom: 0;
-      }
-      .switch {
+      .toggle {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
+        gap: 8px;
         cursor: pointer;
       }
-      .switch input {
-        width: 15px;
-        height: 15px;
-      }
-      .empty {
-        color: var(--muted);
-        padding: 12px 0;
-      }
-      #toast {
-        position: fixed;
-        right: 18px;
-        bottom: 18px;
-        max-width: 420px;
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-left: 3px solid var(--accent);
-        border-radius: 8px;
-        padding: 11px 14px;
-        box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
-        display: none;
-      }
-      #toast.error {
-        border-left-color: var(--bad);
-      }
-      #toast.ok {
-        border-left-color: var(--ok);
-      }
       .login-url {
-        word-break: break-all;
-        background: var(--subtle);
-        border-radius: 7px;
+        margin: 0;
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        background: var(--bg-subtle);
+        overflow-wrap: anywhere;
+      }
+      #callback-url,
+      #dashboard-cookie {
+        min-height: 62px;
+        font-family: var(--font-mono);
+      }
+      details > summary {
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+      details[open] > summary {
+        margin-bottom: 10px;
+      }
+      .sample {
+        margin: 8px 0;
         padding: 10px;
-        margin-top: 8px;
+        border-radius: var(--radius-sm);
+        background: var(--bg-subtle);
+        overflow: auto;
       }
-      .stats {
-        display: flex;
-        gap: 26px;
-        flex-wrap: wrap;
-        margin-top: 4px;
-      }
-      .stat b {
-        display: block;
-        font-size: 18px;
-        font-weight: 600;
-      }
-      .stat span {
-        color: var(--muted);
-        font-size: 12.5px;
-      }
-      .hint {
-        color: var(--muted);
-        font-size: 12.5px;
-        margin-top: 8px;
-      }
-      .toolbar {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        margin-bottom: 12px;
-      }
-      .toolbar input {
+      #model-search {
         max-width: 260px;
       }
-      code {
-        font-family: var(--mono);
-        background: var(--subtle);
-        border-radius: 4px;
-        padding: 1px 5px;
+      .table td .muted {
+        font-size: 12px;
       }
-      a {
-        color: var(--accent);
+      .table .switch {
+        display: block;
+      }
+      .toast {
+        position: fixed;
+        z-index: 4;
+        right: 18px;
+        bottom: 18px;
+        max-width: min(420px, calc(100% - 36px));
+        box-shadow: var(--shadow-pop);
       }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <header>
+    <main class="page">
+      <div class="head">
         <h1>Zed</h1>
-        <span class="badge" id="planBadge" hidden></span>
-      </header>
-      <div class="sub">Zed-hosted models through CLIProxyAPI.</div>
+        <span class="spacer"></span>
+        <div class="seg" role="group" aria-label="Section">
+          <button type="button" data-tab="accounts" aria-pressed="true">
+            Accounts</button
+          ><button type="button" data-tab="models" aria-pressed="false">
+            Models</button
+          ><button type="button" data-tab="settings" aria-pressed="false">
+            Settings
+          </button>
+        </div>
+      </div>
+      <form class="auth" id="auth" hidden>
+        <label for="auth-key">Management key</label
+        ><input
+          id="auth-key"
+          type="password"
+          autocomplete="current-password"
+          required
+        /><button class="btn primary" type="submit">Continue</button>
+        <p class="error" id="auth-error" role="alert" hidden></p>
+      </form>
 
-      <nav>
-        <button data-tab="accounts" class="active">Accounts</button>
-        <button data-tab="models">Models</button>
-        <button data-tab="settings">Settings</button>
-      </nav>
+      <section id="tab-accounts" class="stack">
+        <div id="accounts" class="stack" aria-live="polite"></div>
 
-      <section id="tab-accounts">
-        <div id="accounts"></div>
-
-        <div class="card">
-          <div class="row"><b class="grow">Add an account</b></div>
-          <div class="hint">
-            Click Start, then approve the sign-in in the browser. If CLIProxyAPI
-            runs on another machine, the final <code>127.0.0.1</code> page will
-            not load there: copy its address bar into the box below.
+        <div class="card stack">
+          <h2>Add an account</h2>
+          <div class="row">
+            <button class="btn primary" type="button" id="start-login">
+              Start sign-in</button
+            ><button class="btn" type="button" id="open-login" hidden>
+              Open page
+            </button>
+            <span class="hint" id="login-expiry"></span>
           </div>
-          <div class="row" style="margin-top: 12px">
-            <button class="primary" id="startLogin">Start sign-in</button>
-            <button class="ghost" id="openLogin" hidden>Open page</button>
-            <span class="muted mono" id="loginState"></span>
+          <p id="login-url" class="login-url mono" hidden></p>
+          <div class="field">
+            <label for="callback-url">Callback URL</label
+            ><textarea
+              id="callback-url"
+              spellcheck="false"
+              placeholder="http://127.0.0.1:41234/?user_id=...&access_token=..."
+            ></textarea>
+            <span class="hint"
+              >If CLIProxyAPI runs on another machine, the final
+              <code>127.0.0.1</code> page will not load: paste its address
+              here.</span
+            >
           </div>
-          <div id="loginURL" class="login-url mono" hidden></div>
-          <label class="field" for="callbackURL">Callback URL</label>
-          <textarea
-            id="callbackURL"
-            placeholder="http://127.0.0.1:41234/?user_id=...&access_token=..."
-          ></textarea>
-          <div class="row" style="margin-top: 10px">
-            <button class="ghost" id="completeLogin" disabled>
+          <div class="row">
+            <button class="btn" type="button" id="complete-login" disabled>
               Finish sign-in
             </button>
           </div>
         </div>
 
         <details class="card">
-          <summary class="muted">
-            Add an account by importing its auth file
-          </summary>
-          <div class="hint" style="margin-top: 10px">
-            Put a file of type <code>zed</code> in the auth directory, or upload
-            it on the Auth Files page:
-          </div>
-          <pre class="mono" style="overflow: auto">
+          <summary>Add an account by importing its auth file</summary>
+          <span class="hint"
+            >Put a file of type <code>zed</code> in the auth directory, or
+            upload it on the Auth Files page:</span
+          >
+          <pre class="sample mono">
 {
   "type": "zed",
   "user_id": "12345",
@@ -328,373 +148,227 @@
   "organization_id": "org_…"
 }</pre
           >
-          <div class="hint">
-            The token is the one Zed receives at sign-in;
+          <span class="hint"
+            >The token is the one Zed receives at sign-in;
             <code>system_id</code> is optional and derived from the token when
-            absent.
-          </div>
+            absent.</span
+          >
         </details>
       </section>
 
-      <section id="tab-models" hidden>
-        <div class="card">
-          <div class="toolbar">
-            <input id="modelSearch" type="text" placeholder="Filter models" />
-            <span class="muted grow" id="modelSummary"></span>
-            <button class="ghost" id="refreshModels">Refresh list</button>
-          </div>
-          <div id="models"></div>
+      <section id="tab-models" class="card stack" hidden>
+        <div class="row">
+          <input
+            id="model-search"
+            type="search"
+            placeholder="Filter models"
+            aria-label="Filter models"
+          />
+          <span class="muted spacer" id="model-summary"></span>
+          <button class="btn" type="button" id="refresh-models">
+            Refresh list
+          </button>
         </div>
+        <div id="models"></div>
       </section>
 
-      <section id="tab-settings" hidden>
-        <div class="card">
-          <div class="row">
-            <b class="grow">Plugin settings</b
-            ><button class="primary" id="saveSettings">Save</button>
-          </div>
-          <label class="field" for="modelPrefix">Model prefix</label>
-          <input id="modelPrefix" type="text" placeholder="zed" />
-          <label class="row" style="margin-top: 12px"
-            ><span class="switch"
-              ><input id="disablePrefix" type="checkbox" /> Serve bare model
-              IDs</span
-            ></label
+      <form id="tab-settings" class="card stack" hidden>
+        <div class="row">
+          <h2 class="spacer">Plugin settings</h2>
+          <button class="btn primary" type="submit" id="save-settings">
+            Save
+          </button>
+        </div>
+        <div class="field">
+          <label for="model-prefix">Model prefix</label
+          ><input id="model-prefix" type="text" placeholder="zed" />
+        </div>
+        <div class="field">
+          <label class="toggle"
+            ><button
+              class="switch"
+              type="button"
+              role="switch"
+              id="disable-prefix"
+              aria-checked="false"
+            ></button
+            >Serve bare model IDs</label
           >
-          <div class="hint">
-            Bare IDs share routing with every other provider serving the same
-            ID.
-          </div>
-          <label class="field" for="baseURL">Cloud base URL</label>
-          <input id="baseURL" type="text" placeholder="https://cloud.zed.dev" />
-          <label class="field" for="signInURL">Sign-in page</label>
-          <input
-            id="signInURL"
+          <span class="hint"
+            >Bare IDs share routing with every other provider serving the same
+            ID.</span
+          >
+        </div>
+        <div class="field">
+          <label for="base-url">Cloud base URL</label
+          ><input
+            id="base-url"
+            type="text"
+            placeholder="https://cloud.zed.dev"
+          />
+        </div>
+        <div class="field">
+          <label for="sign-in-url">Sign-in page</label
+          ><input
+            id="sign-in-url"
             type="text"
             placeholder="https://zed.dev/native_app_signin"
           />
-          <label class="field" for="userAgent">User-Agent</label>
-          <input
-            id="userAgent"
+        </div>
+        <div class="field">
+          <label for="user-agent">User-Agent</label
+          ><input
+            id="user-agent"
             type="text"
             placeholder="Zed/1.26.2 (linux; x86_64)"
           />
-          <label class="field" for="dashboardCookie"
-            >Dashboard cookie (optional)</label
-          >
-          <textarea
-            id="dashboardCookie"
+        </div>
+        <div class="field">
+          <label for="dashboard-account">Dashboard account (optional)</label
+          ><input
+            id="dashboard-account"
+            type="text"
+            placeholder="Zed username"
+          />
+        </div>
+        <div class="field">
+          <label for="dashboard-cookie">Dashboard cookie (optional)</label
+          ><textarea
+            id="dashboard-cookie"
+            spellcheck="false"
             placeholder="Cookie header from a signed-in dashboard.zed.dev"
           ></textarea>
-          <div class="hint">
-            Zed exposes plan usage only to the dashboard. With this cookie the
-            Plugin tab shows monthly spend and limit; it is never sent to the
-            LLM gateway.
-          </div>
+          <span class="hint"
+            >Zed exposes plan usage only to the dashboard. With this cookie and
+            the account it belongs to, the Plugin tab shows that account's
+            monthly spend and limit; the cookie is never sent to the LLM
+            gateway.</span
+          >
         </div>
-      </section>
-    </div>
-    <div id="toast"></div>
+      </form>
+    </main>
+    <div id="toast" class="notice toast" role="status" hidden></div>
 
     <script>
       "use strict";
-      const PROVIDER = "zed";
-      const BASE = location.pathname.replace(
-        /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
-        "",
-      );
-      const API = BASE + "/v0/management/" + PROVIDER;
-      const CPA = BASE + "/v8/management";
-      const PLUGIN_CONFIG = "/config/plugins/configs/" + PROVIDER;
-      const SESSION_KEY = "zed.management-key";
-      const REJECTED_KEY = "zed.rejected-mc-auth";
-      const MC_AUTH_KEY = "cli-proxy-auth";
-      const MC_THEME_KEY = "cli-proxy-theme";
+      const { $, h, AuthError, auth, api, request, paths } = kit;
+      const CONFIG = paths.pluginConfig;
+      const TABS = ["accounts", "models", "settings"];
 
-      const $ = (id) => document.getElementById(id);
       const state = {
         accounts: [],
         models: [],
+        prefix: "",
         config: {},
         search: "",
         login: null,
+        loginTimer: null,
       };
 
-      function storageGet(storage, key) {
-        try {
-          return storage.getItem(key);
-        } catch (_) {
-          return null;
-        }
-      }
-      function storageSet(storage, key, value) {
-        try {
-          storage.setItem(key, value);
-        } catch (_) {}
-      }
-      function storageRemove(storage, key) {
-        try {
-          storage.removeItem(key);
-        } catch (_) {}
-      }
-
-      function managementCenterTheme() {
-        try {
-          if (window.parent !== window) {
-            return (
-              window.parent.document.documentElement.getAttribute(
-                "data-theme",
-              ) || "light"
-            );
-          }
-        } catch (_) {}
-        let saved = "auto";
-        try {
-          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
-          if (persisted && persisted.state && persisted.state.theme)
-            saved = persisted.state.theme;
-        } catch (_) {}
-        if (saved === "auto")
-          return matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "white";
-        return saved;
-      }
-      function applyTheme() {
-        document.documentElement.setAttribute(
-          "data-theme",
-          managementCenterTheme(),
-        );
-      }
-      applyTheme();
-      matchMedia("(prefers-color-scheme: dark)").addEventListener(
-        "change",
-        applyTheme,
-      );
-      try {
-        if (window.parent !== window) {
-          new MutationObserver(applyTheme).observe(
-            window.parent.document.documentElement,
-            {
-              attributes: true,
-              attributeFilter: ["data-theme"],
-            },
-          );
-        }
-      } catch (_) {}
-
-      function deobfuscate(payload) {
-        const prefix = "enc::v1::";
-        if (!payload.startsWith(prefix)) return payload;
-        const binary = atob(payload.slice(prefix.length));
-        const secret = new TextEncoder().encode(
-          "cli-proxy-api-webui::secure-storage|" +
-            location.host +
-            "|" +
-            navigator.userAgent,
-        );
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++)
-          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
-        return new TextDecoder().decode(bytes);
-      }
-
-      function managementCenterKey() {
-        const raw = storageGet(localStorage, MC_AUTH_KEY);
-        if (!raw || storageGet(sessionStorage, REJECTED_KEY) === raw) return "";
-        try {
-          const persisted = JSON.parse(deobfuscate(raw));
-          const key =
-            persisted && persisted.state && persisted.state.managementKey;
-          return typeof key === "string" ? key.trim() : "";
-        } catch (_) {
-          return "";
-        }
-      }
-
-      const auth = { key: "", source: "" };
-      function resolveKey() {
-        const typed = storageGet(sessionStorage, SESSION_KEY);
-        if (typed) return { key: typed, source: "session" };
-        const shared = managementCenterKey();
-        if (shared) return { key: shared, source: "mc" };
-        return { key: "", source: "" };
-      }
-      function forgetKey() {
-        if (auth.source === "session")
-          storageRemove(sessionStorage, SESSION_KEY);
-        if (auth.source === "mc")
-          storageSet(
-            sessionStorage,
-            REJECTED_KEY,
-            storageGet(localStorage, MC_AUTH_KEY) || "",
-          );
-        auth.key = "";
-        auth.source = "";
-      }
-
-      class AuthError extends Error {}
-      async function request(base, method, path, body, missing) {
-        if (!auth.key) throw new AuthError("No management key.");
-        const headers = { Authorization: "Bearer " + auth.key };
-        if (body !== undefined) headers["Content-Type"] = "application/json";
-        let response;
-        try {
-          response = await fetch(base + path, {
-            method,
-            headers,
-            body: body === undefined ? undefined : JSON.stringify(body),
-            cache: "no-store",
-            credentials: "omit",
-          });
-        } catch (err) {
-          throw new Error("CLIProxyAPI did not answer: " + err.message);
-        }
-        let data = null;
-        try {
-          data = await response.json();
-        } catch (_) {}
-        const message =
-          data && typeof data.error === "string" ? data.error : "";
-        if (response.status === 401) {
-          forgetKey();
-          showAuthPrompt("Management key rejected.");
-          throw new AuthError(message || "Management key rejected.");
-        }
-        if (response.status === 404 && missing !== undefined) return missing;
-        if (!response.ok) throw new Error(message || "HTTP " + response.status);
-        return data;
-      }
-      const api = (method, path, body, missing) =>
-        request(API, method, path, body, missing);
-      const cpa = (method, path, body, missing) =>
-        request(CPA, method, path, body, missing);
-
-      function toast(message, kind) {
+      let toastTimer = null;
+      function toast(message, error = false) {
         const el = $("toast");
         el.textContent = message;
-        el.className = kind || "";
-        el.style.display = "block";
-        clearTimeout(toast.timer);
-        toast.timer = setTimeout(() => {
-          el.style.display = "none";
-        }, 5000);
+        el.classList.toggle("error", error);
+        el.hidden = false;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => (el.hidden = true), 5000);
+      }
+      // fail reports an error; a rejected key is already reported by the
+      // key prompt.
+      function fail(err) {
+        if (!(err instanceof AuthError)) toast(err.message, true);
       }
 
-      function showAuthPrompt(message) {
-        const panel = document.createElement("div");
-        panel.className = "card";
-        panel.innerHTML =
-          '<div class="row"><b class="grow">Management key</b></div><div class="hint"></div>' +
-          '<input type="password" id="typedKey" placeholder="Management key" style="margin-top:10px" />' +
-          '<div class="row" style="margin-top:10px"><button class="primary" id="useKey">Use key</button></div>';
-        panel.querySelector(".hint").textContent =
-          message || "Enter the management key to continue.";
-        const host = $("tab-accounts");
-        host.prepend(panel);
-        $("useKey").onclick = () => {
-          const key = $("typedKey").value.trim();
-          if (!key) return;
-          storageSet(sessionStorage, SESSION_KEY, key);
-          auth.key = key;
-          auth.source = "session";
-          panel.remove();
-          refreshAll();
-        };
+      function setSwitch(button, on) {
+        button.setAttribute("aria-checked", on ? "true" : "false");
       }
-
-      function badge(text, kind) {
-        const span = document.createElement("span");
-        span.className = "badge " + (kind || "");
-        span.textContent = text;
-        return span;
+      function switchOn(button) {
+        return button.getAttribute("aria-checked") === "true";
+      }
+      // toggleSwitch flips a switch at once and back again when save fails.
+      async function toggleSwitch(button, save) {
+        const on = !switchOn(button);
+        setSwitch(button, on);
+        button.disabled = true;
+        try {
+          await save(on);
+        } catch (err) {
+          setSwitch(button, !on);
+          fail(err);
+        }
+        button.disabled = false;
       }
 
       function renderAccounts() {
         const host = $("accounts");
-        host.textContent = "";
         if (!state.accounts.length) {
-          host.innerHTML =
-            '<div class="card empty">No Zed account yet. Add one below, or upload an auth file.</div>';
-          $("planBadge").hidden = true;
-          return;
-        }
-        const account = state.accounts[0];
-        if (account.plan_label) {
-          $("planBadge").hidden = false;
-          $("planBadge").textContent = account.plan_label;
-        }
-        for (const entry of state.accounts) {
-          const card = document.createElement("div");
-          card.className = "card";
-          const row = document.createElement("div");
-          row.className = "row";
-          const title = document.createElement("b");
-          title.className = "grow";
-          title.textContent = entry.label || entry.username || entry.file_name;
-          row.appendChild(title);
-          row.appendChild(badge(entry.plan_label || entry.plan || "Zed", "ok"));
-          row.appendChild(
-            badge(
-              entry.disabled ? "disabled" : "active",
-              entry.disabled ? "bad" : "ok",
+          host.replaceChildren(
+            h(
+              "div",
+              { class: "empty" },
+              "No Zed account yet. Add one below, or upload an auth file.",
             ),
           );
-          card.appendChild(row);
-          const meta = document.createElement("div");
-          meta.className = "muted mono";
-          meta.style.marginTop = "6px";
-          meta.textContent = [
-            entry.username ? "@" + entry.username : "",
-            entry.user_id ? "id " + entry.user_id : "",
-            entry.file_name,
-          ]
-            .filter(Boolean)
-            .join(" · ");
-          card.appendChild(meta);
-          const actions = document.createElement("div");
-          actions.className = "row";
-          actions.style.marginTop = "12px";
-          const toggleLabel = document.createElement("label");
-          toggleLabel.className = "switch";
-          const toggle = document.createElement("input");
-          toggle.type = "checkbox";
-          toggle.checked = !entry.disabled;
-          toggle.onchange = async () => {
-            toggle.disabled = true;
-            try {
-              await api("PATCH", "/accounts", {
-                id: entry.auth_index,
-                disabled: !toggle.checked,
-              });
-              toast(
-                "Account " + (toggle.checked ? "enabled" : "disabled"),
-                "ok",
-              );
-              await loadAccounts();
-            } catch (err) {
-              toggle.checked = !toggle.checked;
-              toast(err.message, "error");
-            }
-            toggle.disabled = false;
-          };
-          toggleLabel.appendChild(toggle);
-          toggleLabel.appendChild(document.createTextNode("Enabled"));
-          actions.appendChild(toggleLabel);
-          card.appendChild(actions);
-          host.appendChild(card);
+          return;
         }
+        host.replaceChildren(
+          ...state.accounts.map((entry) => {
+            const name = entry.label || entry.username || entry.file_name;
+            const toggle = h("button", {
+              class: "switch",
+              type: "button",
+              role: "switch",
+              "aria-checked": entry.disabled ? "false" : "true",
+              "aria-label": "Enable " + name,
+              onclick: () =>
+                toggleSwitch(toggle, async (on) => {
+                  await api("/accounts", {
+                    method: "PATCH",
+                    body: { id: entry.auth_index, disabled: !on },
+                  });
+                  toast(name + (on ? " enabled" : " disabled"));
+                  await loadAccounts();
+                }),
+            });
+            const plan = entry.plan_label || entry.plan;
+            return h(
+              "div",
+              { class: "card account stack" },
+              h(
+                "div",
+                { class: "row" },
+                h("span", { class: "title" }, name),
+                plan && h("span", { class: "badge ok" }, plan),
+                toggle,
+              ),
+              h(
+                "div",
+                { class: "muted mono" },
+                [
+                  entry.username ? "@" + entry.username : "",
+                  entry.user_id ? "id " + entry.user_id : "",
+                  entry.file_name,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              ),
+            );
+          }),
+        );
       }
 
       async function loadAccounts() {
-        const data = await api("GET", "/accounts");
-        state.accounts = (data && data.accounts) || [];
+        const data = await api("/accounts");
+        state.accounts = data?.accounts || [];
         renderAccounts();
       }
 
+      function thousands(tokens) {
+        return tokens ? Math.round(tokens / 1000) + "k" : "—";
+      }
+
       function renderModels() {
-        const host = $("models");
-        host.textContent = "";
         const query = state.search.trim().toLowerCase();
         const models = state.models.filter(
           (model) =>
@@ -702,65 +376,79 @@
             model.id.toLowerCase().includes(query) ||
             model.display_name.toLowerCase().includes(query),
         );
-        $("modelSummary").textContent =
+        $("model-summary").textContent =
           models.length +
           " of " +
           state.models.length +
           " models" +
           (state.prefix ? " · prefix " + state.prefix + "/" : " · bare IDs");
         if (!models.length) {
-          host.innerHTML =
-            '<div class="empty">No models. Add an account or refresh the list.</div>';
+          $("models").replaceChildren(
+            h(
+              "div",
+              { class: "empty" },
+              "No models. Add an account or refresh the list.",
+            ),
+          );
           return;
         }
-        const table = document.createElement("table");
-        table.innerHTML =
-          "<thead><tr><th>Model</th><th>Provider</th><th>Context</th><th>Output</th><th>Served</th></tr></thead>";
-        const body = document.createElement("tbody");
-        for (const model of models) {
-          const tr = document.createElement("tr");
-          const name = document.createElement("td");
-          const id = document.createElement("div");
-          id.className = "mono";
-          id.textContent = model.id;
-          const display = document.createElement("div");
-          display.className = "muted";
-          display.textContent =
-            model.display_name + (model.thinking ? " · reasoning" : "");
-          name.appendChild(id);
-          name.appendChild(display);
-          tr.appendChild(name);
-          const provider = document.createElement("td");
-          provider.textContent = model.provider;
-          tr.appendChild(provider);
-          const context = document.createElement("td");
-          context.textContent = model.context_length
-            ? Math.round(model.context_length / 1000) + "k"
-            : "—";
-          tr.appendChild(context);
-          const output = document.createElement("td");
-          output.textContent = model.output_tokens
-            ? Math.round(model.output_tokens / 1000) + "k"
-            : "—";
-          tr.appendChild(output);
-          const served = document.createElement("td");
-          const label = document.createElement("label");
-          label.className = "switch";
-          const toggle = document.createElement("input");
-          toggle.type = "checkbox";
-          toggle.checked = !model.disabled;
-          toggle.onchange = () => toggleModel(model, toggle);
-          label.appendChild(toggle);
-          served.appendChild(label);
-          tr.appendChild(served);
-          body.appendChild(tr);
-        }
-        table.appendChild(body);
-        host.appendChild(table);
+        $("models").replaceChildren(
+          h(
+            "table",
+            { class: "table" },
+            h(
+              "thead",
+              {},
+              h(
+                "tr",
+                {},
+                h("th", {}, "Model"),
+                h("th", {}, "Provider"),
+                h("th", { class: "num" }, "Context"),
+                h("th", { class: "num" }, "Output"),
+                h("th", {}, "Served"),
+              ),
+            ),
+            h(
+              "tbody",
+              {},
+              models.map((model) => {
+                const toggle = h("button", {
+                  class: "switch",
+                  type: "button",
+                  role: "switch",
+                  "aria-checked": model.disabled ? "false" : "true",
+                  "aria-label": "Serve " + model.id,
+                  onclick: () =>
+                    toggleSwitch(toggle, (on) => setModelServed(model, on)),
+                });
+                return h(
+                  "tr",
+                  {},
+                  h(
+                    "td",
+                    {},
+                    h("div", { class: "mono" }, model.id),
+                    h(
+                      "div",
+                      { class: "muted" },
+                      model.display_name +
+                        (model.thinking ? " · reasoning" : ""),
+                    ),
+                  ),
+                  h("td", {}, model.provider),
+                  h("td", { class: "num" }, thousands(model.context_length)),
+                  h("td", { class: "num" }, thousands(model.output_tokens)),
+                  h("td", {}, toggle),
+                );
+              }),
+            ),
+          ),
+        );
       }
 
       function configList(key) {
-        const value = state.config && state.config[key];
+        const value = state.config?.[key];
         return Array.isArray(value)
           ? value
               .filter((item) => typeof item === "string" && item.trim())
@@ -769,108 +457,108 @@
       }
 
       async function saveConfig(patch) {
-        await cpa("PATCH", PLUGIN_CONFIG, patch);
-        state.config = Object.assign({}, state.config, patch);
+        await request(CONFIG, { method: "PATCH", body: patch });
+        state.config = { ...state.config, ...patch };
         // The plugin re-registers its models after a config save.
         setTimeout(() => loadModels().catch(() => {}), 800);
       }
 
-      async function toggleModel(model, input) {
-        input.disabled = true;
+      async function setModelServed(model, served) {
         const disabled = configList("disabled_models").filter(
           (id) => id.toLowerCase() !== model.upstream_id.toLowerCase(),
         );
-        if (!input.checked) disabled.push(model.upstream_id);
-        try {
-          await saveConfig({ disabled_models: disabled });
-          model.disabled = !input.checked;
-          toast(model.id + (input.checked ? " enabled" : " disabled"), "ok");
-          renderModels();
-        } catch (err) {
-          input.checked = !input.checked;
-          toast(err.message, "error");
-        }
-        input.disabled = false;
+        if (!served) disabled.push(model.upstream_id);
+        await saveConfig({ disabled_models: disabled });
+        model.disabled = !served;
+        toast(model.id + (served ? " enabled" : " disabled"));
       }
 
       async function loadModels() {
-        const data = await api("GET", "/models");
-        state.models = (data && data.models) || [];
-        state.prefix = (data && data.prefix) || "";
-        if (data && data.error) toast(data.error, "error");
-        state.config = (await cpa("GET", PLUGIN_CONFIG, undefined, {})) || {};
+        const data = await api("/models");
+        state.models = data?.models || [];
+        state.prefix = data?.prefix || "";
+        if (data?.error) toast(data.error, true);
+        state.config = (await request(CONFIG, { missing: {} })) || {};
         renderModels();
       }
 
       function fillSettings() {
         const cfg = state.config || {};
-        $("modelPrefix").value = cfg.model_prefix || "";
-        $("disablePrefix").checked = Boolean(cfg.disable_prefix);
-        $("baseURL").value = cfg.base_url || "";
-        $("signInURL").value = cfg.sign_in_url || "";
-        $("userAgent").value = cfg.user_agent || "";
-        $("dashboardAccount").value = cfg.dashboard_account || "";
-        $("dashboardCookie").value = cfg.dashboard_cookie || "";
+        $("model-prefix").value = cfg.model_prefix || "";
+        setSwitch($("disable-prefix"), Boolean(cfg.disable_prefix));
+        $("base-url").value = cfg.base_url || "";
+        $("sign-in-url").value = cfg.sign_in_url || "";
+        $("user-agent").value = cfg.user_agent || "";
+        $("dashboard-account").value = cfg.dashboard_account || "";
+        $("dashboard-cookie").value = cfg.dashboard_cookie || "";
       }
 
-      async function saveSettings() {
-        const patch = {
-          model_prefix: $("modelPrefix").value.trim(),
-          disable_prefix: $("disablePrefix").checked,
-          base_url: $("baseURL").value.trim(),
-          sign_in_url: $("signInURL").value.trim(),
-          user_agent: $("userAgent").value.trim(),
-          dashboard_account: $("dashboardAccount").value.trim(),
-          dashboard_cookie: $("dashboardCookie").value.trim(),
-        };
+      async function saveSettings(event) {
+        event.preventDefault();
+        $("save-settings").disabled = true;
         try {
-          await saveConfig(patch);
-          toast("Settings saved", "ok");
+          await saveConfig({
+            model_prefix: $("model-prefix").value.trim(),
+            disable_prefix: switchOn($("disable-prefix")),
+            base_url: $("base-url").value.trim(),
+            sign_in_url: $("sign-in-url").value.trim(),
+            user_agent: $("user-agent").value.trim(),
+            dashboard_account: $("dashboard-account").value.trim(),
+            dashboard_cookie: $("dashboard-cookie").value.trim(),
+          });
+          toast("Settings saved");
         } catch (err) {
-          toast(err.message, "error");
+          fail(err);
         }
+        $("save-settings").disabled = false;
       }
 
       function renderLogin() {
         const flow = state.login;
-        $("loginURL").hidden = !flow;
-        $("openLogin").hidden = !flow;
-        $("loginState").textContent = flow
-          ? "state " + flow.state.slice(0, 10) + "…"
+        $("login-url").hidden = !flow;
+        $("open-login").hidden = !flow;
+        $("complete-login").disabled = !flow;
+        $("login-url").textContent = flow ? flow.url : "";
+        $("login-expiry").textContent = flow
+          ? "Expires at " +
+            new Date(flow.expires_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
           : "";
-        if (flow) {
-          $("loginURL").textContent = flow.url;
-          $("openLogin").onclick = () =>
-            window.open(flow.url, "_blank", "noopener");
-        }
-        $("completeLogin").disabled = !flow;
       }
 
       async function startLogin() {
-        $("startLogin").disabled = true;
+        $("start-login").disabled = true;
         try {
-          const flow = await api("POST", "/login/start", {});
-          state.login = flow;
+          state.login = await api("/login/start", { method: "POST", body: {} });
           renderLogin();
-          window.open(flow.url, "_blank", "noopener");
-          toast(
-            "Approve the sign-in. If the browser cannot reach this host, paste the callback URL here.",
-            "ok",
-          );
+          window.open(state.login.url, "_blank", "noopener");
           pollLogin();
         } catch (err) {
-          toast(err.message, "error");
+          fail(err);
         }
-        $("startLogin").disabled = false;
+        $("start-login").disabled = false;
       }
 
       function stopLoginPoll() {
-        if (state.loginTimer) clearInterval(state.loginTimer);
+        clearInterval(state.loginTimer);
         state.loginTimer = null;
       }
 
+      async function signedIn(message) {
+        stopLoginPoll();
+        state.login = null;
+        $("callback-url").value = "";
+        renderLogin();
+        toast(message);
+        await loadAccounts();
+        await loadModels();
+      }
+
       // pollLogin finishes a sign-in whose callback reached the listener on
-      // this host; a remote browser's failed redirect is finished by paste.
+      // the CLIProxyAPI host; a remote browser's failed redirect is finished
+      // by pasting it.
       function pollLogin() {
         stopLoginPoll();
         if (!state.login) return;
@@ -880,81 +568,74 @@
             return;
           }
           try {
-            const result = await api("POST", "/login/finish", {
-              state: state.login.state,
+            const result = await api("/login/finish", {
+              method: "POST",
+              body: { state: state.login.state },
             });
-            if (result.status === "success") {
+            if (result.status === "success")
+              await signedIn("Signed in as " + (result.saved || "account"));
+            else if (result.status === "error") {
               stopLoginPoll();
               state.login = null;
               renderLogin();
-              toast("Signed in as " + (result.saved || "account"), "ok");
-              await loadAccounts();
-              await loadModels();
-            } else if (result.status === "error") {
-              stopLoginPoll();
-              state.login = null;
-              renderLogin();
-              toast(result.message || "Sign-in failed", "error");
+              toast(result.message || "Sign-in failed", true);
             }
           } catch (err) {
             stopLoginPoll();
-            toast(err.message, "error");
+            fail(err);
           }
         }, 2000);
       }
 
       async function completeLogin() {
         if (!state.login) return;
-        const callback = $("callbackURL").value.trim();
+        const callback = $("callback-url").value.trim();
         if (!callback) {
-          toast("Paste the callback URL first.", "error");
+          toast("Paste the callback URL first.", true);
+          $("callback-url").focus();
           return;
         }
-        $("completeLogin").disabled = true;
+        $("complete-login").disabled = true;
         // The poll would otherwise race this request to save the account.
         stopLoginPoll();
         try {
-          const result = await api("POST", "/login/complete", {
-            state: state.login.state,
-            callback_url: callback,
+          const result = await api("/login/complete", {
+            method: "POST",
+            body: { state: state.login.state, callback_url: callback },
           });
-          toast(result.message || "Signed in", "ok");
-          state.login = null;
-          $("callbackURL").value = "";
-          renderLogin();
-          await loadAccounts();
-          await loadModels();
+          await signedIn(result.message || "Signed in");
         } catch (err) {
-          toast(err.message, "error");
+          fail(err);
           pollLogin();
         }
-        $("completeLogin").disabled = false;
+        $("complete-login").disabled = !state.login;
       }
 
       // refreshModels reads every account's catalog again, which also makes
       // CLIProxyAPI register the new model lists.
       async function refreshModels() {
-        $("refreshModels").disabled = true;
+        $("refresh-models").disabled = true;
         try {
-          const result = await api("POST", "/models/refresh", {});
-          if (result && result.errors && result.errors.length)
-            toast(result.errors.join("; "), "error");
+          const result = await api("/models/refresh", {
+            method: "POST",
+            body: {},
+          });
+          if (result?.errors?.length) toast(result.errors.join("; "), true);
           await loadModels();
         } catch (err) {
-          toast(err.message, "error");
+          fail(err);
         }
-        $("refreshModels").disabled = false;
+        $("refresh-models").disabled = false;
       }
 
       function switchTab(name) {
-        for (const button of document.querySelectorAll("nav button")) {
-          button.classList.toggle("active", button.dataset.tab === name);
-        }
-        for (const id of ["accounts", "models", "settings"]) {
-          $("tab-" + id).hidden = id !== name;
-        }
-        if (name === "models" && !state.models.length)
-          loadModels().catch((err) => toast(err.message, "error"));
+        for (const button of document.querySelectorAll(".seg button"))
+          button.setAttribute(
+            "aria-pressed",
+            button.dataset.tab === name ? "true" : "false",
+          );
+        for (const id of TABS) $("tab-" + id).hidden = id !== name;
+        if (name === "models" && !state.models.length) loadModels().catch(fail);
         if (name === "settings") fillSettings();
       }
 
@@ -963,33 +644,28 @@
           await loadAccounts();
           if (!state.models.length) await loadModels();
         } catch (err) {
-          if (err instanceof AuthError) return;
-          toast(err.message, "error");
+          fail(err);
         }
       }
 
-      for (const button of document.querySelectorAll("nav button")) {
-        button.onclick = () => switchTab(button.dataset.tab);
-      }
-      $("startLogin").onclick = startLogin;
-      $("completeLogin").onclick = completeLogin;
-      $("refreshModels").onclick = refreshModels;
-      $("modelSearch").oninput = (event) => {
+      for (const button of document.querySelectorAll(".seg button"))
+        button.addEventListener("click", () => switchTab(button.dataset.tab));
+      $("start-login").addEventListener("click", startLogin);
+      $("open-login").addEventListener("click", () => {
+        if (state.login) window.open(state.login.url, "_blank", "noopener");
+      });
+      $("complete-login").addEventListener("click", completeLogin);
+      $("refresh-models").addEventListener("click", refreshModels);
+      $("model-search").addEventListener("input", (event) => {
         state.search = event.target.value;
         renderModels();
-      };
-      $("saveSettings").onclick = saveSettings;
-
-      const resolved = resolveKey();
-      auth.key = resolved.key;
-      auth.source = resolved.source;
-      if (!auth.key) {
-        showAuthPrompt(
-          "Management Center did not expose its key; paste it here.",
-        );
-      } else {
-        refreshAll();
-      }
+      });
+      $("disable-prefix").addEventListener("click", (event) =>
+        setSwitch(event.currentTarget, !switchOn(event.currentTarget)),
+      );
+      $("tab-settings").addEventListener("submit", saveSettings);
+      auth.onRejected(stopLoginPoll);
+      auth.init(refreshAll);
     </script>
   </body>
 </html>

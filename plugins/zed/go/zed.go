@@ -15,6 +15,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // clientVersion is the Zed release whose wire format this plugin speaks. The
@@ -26,7 +27,6 @@ const (
 	defaultLLMTokenLifetime = time.Hour
 	tokenRefreshSkew        = time.Minute
 	clientVersionTTL        = 6 * time.Hour
-	clientVersionFallback   = clientVersion
 )
 
 // credential is one Zed account as the gateway sees it.
@@ -80,7 +80,7 @@ func zedVersion() string {
 	versionMu.Lock()
 	defer versionMu.Unlock()
 	if versionValue == "" {
-		versionValue = clientVersionFallback
+		versionValue = clientVersion
 		versionFetched = time.Now()
 	}
 	return versionValue
@@ -128,13 +128,11 @@ func compareVersions(left, right string) int {
 	return 0
 }
 
-// refreshZedVersion reads the latest stable Zed release from GitHub. It is
-// best effort: a failure keeps the current value. Background callers only.
 // versionLoop keeps the client version current for the life of the plugin.
 // The edge rejects stale clients, so a one-time startup fetch is not enough.
 func versionLoop(ctx context.Context) {
 	for {
-		refreshZedVersion(ctx, newHost(""))
+		refreshZedVersion(ctx, host.Detached())
 		select {
 		case <-ctx.Done():
 			return
@@ -143,7 +141,9 @@ func versionLoop(ctx context.Context) {
 	}
 }
 
-func refreshZedVersion(ctx context.Context, h host) {
+// refreshZedVersion reads the latest stable Zed release from GitHub. It is
+// best effort: a failure keeps the current value.
+func refreshZedVersion(ctx context.Context, h host.Doer) {
 	versionMu.Lock()
 	fresh := time.Since(versionFetched) < clientVersionTTL/2
 	versionMu.Unlock()
@@ -176,10 +176,6 @@ func refreshZedVersion(ctx context.Context, h host) {
 	versionMu.Unlock()
 }
 
-func userAgent(cfg settings) string {
-	return cfg.userAgent()
-}
-
 func hostRequest(method, url string, headers http.Header, body []byte) pluginapi.HTTPRequest {
 	return pluginapi.HTTPRequest{Method: method, URL: url, Headers: headers, Body: body}
 }
@@ -193,7 +189,7 @@ func accountHeaders(cfg settings, cred credential) http.Header {
 	if cred.SystemID != "" {
 		headers.Set("x-zed-system-id", cred.SystemID)
 	}
-	headers.Set("User-Agent", userAgent(cfg))
+	headers.Set("User-Agent", cfg.userAgent())
 	return headers
 }
 
@@ -204,7 +200,7 @@ func llmHeaders(cfg settings, token string, statusMessages bool) http.Header {
 	headers.Set("Content-Type", "application/json")
 	headers.Set("x-zed-version", zedVersion())
 	headers.Set("x-zed-client-supports-x-ai", "true")
-	headers.Set("User-Agent", userAgent(cfg))
+	headers.Set("User-Agent", cfg.userAgent())
 	if statusMessages {
 		headers.Set("x-zed-client-supports-status-messages", "true")
 		headers.Set("x-zed-client-supports-stream-ended-request-completion-status", "true")
@@ -214,13 +210,13 @@ func llmHeaders(cfg settings, token string, statusMessages bool) http.Header {
 
 // fetchAccountInfo reads the user, plan and organization the token request
 // needs.
-func fetchAccountInfo(ctx context.Context, h host, cfg settings, cred credential) (accountInfo, error) {
+func fetchAccountInfo(ctx context.Context, h host.Doer, cfg settings, cred credential) (accountInfo, error) {
 	resp, errDo := h.Do(ctx, hostRequest(http.MethodGet, cfg.BaseURL+"/client/users/me", accountHeaders(cfg, cred), []byte("{}")))
 	if errDo != nil {
 		return accountInfo{}, errDo
 	}
 	if resp.StatusCode != http.StatusOK {
-		return accountInfo{}, upstreamErrorFrom(resp, "read the Zed account")
+		return accountInfo{}, failureFrom(resp, "read the Zed account")
 	}
 	root := gjson.ParseBytes(resp.Body)
 	info := accountInfo{
@@ -298,7 +294,7 @@ func (c *llmTokenCache) key(cred credential) string {
 }
 
 // llmToken returns the cached JWT, minting one when needed.
-func llmToken(ctx context.Context, h host, cfg settings, cred credential) (string, error) {
+func llmToken(ctx context.Context, h host.Doer, cfg settings, cred credential) (string, error) {
 	if !cred.valid() {
 		return "", errors.New("Zed credential is incomplete")
 	}
@@ -320,7 +316,7 @@ func llmToken(ctx context.Context, h host, cfg settings, cred credential) (strin
 		return "", errDo
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", upstreamErrorFrom(resp, "mint a Zed LLM token")
+		return "", failureFrom(resp, "mint a Zed LLM token")
 	}
 	token := gjson.GetBytes(resp.Body, "token").String()
 	if token == "" {
@@ -357,21 +353,17 @@ func jwtExpiry(token string) time.Time {
 
 // zedModel is one entry of GET /models.
 type zedModel struct {
-	ID                 string
-	Provider           string
-	DisplayName        string
-	ContextLength      int64
-	OutputTokens       int64
-	SupportsTools      bool
-	SupportsImages     bool
-	SupportsThinking   bool
-	SupportsFastMode   bool
-	IsDisabled         bool
-	DisabledReason     string
-	EffortLevels       []string
-	SupportsStreaming  bool
-	SupportsParallel   bool
-	SupportsCompaction bool
+	ID               string
+	Provider         string
+	DisplayName      string
+	ContextLength    int64
+	OutputTokens     int64
+	SupportsTools    bool
+	SupportsImages   bool
+	SupportsThinking bool
+	IsDisabled       bool
+	DisabledReason   string
+	EffortLevels     []string
 }
 
 // typeName is the capability family CPA lists for the model, matching the
@@ -406,23 +398,21 @@ func (m zedModel) nativeProtocol() string {
 }
 
 // fetchModels reads the account's plan-filtered catalog.
-func fetchModels(ctx context.Context, h host, cfg settings, cred credential) ([]zedModel, error) {
+func fetchModels(ctx context.Context, h host.Doer, cfg settings, cred credential) ([]zedModel, error) {
 	token, errToken := llmToken(ctx, h, cfg, cred)
 	if errToken != nil {
 		return nil, errToken
 	}
-	headers := llmHeaders(cfg, token, false)
-	headers.Set("x-zed-client-supports-x-ai", "true")
-	resp, errDo := h.Do(ctx, hostRequest(http.MethodGet, cfg.BaseURL+"/models", headers, nil))
+	resp, errDo := h.Do(ctx, hostRequest(http.MethodGet, cfg.BaseURL+"/models", llmHeaders(cfg, token, false), nil))
 	if errDo != nil {
 		return nil, errDo
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		llmTokens.drop(llmTokens.key(cred))
-		return nil, upstreamErrorFrom(resp, "list Zed models")
+		return nil, failureFrom(resp, "list Zed models")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, upstreamErrorFrom(resp, "list Zed models")
+		return nil, failureFrom(resp, "list Zed models")
 	}
 	if minimum := resp.Headers.Get("x-zed-minimum-required-version"); minimum != "" {
 		raiseZedVersion(minimum)
@@ -431,20 +421,16 @@ func fetchModels(ctx context.Context, h host, cfg settings, cred credential) ([]
 	models := make([]zedModel, 0, len(root.Get("models").Array()))
 	for _, entry := range root.Get("models").Array() {
 		model := zedModel{
-			ID:                 entry.Get("id").String(),
-			Provider:           entry.Get("provider").String(),
-			DisplayName:        entry.Get("display_name").String(),
-			ContextLength:      entry.Get("max_token_count").Int(),
-			OutputTokens:       entry.Get("max_output_tokens").Int(),
-			SupportsTools:      entry.Get("supports_tools").Bool(),
-			SupportsImages:     entry.Get("supports_images").Bool(),
-			SupportsThinking:   entry.Get("supports_thinking").Bool(),
-			SupportsFastMode:   entry.Get("supports_fast_mode").Bool(),
-			IsDisabled:         entry.Get("is_disabled").Bool(),
-			DisabledReason:     entry.Get("disabled_reason").String(),
-			SupportsStreaming:  entry.Get("supports_streaming_tools").Bool(),
-			SupportsParallel:   entry.Get("supports_parallel_tool_calls").Bool(),
-			SupportsCompaction: entry.Get("supports_server_side_compaction").Bool(),
+			ID:               entry.Get("id").String(),
+			Provider:         entry.Get("provider").String(),
+			DisplayName:      entry.Get("display_name").String(),
+			ContextLength:    entry.Get("max_token_count").Int(),
+			OutputTokens:     entry.Get("max_output_tokens").Int(),
+			SupportsTools:    entry.Get("supports_tools").Bool(),
+			SupportsImages:   entry.Get("supports_images").Bool(),
+			SupportsThinking: entry.Get("supports_thinking").Bool(),
+			IsDisabled:       entry.Get("is_disabled").Bool(),
+			DisabledReason:   entry.Get("disabled_reason").String(),
 		}
 		for _, level := range entry.Get("supported_effort_levels").Array() {
 			if value := level.Get("value").String(); value != "" {
@@ -489,15 +475,20 @@ type zedFailure struct {
 
 func (e *zedFailure) Error() string { return e.Message }
 
-func upstreamErrorFrom(resp pluginapi.HTTPResponse, action string) error {
+// failureFrom reads a failed Zed response. action, when set, names what
+// failed at the front of the message.
+func failureFrom(resp pluginapi.HTTPResponse, action string) *zedFailure {
 	if minimum := resp.Headers.Get("x-zed-minimum-required-version"); minimum != "" {
 		raiseZedVersion(minimum)
 	}
-	message := strings.TrimSpace(string(resp.Body))
+	message := firstLine(strings.TrimSpace(string(resp.Body)))
 	if message == "" {
 		message = http.StatusText(resp.StatusCode)
 	}
-	failure := &zedFailure{Status: resp.StatusCode, Message: action + ": " + firstLine(message)}
+	failure := &zedFailure{Status: resp.StatusCode, Message: message}
+	if action != "" {
+		failure.Message = action + ": " + message
+	}
 	if resp.StatusCode == http.StatusForbidden && strings.Contains(strings.ToLower(message), "plan") {
 		failure.PlanRestricted = true
 	}
@@ -530,7 +521,7 @@ type dashboardUsage struct {
 	EditUnlimited bool
 }
 
-func fetchDashboardUsage(ctx context.Context, h host, cfg settings) (dashboardUsage, error) {
+func fetchDashboardUsage(ctx context.Context, h host.Doer, cfg settings) (dashboardUsage, error) {
 	if cfg.DashboardCookie == "" {
 		return dashboardUsage{}, errors.New("no dashboard cookie is configured")
 	}
@@ -548,7 +539,7 @@ func fetchDashboardUsage(ctx context.Context, h host, cfg settings) (dashboardUs
 		return dashboardUsage{}, errors.New("the dashboard cookie is not signed in")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return dashboardUsage{}, upstreamErrorFrom(resp, "read the dashboard usage")
+		return dashboardUsage{}, failureFrom(resp, "read the dashboard usage")
 	}
 	root := gjson.ParseBytes(resp.Body)
 	usage := dashboardUsage{Plan: root.Get("plan").String()}

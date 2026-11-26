@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 type rpcQuotaFetchRequest struct {
@@ -22,7 +24,7 @@ func handleQuotaFetch(raw []byte) ([]byte, error) {
 	}
 	cred, errCred := resolveCredential(req.StorageJSON, req.Attributes, req.Metadata)
 	if errCred != nil {
-		return errorEnvelope("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), http.StatusUnauthorized), nil
+		return rpc.Fail("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), rpc.WithStatus(http.StatusUnauthorized)), nil
 	}
 	cfg := currentSettings()
 	response := pluginapi.QuotaFetchResponse{
@@ -36,11 +38,11 @@ func handleQuotaFetch(raw []byte) ([]byte, error) {
 		// Zed exposes plan usage only to dashboard.zed.dev, and the cookie is
 		// for one account. Without a matching pair there is nothing to meter;
 		// the plan card still renders.
-		return okEnvelope(response)
+		return rpc.OK(response)
 	}
-	usage, errUsage := fetchDashboardUsage(context.Background(), newHost(req.HostCallbackID), cfg)
+	usage, errUsage := fetchDashboardUsage(context.Background(), host.New(req.HostCallbackID), cfg)
 	if errUsage != nil {
-		return okEnvelope(response)
+		return rpc.OK(response)
 	}
 	if usage.Plan != "" {
 		response.Subscription.Plan = planLabel(usage.Plan)
@@ -85,5 +87,5 @@ func handleQuotaFetch(raw []byte) ([]byte, error) {
 			}},
 		})
 	}
-	return okEnvelope(response)
+	return rpc.OK(response)
 }

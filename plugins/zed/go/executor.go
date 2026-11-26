@@ -6,11 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 	// Registers CPA's protocol translators for in-process conversion between
 	// client formats and each model's native protocol.
 	_ "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator/builtin"
@@ -26,18 +27,22 @@ type rpcExecutorRequest struct {
 
 // rpcExecutorStreamResponse answers execute_stream. Returning headers
 // without chunks keeps the stream open; chunks then go through
-// hostStreamEmit and the stream ends with hostStreamClose.
+// host.EmitStream and the stream ends with host.CloseStream.
 type rpcExecutorStreamResponse struct {
 	Headers http.Header `json:"headers,omitempty"`
 }
 
+// callCtx ends at shutdown, so an executor call still in flight stops
+// before the host unloads the library underneath it.
+var callCtx, cancelCalls = context.WithCancel(context.Background())
+
 type executorCall struct {
-	req   rpcExecutorRequest
-	host  host
-	cfg   settings
-	cred  credential
-	model zedModel
-	plan  routePlan
+	req    rpcExecutorRequest
+	client host.Client
+	cfg    settings
+	cred   credential
+	model  zedModel
+	plan   routePlan
 	// payload is the client's request in plan.Source.
 	payload []byte
 	body    []byte
@@ -47,55 +52,55 @@ type executorCall struct {
 }
 
 func executorExecute(raw []byte) ([]byte, error) {
-	call, failure := prepareExecutorCall(backgroundCtx, raw, false)
+	call, failure := prepareExecutorCall(callCtx, raw, false)
 	if failure != nil {
 		return failure, nil
 	}
-	return call.execute(backgroundCtx), nil
+	return call.execute(callCtx), nil
 }
 
 func executorExecuteStream(raw []byte) ([]byte, error) {
-	call, failure := prepareExecutorCall(backgroundCtx, raw, true)
+	call, failure := prepareExecutorCall(callCtx, raw, true)
 	if failure != nil {
 		return failure, nil
 	}
 	if call.req.StreamID == "" {
-		return errorEnvelope("invalid_request", "executor.execute_stream request has no stream_id", http.StatusBadRequest), nil
+		return rpc.Fail("invalid_request", "executor.execute_stream request has no stream_id", rpc.WithStatus(http.StatusBadRequest)), nil
 	}
-	return call.executeStream(backgroundCtx), nil
+	return call.executeStream(callCtx), nil
 }
 
 // executorCountTokens declines counting. A 404 that does not name the model
 // is availability-neutral to CPA.
-func executorCountTokens(raw []byte) ([]byte, error) {
-	return errorEnvelope("unsupported", "Zed does not count tokens for this model", http.StatusNotFound), nil
+func executorCountTokens() ([]byte, error) {
+	return rpc.Fail("unsupported", "Zed does not count tokens for this model", rpc.WithStatus(http.StatusNotFound)), nil
 }
 
 // executorHTTPRequest declines raw requests: signing arbitrary URLs with a
 // Zed credential would leak it.
-func executorHTTPRequest(raw []byte) ([]byte, error) {
-	return errorEnvelope("unsupported", "Zed does not proxy raw HTTP requests", http.StatusNotImplemented), nil
+func executorHTTPRequest() ([]byte, error) {
+	return rpc.Fail("unsupported", "Zed does not proxy raw HTTP requests", rpc.WithStatus(http.StatusNotImplemented)), nil
 }
 
 func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executorCall, []byte) {
 	var req rpcExecutorRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-		return nil, errorEnvelope("invalid_request", "decode executor request: "+errUnmarshal.Error(), http.StatusBadRequest)
+		return nil, rpc.Fail("invalid_request", "decode executor request: "+errUnmarshal.Error(), rpc.WithStatus(http.StatusBadRequest))
 	}
-	h := newHost(req.HostCallbackID)
+	client := host.New(req.HostCallbackID)
 	cfg := currentSettings()
 	cred, errCred := resolveCredential(req.StorageJSON, req.AuthAttributes, req.AuthMetadata)
 	if errCred != nil {
-		return nil, errorEnvelope("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), http.StatusUnauthorized)
+		return nil, rpc.Fail("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), rpc.WithStatus(http.StatusUnauthorized))
 	}
 	requested, effort := splitModelSuffix(req.Model)
-	model, errModel := modelRouteFor(ctx, h, cfg, cred, requested)
+	model, errModel := modelRouteFor(ctx, client, cfg, cred, requested)
 	if errModel != nil {
 		if errors.Is(errModel, errModelNotFound) {
-			return nil, errorEnvelope("model_not_found", errModel.Error(), http.StatusNotFound)
+			return nil, rpc.Fail("model_not_found", errModel.Error(), rpc.WithStatus(http.StatusNotFound))
 		}
 		if errors.Is(errModel, errModelDisabled) {
-			return nil, errorEnvelope("model_disabled", errModel.Error(), http.StatusBadRequest)
+			return nil, rpc.Fail("model_disabled", errModel.Error(), rpc.WithStatus(http.StatusBadRequest))
 		}
 		return nil, failureEnvelope(errModel)
 	}
@@ -107,7 +112,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	}
 	plan, errPlan := planRoute(source, response, upstream)
 	if errPlan != nil {
-		return nil, errorEnvelope("unsupported_format", errPlan.Error(), http.StatusBadRequest)
+		return nil, rpc.Fail("unsupported_format", errPlan.Error(), rpc.WithStatus(http.StatusBadRequest))
 	}
 	payload := req.Payload
 	if len(payload) == 0 {
@@ -115,12 +120,12 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	}
 	body, namespaced, errBody := buildUpstreamBody(ctx, plan, payload, model, stream)
 	if errBody != nil {
-		return nil, errorEnvelope("invalid_request", fmt.Sprintf("build %s request for %s: %v", upstream, model.ID, errBody), http.StatusBadRequest)
+		return nil, rpc.Fail("invalid_request", fmt.Sprintf("build %s request for %s: %v", upstream, model.ID, errBody), rpc.WithStatus(http.StatusBadRequest))
 	}
 	if effort != "" {
 		body = applyRequestedEffort(upstream, body, effort, model)
 	}
-	return &executorCall{req: req, host: h, cfg: cfg, cred: cred, model: model, plan: plan, payload: payload, body: body, namespaced: namespaced}, nil
+	return &executorCall{req: req, client: client, cfg: cfg, cred: cred, model: model, plan: plan, payload: payload, body: body, namespaced: namespaced}, nil
 }
 
 func (c *executorCall) completionBody() ([]byte, error) {
@@ -135,11 +140,11 @@ func (c *executorCall) sendCompletion(ctx context.Context) (pluginapi.HTTPRespon
 		return pluginapi.HTTPResponse{}, errBody
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		token, errToken := llmToken(ctx, c.host, c.cfg, c.cred)
+		token, errToken := llmToken(ctx, c.client, c.cfg, c.cred)
 		if errToken != nil {
 			return pluginapi.HTTPResponse{}, errToken
 		}
-		resp, errDo := c.host.Do(ctx, hostRequest(http.MethodPost, c.cfg.BaseURL+"/completions", llmHeaders(c.cfg, token, true), envelope))
+		resp, errDo := c.client.Do(ctx, hostRequest(http.MethodPost, c.cfg.BaseURL+"/completions", llmHeaders(c.cfg, token, true), envelope))
 		if errDo != nil {
 			return pluginapi.HTTPResponse{}, errDo
 		}
@@ -152,42 +157,42 @@ func (c *executorCall) sendCompletion(ctx context.Context) (pluginapi.HTTPRespon
 	return pluginapi.HTTPResponse{}, errors.New("Zed rejected every LLM token")
 }
 
-func (c *executorCall) sendCompletionStream(ctx context.Context) (*hostHTTPStream, error) {
+func (c *executorCall) sendCompletionStream(ctx context.Context) (*host.Stream, error) {
 	envelope, errBody := c.completionBody()
 	if errBody != nil {
 		return nil, errBody
 	}
-	token, errToken := llmToken(ctx, c.host, c.cfg, c.cred)
+	token, errToken := llmToken(ctx, c.client, c.cfg, c.cred)
 	if errToken != nil {
 		return nil, errToken
 	}
 	headers := llmHeaders(c.cfg, token, true)
-	return c.host.DoStream(ctx, hostRequest(http.MethodPost, c.cfg.BaseURL+"/completions", headers, envelope))
+	return c.client.DoStream(ctx, hostRequest(http.MethodPost, c.cfg.BaseURL+"/completions", headers, envelope))
 }
 
 func (c *executorCall) execute(ctx context.Context) []byte {
 	resp, errDo := c.sendCompletion(ctx)
 	if errDo != nil {
-		return c.transportFailure(errDo)
+		return transportFailure(errDo)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return c.upstreamFailure(resp.StatusCode, resp.Headers, resp.Body)
+		return upstreamFailureEnvelope(failureFrom(resp, ""))
 	}
 	events, errEvents := c.collectEvents(resp.Body)
 	if errEvents != nil {
-		return c.failureEnvelope(errEvents)
+		return failureEnvelope(errEvents)
 	}
 	native, errAssemble := assembleNative(c.plan.Upstream, events)
 	if errAssemble != nil {
-		return errorEnvelope("translation_failed", errAssemble.Error(), http.StatusBadGateway)
+		return rpc.Fail("translation_failed", errAssemble.Error(), rpc.WithStatus(http.StatusBadGateway))
 	}
 	out, errConvert := convertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, native, c.namespaced)
 	if errConvert != nil {
-		return errorEnvelope("translation_failed", errConvert.Error(), http.StatusBadGateway)
+		return rpc.Fail("translation_failed", errConvert.Error(), rpc.WithStatus(http.StatusBadGateway))
 	}
-	raw, errEnvelope := okEnvelope(pluginapi.ExecutorResponse{Payload: out, Headers: diagnosticHeaders(resp.Headers)})
+	raw, errEnvelope := rpc.OK(pluginapi.ExecutorResponse{Payload: out, Headers: diagnosticHeaders(resp.Headers)})
 	if errEnvelope != nil {
-		return errorEnvelope("plugin_error", errEnvelope.Error(), http.StatusInternalServerError)
+		return rpc.Fail("plugin_error", errEnvelope.Error(), rpc.WithStatus(http.StatusInternalServerError))
 	}
 	return raw
 }
@@ -222,7 +227,7 @@ func (c *executorCall) collectEvents(body []byte) ([][]byte, error) {
 func (c *executorCall) executeStream(ctx context.Context) []byte {
 	upstream, errStart := c.sendCompletionStream(ctx)
 	if errStart != nil {
-		return c.transportFailure(errStart)
+		return transportFailure(errStart)
 	}
 	if upstream.StatusCode == http.StatusUnauthorized {
 		_, _ = upstream.ReadAll()
@@ -232,20 +237,20 @@ func (c *executorCall) executeStream(ctx context.Context) []byte {
 		llmTokens.drop(llmTokens.key(c.cred))
 		upstream, errStart = c.sendCompletionStream(ctx)
 		if errStart != nil {
-			return c.transportFailure(errStart)
+			return transportFailure(errStart)
 		}
 	}
 	if upstream.StatusCode < 200 || upstream.StatusCode > 299 {
 		body, _ := upstream.ReadAll()
 		upstream.Close()
-		return c.upstreamFailure(upstream.StatusCode, upstream.Headers, body)
+		return upstreamFailureEnvelope(failureFrom(pluginapi.HTTPResponse{StatusCode: upstream.StatusCode, Headers: upstream.Headers, Body: body}, ""))
 	}
 	converter := newStreamConverter(ctx, c.plan, c.req.Model, c.payload, c.body, c.namespaced)
 	streamID := c.req.StreamID
-	startBackground(func(ctx context.Context) { c.pumpStream(ctx, upstream, converter, streamID) })
-	raw, errEnvelope := okEnvelope(rpcExecutorStreamResponse{Headers: diagnosticHeaders(upstream.Headers)})
+	background.Go(func(ctx context.Context) { c.pumpStream(ctx, upstream, converter, streamID) })
+	raw, errEnvelope := rpc.OK(rpcExecutorStreamResponse{Headers: diagnosticHeaders(upstream.Headers)})
 	if errEnvelope != nil {
-		return errorEnvelope("plugin_error", errEnvelope.Error(), http.StatusInternalServerError)
+		return rpc.Fail("plugin_error", errEnvelope.Error(), rpc.WithStatus(http.StatusInternalServerError))
 	}
 	return raw
 }
@@ -253,13 +258,13 @@ func (c *executorCall) executeStream(ctx context.Context) []byte {
 // pumpStream relays Zed's NDJSON events to the host stream until either side
 // ends. It has no deadline of its own: the host cancels the upstream read on
 // client disconnect, and shutdown cancels the context.
-func (c *executorCall) pumpStream(ctx context.Context, upstream *hostHTTPStream, converter *streamConverter, streamID string) {
+func (c *executorCall) pumpStream(ctx context.Context, upstream *host.Stream, converter *streamConverter, streamID string) {
 	closed := false
 	closeStream := func(message string) {
 		if !closed {
 			closed = true
 			upstream.Close()
-			hostStreamClose(streamID, message)
+			host.CloseStream(streamID, message)
 		}
 	}
 	defer closeStream("Zed stream ended unexpectedly")
@@ -269,7 +274,7 @@ func (c *executorCall) pumpStream(ctx context.Context, upstream *hostHTTPStream,
 			if len(chunk) == 0 {
 				continue
 			}
-			if hostStreamEmit(streamID, chunk) != nil {
+			if host.EmitStream(streamID, chunk) != nil {
 				closeStream("")
 				return false
 			}
@@ -290,7 +295,7 @@ func (c *executorCall) pumpStream(ctx context.Context, upstream *hostHTTPStream,
 				return
 			}
 			if parsed.Failure != nil {
-				closeStream(c.failureMessage(parsed.Failure))
+				closeStream(parsed.Failure.Message)
 				return
 			}
 			if parsed.Ended {
@@ -339,40 +344,15 @@ func (c *executorCall) pumpStream(ctx context.Context, upstream *hostHTTPStream,
 // transportFailure maps an error from before Zed answered. A token failure
 // keeps Zed's status, so a revoked login is a 401 CPA refreshes rather than an
 // unreachable upstream.
-func (c *executorCall) transportFailure(err error) []byte {
+func transportFailure(err error) []byte {
 	var failure *zedFailure
 	if errors.As(err, &failure) {
 		return upstreamFailureEnvelope(failure)
 	}
 	if errors.Is(err, context.Canceled) {
-		return errorEnvelope("canceled", "Zed request canceled", http.StatusRequestTimeout)
+		return rpc.Fail("canceled", "Zed request canceled", rpc.WithStatus(http.StatusRequestTimeout))
 	}
-	return errorEnvelope("upstream_unreachable", "Zed request failed: "+err.Error(), http.StatusBadGateway)
-}
-
-// upstreamFailure maps a Zed error to the status CPA acts on. A plan
-// restriction is a 400 so it never cools the account down: the model is
-// unavailable, the login is fine.
-func (c *executorCall) upstreamFailure(status int, headers http.Header, body []byte) []byte {
-	if minimum := headers.Get("x-zed-minimum-required-version"); minimum != "" {
-		raiseZedVersion(minimum)
-	}
-	message := firstLine(string(body))
-	if message == "" {
-		message = http.StatusText(status)
-	}
-	failure := &zedFailure{Status: status, Message: message}
-	if status == http.StatusForbidden && strings.Contains(strings.ToLower(message), "not included in your plan") {
-		failure.PlanRestricted = true
-	}
-	if seconds, errAtoi := strconv.Atoi(strings.TrimSpace(headers.Get("Retry-After"))); errAtoi == nil && seconds > 0 {
-		failure.RetryAfter = time.Duration(seconds) * time.Second
-	}
-	return upstreamFailureEnvelope(failure)
-}
-
-func (c *executorCall) failureEnvelope(err error) []byte {
-	return failureEnvelope(err)
+	return rpc.Fail("upstream_unreachable", "Zed request failed: "+err.Error(), rpc.WithStatus(http.StatusBadGateway))
 }
 
 // failureEnvelope maps an error that did not start a stream. A catalog or
@@ -383,30 +363,29 @@ func failureEnvelope(err error) []byte {
 	if errors.As(err, &failure) {
 		return upstreamFailureEnvelope(failure)
 	}
-	return errorEnvelope("upstream_error", err.Error(), http.StatusBadGateway)
+	return rpc.Fail("upstream_error", err.Error(), rpc.WithStatus(http.StatusBadGateway))
 }
 
+// upstreamFailureEnvelope maps a Zed error to the status CPA acts on. A plan
+// restriction is a 400 so it never cools the account down: the model is
+// unavailable, the login is fine.
 func upstreamFailureEnvelope(failure *zedFailure) []byte {
 	message := failure.Message
 	if failure.PlanRestricted {
-		return errorEnvelope("plan_restricted", message, http.StatusBadRequest)
+		return rpc.Fail("plan_restricted", message, rpc.WithStatus(http.StatusBadRequest))
 	}
 	switch {
 	case failure.Status == http.StatusUnauthorized:
-		return errorEnvelope("invalid_auth", message, http.StatusUnauthorized)
+		return rpc.Fail("invalid_auth", message, rpc.WithStatus(http.StatusUnauthorized))
 	case failure.Status == http.StatusTooManyRequests:
-		return errorEnvelopeWithRetryAfter("rate_limited", message, http.StatusTooManyRequests, failure.RetryAfter)
+		return rpc.Fail("rate_limited", message, rpc.WithStatus(http.StatusTooManyRequests), rpc.WithRetryAfter(failure.RetryAfter))
 	case failure.Status >= 500:
-		return errorEnvelope("upstream_error", message, http.StatusBadGateway)
+		return rpc.Fail("upstream_error", message, rpc.WithStatus(http.StatusBadGateway))
 	case failure.Status >= 400:
-		return errorEnvelope("upstream_error", message, failure.Status)
+		return rpc.Fail("upstream_error", message, rpc.WithStatus(failure.Status))
 	default:
-		return errorEnvelope("upstream_error", message, http.StatusBadGateway)
+		return rpc.Fail("upstream_error", message, rpc.WithStatus(http.StatusBadGateway))
 	}
-}
-
-func (c *executorCall) failureMessage(failure *zedFailure) string {
-	return failure.Message
 }
 
 // diagnosticHeaders keeps Zed's identification headers. Others are dropped

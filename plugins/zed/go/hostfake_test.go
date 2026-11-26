@@ -1,104 +1,34 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
-	"net/http"
-	"os"
-	"path/filepath"
-	"sync"
 	"testing"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
-// fakeHost stands in for CPA's host callbacks. Tests that install it must
-// not run in parallel, because callHost is package state.
-type fakeHost struct {
-	mu       sync.Mutex
-	calls    []fakeCall
-	handlers map[string]func(payload json.RawMessage) (any, error)
-}
-
-type fakeCall struct {
-	Method  string
-	Payload json.RawMessage
-}
-
-func installFakeHost(t *testing.T) *fakeHost {
+// installHost installs a fake host and empties the caches an earlier test
+// may have filled. Tests that call it must not run in parallel.
+func installHost(t *testing.T) *hosttest.Fake {
 	t.Helper()
-	fake := &fakeHost{handlers: make(map[string]func(json.RawMessage) (any, error))}
-	previous := callHost
-	callHost = fake.call
+	fake := hosttest.Install(t)
 	modelsByAuth.clear()
 	llmTokens.clear()
-	t.Cleanup(func() { callHost = previous })
 	return fake
 }
 
-func (f *fakeHost) handle(method string, fn func(payload json.RawMessage) (any, error)) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.handlers[method] = fn
-}
-
-func (f *fakeHost) call(method string, payload []byte) ([]byte, error) {
-	f.mu.Lock()
-	f.calls = append(f.calls, fakeCall{Method: method, Payload: append(json.RawMessage(nil), payload...)})
-	fn := f.handlers[method]
-	f.mu.Unlock()
-	if fn == nil {
-		return errorEnvelope("host_call_failed", "unsupported host callback "+method), nil
-	}
-	result, errCall := fn(payload)
-	if errCall != nil {
-		var hostErr *hostCallError
-		if errors.As(errCall, &hostErr) {
-			return errorEnvelope(hostErr.Code, hostErr.Message, hostErr.Status), nil
+// handleHTTP answers host.http.do with respond.
+func handleHTTP(fake *hosttest.Fake, respond func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error)) {
+	fake.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req pluginapi.HTTPRequest
+		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
+			return nil, errUnmarshal
 		}
-		return errorEnvelope("host_call_failed", errCall.Error()), nil
-	}
-	return okEnvelope(result)
-}
-
-func (f *fakeHost) callsTo(method string) []json.RawMessage {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []json.RawMessage
-	for _, call := range f.calls {
-		if call.Method == method {
-			out = append(out, call.Payload)
-		}
-	}
-	return out
-}
-
-// fakeDoer answers HTTP requests in process.
-type fakeDoer struct {
-	mu       sync.Mutex
-	requests []pluginapi.HTTPRequest
-	respond  func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error)
-}
-
-func (d *fakeDoer) Do(_ context.Context, req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
-	d.mu.Lock()
-	d.requests = append(d.requests, req)
-	d.mu.Unlock()
-	return d.respond(req)
-}
-
-func jsonResponse(status int, body []byte) pluginapi.HTTPResponse {
-	return pluginapi.HTTPResponse{StatusCode: status, Headers: http.Header{"Content-Type": {"application/json"}}, Body: body}
-}
-
-func readFixture(t *testing.T, name string) []byte {
-	t.Helper()
-	raw, errRead := os.ReadFile(filepath.Join("testdata", name))
-	if errRead != nil {
-		t.Fatal(errRead)
-	}
-	return raw
+		return respond(req)
+	})
 }
 
 // useSettings installs cfg for the test and restores the previous settings.
@@ -109,9 +39,9 @@ func useSettings(t *testing.T, cfg settings) {
 	t.Cleanup(func() { currentConfig.Store(previous) })
 }
 
-func decodeEnvelope(t *testing.T, raw []byte) envelope {
+func decodeEnvelope(t *testing.T, raw []byte) rpc.Envelope {
 	t.Helper()
-	var env envelope
+	var env rpc.Envelope
 	if errUnmarshal := json.Unmarshal(raw, &env); errUnmarshal != nil {
 		t.Fatalf("envelope %s: %v", raw, errUnmarshal)
 	}

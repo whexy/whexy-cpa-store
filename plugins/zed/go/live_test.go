@@ -5,6 +5,7 @@ package main
 // optionally system_id and organization_id. The file is never committed.
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
 )
 
 func liveAuth(t *testing.T) []byte {
@@ -57,36 +60,29 @@ func liveAuth(t *testing.T) []byte {
 	return mustJSON(t, storage)
 }
 
-func installLiveHost(t *testing.T) *fakeHost {
+// liveDo sends req to the real upstream, as host.http.do would.
+func liveDo(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+	httpReq, errNew := http.NewRequest(req.Method, req.URL, bytes.NewReader(req.Body))
+	if errNew != nil {
+		return pluginapi.HTTPResponse{}, errNew
+	}
+	httpReq.Header = req.Headers.Clone()
+	resp, errDo := (&http.Client{Timeout: 120 * time.Second}).Do(httpReq)
+	if errDo != nil {
+		return pluginapi.HTTPResponse{}, errDo
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, errRead := io.ReadAll(resp.Body)
+	if errRead != nil {
+		return pluginapi.HTTPResponse{}, errRead
+	}
+	return pluginapi.HTTPResponse{StatusCode: resp.StatusCode, Headers: resp.Header, Body: body}, nil
+}
+
+func installLiveHost(t *testing.T) *hosttest.Fake {
 	t.Helper()
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return map[string]any{"operation_id": "live"}, nil
-	})
-	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
-	client := &http.Client{Timeout: 120 * time.Second}
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
-		var req hostHTTPRequest
-		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
-			return nil, errUnmarshal
-		}
-		httpReq, errNew := http.NewRequest(req.Method, req.URL, strings.NewReader(string(req.Body)))
-		if errNew != nil {
-			return nil, errNew
-		}
-		for name, values := range req.Headers {
-			for _, value := range values {
-				httpReq.Header.Add(name, value)
-			}
-		}
-		resp, errDo := client.Do(httpReq)
-		if errDo != nil {
-			return nil, errDo
-		}
-		defer func() { _ = resp.Body.Close() }()
-		body, _ := io.ReadAll(resp.Body)
-		return pluginapi.HTTPResponse{StatusCode: resp.StatusCode, Headers: resp.Header, Body: body}, nil
-	})
+	fake := installHost(t)
+	handleHTTP(fake, liveDo)
 	return fake
 }
 
@@ -98,7 +94,7 @@ func TestLiveZedCatalog(t *testing.T) {
 	if errCred != nil {
 		t.Fatal(errCred)
 	}
-	models, errModels := catalogFor(t.Context(), newHost(""), currentSettings(), cred, true)
+	models, errModels := catalogFor(t.Context(), host.Detached(), currentSettings(), cred, true)
 	if errModels != nil {
 		t.Fatal(errModels)
 	}
@@ -210,60 +206,52 @@ type liveStreamHost struct {
 	done     chan struct{}
 }
 
+// streamEmit is the payload of host.stream.emit and host.stream.close.
+type streamEmit struct {
+	Payload []byte `json:"payload"`
+	Error   string `json:"error"`
+}
+
 func installLiveStreamHost(t *testing.T) *liveStreamHost {
 	t.Helper()
 	fake := installLiveHost(t)
 	stream := &liveStreamHost{done: make(chan struct{})}
-	fake.handle(pluginabi.MethodHostHTTPDoStream, func(payload json.RawMessage) (any, error) {
-		var req hostHTTPRequest
+	fake.Handle(pluginabi.MethodHostHTTPDoStream, func(payload json.RawMessage) (any, error) {
+		var req pluginapi.HTTPRequest
 		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
 			return nil, errUnmarshal
 		}
-		httpReq, errNew := http.NewRequest(req.Method, req.URL, strings.NewReader(string(req.Body)))
-		if errNew != nil {
-			return nil, errNew
-		}
-		for name, values := range req.Headers {
-			for _, value := range values {
-				httpReq.Header.Add(name, value)
-			}
-		}
-		resp, errDo := (&http.Client{Timeout: 120 * time.Second}).Do(httpReq)
+		resp, errDo := liveDo(req)
 		if errDo != nil {
 			return nil, errDo
 		}
-		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
 		stream.mu.Lock()
-		stream.body = body
+		stream.body = resp.Body
 		stream.mu.Unlock()
-		return hostHTTPStreamStart{StatusCode: resp.StatusCode, Headers: resp.Header, StreamID: "live-stream"}, nil
+		return map[string]any{"status_code": resp.StatusCode, "headers": resp.Headers, "stream_id": "live-stream"}, nil
 	})
-	fake.handle(pluginabi.MethodHostHTTPStreamRead, func(json.RawMessage) (any, error) {
+	fake.Handle(pluginabi.MethodHostHTTPStreamRead, func(json.RawMessage) (any, error) {
 		stream.mu.Lock()
 		defer stream.mu.Unlock()
 		if stream.offset >= len(stream.body) {
-			return hostStreamReadResponse{Done: true}, nil
+			return map[string]any{"done": true}, nil
 		}
-		end := stream.offset + 80
-		if end > len(stream.body) {
-			end = len(stream.body)
-		}
+		end := min(stream.offset+80, len(stream.body))
 		chunk := append([]byte(nil), stream.body[stream.offset:end]...)
 		stream.offset = end
-		return hostStreamReadResponse{Payload: chunk}, nil
+		return map[string]any{"payload": chunk}, nil
 	})
-	fake.handle(pluginabi.MethodHostHTTPStreamClose, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
-	fake.handle(pluginabi.MethodHostStreamEmit, func(payload json.RawMessage) (any, error) {
-		var req hostStreamEmitRequest
+	fake.Handle(pluginabi.MethodHostHTTPStreamClose, func(json.RawMessage) (any, error) { return struct{}{}, nil })
+	fake.Handle(pluginabi.MethodHostStreamEmit, func(payload json.RawMessage) (any, error) {
+		var req streamEmit
 		_ = json.Unmarshal(payload, &req)
 		stream.mu.Lock()
-		stream.chunks = append(stream.chunks, append([]byte(nil), req.Payload...))
+		stream.chunks = append(stream.chunks, req.Payload)
 		stream.mu.Unlock()
-		return map[string]any{}, nil
+		return struct{}{}, nil
 	})
-	fake.handle(pluginabi.MethodHostStreamClose, func(payload json.RawMessage) (any, error) {
-		var req hostStreamEmitRequest
+	fake.Handle(pluginabi.MethodHostStreamClose, func(payload json.RawMessage) (any, error) {
+		var req streamEmit
 		_ = json.Unmarshal(payload, &req)
 		stream.mu.Lock()
 		if !stream.closed {
@@ -272,7 +260,7 @@ func installLiveStreamHost(t *testing.T) *liveStreamHost {
 			close(stream.done)
 		}
 		stream.mu.Unlock()
-		return map[string]any{}, nil
+		return struct{}{}, nil
 	})
 	return stream
 }

@@ -6,14 +6,13 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 func TestDecryptCallback(t *testing.T) {
@@ -52,14 +51,7 @@ func TestDecryptCallbackRejectsMissingToken(t *testing.T) {
 
 func installAccountHost(t *testing.T) {
 	t.Helper()
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return map[string]any{"operation_id": "op"}, nil
-	})
-	fake.handle(pluginabi.MethodHostHTTPCancel, func(json.RawMessage) (any, error) { return map[string]any{}, nil })
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
-		var req hostHTTPRequest
-		_ = json.Unmarshal(payload, &req)
+	handleHTTP(installHost(t), func(req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
 		if strings.HasSuffix(req.URL, "/client/users/me") {
 			return pluginapi.HTTPResponse{StatusCode: 200, Body: mustJSON(t, map[string]any{
 				"user":                    map[string]any{"legacy_user_id": 42, "username": "tester"},
@@ -117,7 +109,7 @@ func TestLoginListenerRedirectsOnlyAValidCallback(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest || resp.Header.Get("Location") != "" {
 		t.Fatalf("forged callback answered %d %q, want a 400 without the success redirect", resp.StatusCode, resp.Header.Get("Location"))
 	}
-	if pending := logins.poll(t.Context(), newHost(""), currentSettings(), flow.State); pending.Status != pluginapi.AuthLoginStatusPending {
+	if pending := logins.poll(t.Context(), host.Detached(), currentSettings(), flow.State); pending.Status != pluginapi.AuthLoginStatusPending {
 		t.Fatalf("a forged callback ended the sign-in: %+v", pending)
 	}
 
@@ -131,7 +123,7 @@ func TestLoginListenerRedirectsOnlyAValidCallback(t *testing.T) {
 	}
 	for attempt := 0; attempt < 2; attempt++ {
 		// A repeated poll, as after a failed save, gets the same account.
-		if done := logins.poll(t.Context(), newHost(""), currentSettings(), flow.State); done.Status != pluginapi.AuthLoginStatusSuccess {
+		if done := logins.poll(t.Context(), host.Detached(), currentSettings(), flow.State); done.Status != pluginapi.AuthLoginStatusSuccess {
 			t.Fatalf("poll %d: %+v", attempt, done)
 		}
 	}
@@ -147,7 +139,7 @@ func TestLoginFlowFromCallback(t *testing.T) {
 	if errComplete := logins.completeFromCallback(flow.State, encryptedCallback(t, flow.URL, "token-value")); errComplete != nil {
 		t.Fatal(errComplete)
 	}
-	resp := logins.poll(t.Context(), newHost(""), currentSettings(), flow.State)
+	resp := logins.poll(t.Context(), host.Detached(), currentSettings(), flow.State)
 	if resp.Status != pluginapi.AuthLoginStatusSuccess {
 		t.Fatalf("poll: %+v", resp)
 	}

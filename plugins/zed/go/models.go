@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // rpcAuthModelRequest is model.for_auth with the host callback ID.
@@ -24,18 +26,18 @@ func handleModelsForAuth(raw []byte) ([]byte, error) {
 	}
 	cred, errCred := resolveCredential(req.StorageJSON, req.Attributes, req.Metadata)
 	if errCred != nil {
-		return errorEnvelope("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), http.StatusUnauthorized), nil
+		return rpc.Fail("invalid_auth", "Zed auth "+req.AuthID+": "+errCred.Error(), rpc.WithStatus(http.StatusUnauthorized)), nil
 	}
-	models, errModels := catalogFor(context.Background(), newHost(req.HostCallbackID), currentSettings(), cred, false)
+	cfg := currentSettings()
+	models, errModels := catalogFor(context.Background(), host.New(req.HostCallbackID), cfg, cred, false)
 	if errModels != nil {
 		status := http.StatusBadGateway
 		var failure *zedFailure
 		if errors.As(errModels, &failure) {
 			status = failure.Status
 		}
-		return errorEnvelope("catalog_failed", fmt.Sprintf("list the Zed models of %s: %v", cred.Username, errModels), status), nil
+		return rpc.Fail("catalog_failed", fmt.Sprintf("list the Zed models of %s: %v", cred.Username, errModels), rpc.WithStatus(status)), nil
 	}
-	cfg := currentSettings()
 	out := make([]pluginapi.ModelInfo, 0, len(models))
 	for _, model := range models {
 		if model.IsDisabled || cfg.modelDisabled(model.ID) {
@@ -43,12 +45,11 @@ func handleModelsForAuth(raw []byte) ([]byte, error) {
 		}
 		out = append(out, modelInfo(cfg, model))
 	}
-	response := pluginapi.ModelResponse{Provider: providerKey, Models: out}
-	return okEnvelope(response)
+	return rpc.OK(pluginapi.ModelResponse{Provider: providerKey, Models: out})
 }
 
 // catalogFor returns the account's models, from cache when it is fresh.
-func catalogFor(ctx context.Context, h host, cfg settings, cred credential, refresh bool) ([]zedModel, error) {
+func catalogFor(ctx context.Context, h host.Doer, cfg settings, cred credential, refresh bool) ([]zedModel, error) {
 	key := llmTokens.key(cred)
 	if !refresh {
 		if models, ok := modelsByAuth.get(key); ok {
@@ -113,8 +114,8 @@ var (
 	errModelDisabled = errors.New("model is disabled")
 )
 
-// modelRoute resolves one requested ID to the upstream model and protocol.
-func modelRouteFor(ctx context.Context, h host, cfg settings, cred credential, requested string) (zedModel, error) {
+// modelRouteFor resolves one requested ID to the upstream model and protocol.
+func modelRouteFor(ctx context.Context, h host.Doer, cfg settings, cred credential, requested string) (zedModel, error) {
 	models, errCatalog := catalogFor(ctx, h, cfg, cred, false)
 	if errCatalog != nil {
 		return zedModel{}, errCatalog

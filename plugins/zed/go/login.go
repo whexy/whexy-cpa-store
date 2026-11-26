@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 const (
@@ -25,11 +27,6 @@ const (
 	loginStateLength   = 24
 	finishedLoginGrace = time.Minute
 )
-
-type rpcAuthLoginStartRequest struct {
-	pluginapi.AuthLoginStartRequest
-	HostCallbackID string `json:"host_callback_id,omitempty"`
-}
 
 type rpcAuthLoginPollRequest struct {
 	pluginapi.AuthLoginPollRequest
@@ -75,15 +72,15 @@ type loginFlows struct {
 var logins = &loginFlows{flows: make(map[string]*loginFlow), now: time.Now}
 
 func handleLoginStart(raw []byte) ([]byte, error) {
-	var req rpcAuthLoginStartRequest
+	var req pluginapi.AuthLoginStartRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode login start request: %w", errUnmarshal)
 	}
 	resp, errStart := logins.start(currentSettings())
 	if errStart != nil {
-		return errorEnvelope("login_start_failed", "start Zed login: "+errStart.Error(), http.StatusBadGateway), nil
+		return rpc.Fail("login_start_failed", "start Zed login: "+errStart.Error(), rpc.WithStatus(http.StatusBadGateway)), nil
 	}
-	return okEnvelope(resp)
+	return rpc.OK(resp)
 }
 
 func handleLoginPoll(raw []byte) ([]byte, error) {
@@ -91,9 +88,7 @@ func handleLoginPoll(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode login poll request: %w", errUnmarshal)
 	}
-	h := newHost(req.HostCallbackID)
-	resp := logins.poll(context.Background(), h, currentSettings(), strings.TrimSpace(req.State))
-	return okEnvelope(resp)
+	return rpc.OK(logins.poll(context.Background(), host.New(req.HostCallbackID), currentSettings(), strings.TrimSpace(req.State)))
 }
 
 // start opens a loopback listener for Zed's native-app callback and returns
@@ -234,7 +229,7 @@ func (f *loginFlows) find(state string) *loginFlow {
 	return f.flows[state]
 }
 
-func (f *loginFlows) poll(ctx context.Context, h host, cfg settings, state string) pluginapi.AuthLoginPollResponse {
+func (f *loginFlows) poll(ctx context.Context, h host.Doer, cfg settings, state string) pluginapi.AuthLoginPollResponse {
 	flow := f.find(state)
 	if flow == nil {
 		return pluginapi.AuthLoginPollResponse{Status: pluginapi.AuthLoginStatusError, Message: "the Zed sign-in expired or was never started"}
@@ -260,16 +255,7 @@ func (f *loginFlows) poll(ctx context.Context, h host, cfg settings, state strin
 	cred.Username = info.Username
 	cred.Plan = info.Plan
 	cred.OrganizationID = info.OrganizationID
-	file := authFile{
-		UserID:         cred.UserID,
-		AccessToken:    cred.AccessToken,
-		SystemID:       cred.SystemID,
-		OrganizationID: cred.OrganizationID,
-		Username:       cred.Username,
-		Plan:           cred.Plan,
-		AddedAt:        time.Now().UTC().Format(time.RFC3339),
-		extra:          make(map[string]json.RawMessage),
-	}
+	file := fileFromCredential(cred)
 	storage, errMarshal := file.marshal()
 	if errMarshal != nil {
 		return pluginapi.AuthLoginPollResponse{Status: pluginapi.AuthLoginStatusError, Message: "store the Zed login: " + errMarshal.Error()}
