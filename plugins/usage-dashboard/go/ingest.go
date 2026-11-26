@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
@@ -293,8 +292,7 @@ var identities = &identityCache{now: time.Now, resolve: authRuntime}
 // authRuntime reads one credential's runtime entry, which carries its
 // provider, label and account fields but no secrets.
 func authRuntime(authIndex string) (pluginapi.HostAuthFileEntry, error) {
-	var resp pluginapi.HostAuthGetRuntimeResponse
-	errCall := host.Invoke(pluginabi.MethodHostAuthGetRuntime, pluginapi.HostAuthGetRequest{AuthIndex: authIndex}, &resp)
+	resp, errCall := host.AuthGetRuntime(authIndex)
 	return resp.Auth, errCall
 }
 
