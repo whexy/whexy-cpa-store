@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { githubRequest, githubToken } from "./github-app.mjs";
 import { pluginForTag } from "./plugin-tag.mjs";
-import { changelogSection, readPlugins } from "./plugins.mjs";
+import { changelogSection, isMain, readPlugins } from "./plugins.mjs";
 
 export async function readArtifacts(dir, plugin) {
   const prefix = `${plugin.id}-v${plugin.version}-`;
@@ -128,10 +127,7 @@ export async function publishRelease(
   console.log(`Published ${result.html_url}`);
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (isMain(import.meta.url)) {
   const plugin = pluginForTag(
     process.env.CI_COMMIT_TAG ?? "",
     await readPlugins(),

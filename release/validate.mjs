@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
-import { readPlugins, UNRELEASED } from "./plugins.mjs";
+import { isMain, readPlugins, UNRELEASED } from "./plugins.mjs";
 
 const SYSTEM = "x86_64-linux";
 const DOCUMENTATION = [
@@ -83,10 +82,7 @@ export async function readScope(env, root = new URL("../", import.meta.url)) {
   return { plugins, scope: validationScope(env, plugins, registry) };
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (isMain(import.meta.url)) {
   const args = nixArguments((await readScope(process.env)).scope);
   console.log(`nix ${args.join(" ")}`);
   const { status, error } = spawnSync("nix", args, { stdio: "inherit" });

@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 export const UNRELEASED = "0.0.0";
 export const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
@@ -19,6 +20,10 @@ export function compareVersions(left, right) {
   if (!b.pre) return -1;
   return a.pre.localeCompare(b.pre, "en", { numeric: true });
 }
+
+// isMain reports whether the module at moduleURL is the script node runs.
+export const isMain = (moduleURL) =>
+  Boolean(process.argv[1]) && moduleURL === pathToFileURL(process.argv[1]).href;
 
 export const tagName = (id, version) => `${id}-v${version}`;
 

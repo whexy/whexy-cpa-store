@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import {
   compareVersions,
   declaredVersion,
+  isMain,
   RELEASE_VERSION,
   setDeclaredVersion,
   tagName,
@@ -162,10 +163,7 @@ export async function bump(
   return version;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (isMain(import.meta.url)) {
   const [id, version] = process.argv.slice(2);
   if (!id) {
     console.error("Usage: node release/bump.mjs <plugin-id> [<version>]");

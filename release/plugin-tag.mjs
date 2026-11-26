@@ -1,5 +1,4 @@
-import { pathToFileURL } from "node:url";
-import { readPlugins, tagName, UNRELEASED } from "./plugins.mjs";
+import { isMain, readPlugins, tagName, UNRELEASED } from "./plugins.mjs";
 
 // A tag pipeline may only publish the version its own tree declares.
 export function pluginForTag(tag, plugins) {
@@ -15,10 +14,7 @@ export function pluginForTag(tag, plugins) {
   return plugin;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (isMain(import.meta.url)) {
   const plugin = pluginForTag(
     process.env.CI_COMMIT_TAG ?? "",
     await readPlugins(),

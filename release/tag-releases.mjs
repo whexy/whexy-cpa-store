@@ -1,7 +1,7 @@
-import { pathToFileURL } from "node:url";
 import { githubRequest, githubToken } from "./github-app.mjs";
 import {
   compareVersions,
+  isMain,
   RELEASE_VERSION,
   tagName,
   UNRELEASED,
@@ -78,10 +78,7 @@ export async function tagReleases(
   return created;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (isMain(import.meta.url)) {
   if (!process.env.CI_REPO) throw new Error("Set CI_REPO to <owner>/<name>");
   // The validate step built and tested only these plugins at this commit.
   const { plugins, scope } = await readScope(process.env);
