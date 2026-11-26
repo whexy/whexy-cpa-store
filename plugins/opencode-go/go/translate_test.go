@@ -11,6 +11,7 @@ import (
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
 	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/translate"
 )
 
 func TestPlanRoute(t *testing.T) {
@@ -35,7 +36,7 @@ func TestPlanRoute(t *testing.T) {
 		{responses, responses, "", ""},
 	}
 	for _, tc := range cases {
-		plan, errPlan := planRoute(tc.client, tc.client, tc.upstream)
+		plan, errPlan := translate.PlanRoute(tc.client, tc.client, tc.upstream)
 		if errPlan != nil {
 			t.Fatalf("%s->%s: %v", tc.client, tc.upstream, errPlan)
 		}
@@ -43,7 +44,7 @@ func TestPlanRoute(t *testing.T) {
 			t.Errorf("%s->%s = request %q response %q", tc.client, tc.upstream, plan.RequestTo, plan.ResponseFrom)
 		}
 	}
-	if _, errPlan := planRoute("bogus", "bogus", chat); errPlan == nil {
+	if _, errPlan := translate.PlanRoute("bogus", "bogus", chat); errPlan == nil {
 		t.Error("unknown source format planned")
 	}
 }
@@ -57,7 +58,7 @@ func TestNormalizeFormat(t *testing.T) {
 		"anthropic":        sdktranslator.FormatClaude,
 		"claude":           sdktranslator.FormatClaude,
 	} {
-		if got := normalizeFormat(in); got != want {
+		if got := provider.NormalizeFormat(in); got != want {
 			t.Errorf("%q = %q, want %q", in, got, want)
 		}
 	}
@@ -65,7 +66,7 @@ func TestNormalizeFormat(t *testing.T) {
 
 func codexBody(t *testing.T, source sdktranslator.Format, payload string, stream bool) gjson.Result {
 	t.Helper()
-	plan, errPlan := planRoute(source, source, sdktranslator.FormatOpenAIResponse)
+	plan, errPlan := translate.PlanRoute(source, source, sdktranslator.FormatOpenAIResponse)
 	if errPlan != nil {
 		t.Fatal(errPlan)
 	}
@@ -86,13 +87,13 @@ func TestCodexBodyFitsGoResponses(t *testing.T) {
 	}
 
 	body = codexBody(t, sdktranslator.FormatOpenAI, `{"model":"x","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":1,"reasoning_effort":"high","parallel_tool_calls":false,"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object"}}}]}`, true)
-	if body.Get("max_output_tokens").Int() != minResponsesOutputTokens || body.Get("reasoning.effort").String() != "high" || body.Get("parallel_tool_calls").Type != gjson.False || !body.Get("stream").Bool() {
+	if body.Get("max_output_tokens").Int() != translate.MinResponsesOutputTokens || body.Get("reasoning.effort").String() != "high" || body.Get("parallel_tool_calls").Type != gjson.False || !body.Get("stream").Bool() {
 		t.Errorf("chat body with options = %s", body.Raw)
 	}
 
 	// The Claude translator always asks for a stream; a buffered call must not.
 	body = codexBody(t, sdktranslator.FormatClaude, `{"model":"x","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`, false)
-	if body.Get("stream").Bool() || body.Get("max_output_tokens").Int() != minResponsesOutputTokens || body.Get("reasoning").Exists() {
+	if body.Get("stream").Bool() || body.Get("max_output_tokens").Int() != translate.MinResponsesOutputTokens || body.Get("reasoning").Exists() {
 		t.Errorf("claude body = %s", body.Raw)
 	}
 	body = codexBody(t, sdktranslator.FormatClaude, `{"model":"x","max_tokens":4096,"thinking":{"type":"enabled","budget_tokens":2048},"messages":[{"role":"user","content":"hi"}]}`, true)
@@ -102,7 +103,7 @@ func TestCodexBodyFitsGoResponses(t *testing.T) {
 }
 
 func TestBuildUpstreamBodyRejectsNonObject(t *testing.T) {
-	plan, _ := planRoute(sdktranslator.FormatOpenAI, sdktranslator.FormatOpenAI, sdktranslator.FormatOpenAI)
+	plan, _ := translate.PlanRoute(sdktranslator.FormatOpenAI, sdktranslator.FormatOpenAI, sdktranslator.FormatOpenAI)
 	for _, payload := range []string{``, `[]`, `not json`} {
 		if _, errBuild := buildUpstreamBody(context.Background(), plan, []byte(payload), "m", false); errBuild == nil {
 			t.Errorf("%q accepted", payload)
@@ -111,15 +112,15 @@ func TestBuildUpstreamBodyRejectsNonObject(t *testing.T) {
 }
 
 func TestCodexTerminalEvent(t *testing.T) {
-	event, errEvent := codexTerminalEvent([]byte(`{"status":"incomplete","output":[]}`))
+	event, errEvent := provider.CodexTerminalEvent([]byte(`{"status":"incomplete","output":[]}`))
 	if errEvent != nil || gjson.GetBytes(event, "type").String() != "response.incomplete" || gjson.GetBytes(event, "response.status").String() != "incomplete" {
 		t.Fatalf("event = %s, %v", event, errEvent)
 	}
-	event, _ = codexTerminalEvent(readFixture(t, "responses_response.json"))
+	event, _ = provider.CodexTerminalEvent(readFixture(t, "responses_response.json"))
 	if gjson.GetBytes(event, "type").String() != "response.completed" {
 		t.Fatalf("event = %s", event)
 	}
-	if _, errEvent := codexTerminalEvent([]byte(`{"status":"failed","error":{"code":"server_error","message":"boom"}}`)); errEvent == nil || !strings.Contains(errEvent.Error(), "boom") {
+	if _, errEvent := provider.CodexTerminalEvent([]byte(`{"status":"failed","error":{"code":"server_error","message":"boom"}}`)); errEvent == nil || !strings.Contains(errEvent.Error(), "boom") {
 		t.Fatalf("failed response: %v", errEvent)
 	}
 }

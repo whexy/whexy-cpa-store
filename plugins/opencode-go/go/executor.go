@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,10 +12,7 @@ import (
 	"github.com/whexy/whexy-cpa-store/pluginkit/background"
 	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
-
-	// Registers CPA's protocol translators with sdk/translator for in-process
-	// conversion between client formats and each model's native protocol.
-	_ "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator/builtin"
+	"github.com/whexy/whexy-cpa-store/pluginkit/translate"
 )
 
 // rpcExecutorRequest is the wire shape of executor.execute, execute_stream
@@ -46,7 +42,7 @@ type executorCall struct {
 	cfg   settings
 	cred  credential
 	route modelRoute
-	plan  routePlan
+	plan  translate.Plan
 	// cloaked says the request is presented as the OpenCode client because the
 	// model is a free one of the pay-as-you-go gateway.
 	cloaked bool
@@ -119,12 +115,12 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 			return nil, rpc.Fail("usage_limit", block.message(), rpc.WithStatus(http.StatusTooManyRequests), rpc.WithRetryAfter(block.retryAfter(exhaustion.now())))
 		}
 	}
-	source := normalizeFormat(req.SourceFormat)
+	source := provider.NormalizeFormat(req.SourceFormat)
 	response := source
 	if strings.TrimSpace(req.Format) != "" {
-		response = normalizeFormat(req.Format)
+		response = provider.NormalizeFormat(req.Format)
 	}
-	plan, errPlan := planRoute(source, response, route.Protocol)
+	plan, errPlan := translate.PlanRoute(source, response, route.Protocol)
 	if errPlan != nil {
 		return nil, rpc.Fail("unsupported_format", errPlan.Error(), rpc.WithStatus(http.StatusBadRequest))
 	}
@@ -193,7 +189,7 @@ func (c *executorCall) upstreamRequest() pluginapi.HTTPRequest {
 func (c *executorCall) execute(ctx context.Context) []byte {
 	resp, errDo := c.host.Do(ctx, c.upstreamRequest())
 	if errDo != nil {
-		return transportFailure(errDo)
+		return rpc.TransportFailure(displayName, errDo)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return c.upstreamFailure(ctx, resp.StatusCode, resp.Headers, resp.Body)
@@ -213,7 +209,7 @@ func (c *executorCall) execute(ctx context.Context) []byte {
 	if c.filter.active() {
 		body = c.filter.buffered(body)
 	}
-	out, errConvert := convertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, body)
+	out, errConvert := provider.ConvertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, body, nil)
 	if errConvert != nil {
 		return rpc.Fail("translation_failed", errConvert.Error(), rpc.WithStatus(http.StatusBadGateway))
 	}
@@ -230,7 +226,7 @@ func (c *executorCall) execute(ctx context.Context) []byte {
 func (c *executorCall) executeStream(ctx context.Context) []byte {
 	upstream, errStart := c.host.DoStream(ctx, c.upstreamRequest())
 	if errStart != nil {
-		return transportFailure(errStart)
+		return rpc.TransportFailure(displayName, errStart)
 	}
 	if upstream.StatusCode < 200 || upstream.StatusCode > 299 {
 		body, _ := upstream.ReadAll()
@@ -313,13 +309,6 @@ func pumpStream(upstream *host.Stream, converter *streamConverter, streamID stri
 			return
 		}
 	}
-}
-
-func transportFailure(err error) []byte {
-	if errors.Is(err, context.Canceled) {
-		return rpc.Fail("canceled", "OpenCode Go request canceled", rpc.WithStatus(http.StatusRequestTimeout))
-	}
-	return rpc.Fail("upstream_unreachable", "OpenCode Go request failed: "+err.Error(), rpc.WithStatus(http.StatusBadGateway))
 }
 
 // upstreamFailure maps a gateway error to the status CPA acts on: 401, 402

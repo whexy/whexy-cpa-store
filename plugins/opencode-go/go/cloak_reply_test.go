@@ -10,6 +10,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/translate"
 )
 
 // What the cloak did to a request's tool list is undone in its reply. These
@@ -611,7 +612,7 @@ func responseCalls(t *testing.T, body []byte) string {
 // a caller that speaks it, so a placeholder call leaves no fragment and no
 // tool stop behind it while the caller's own call keeps its argument.
 func TestStreamConverterFiltersBeforeTranslating(t *testing.T) {
-	plan := routePlan{Source: sdktranslator.FormatOpenAI, Response: sdktranslator.FormatOpenAI, Upstream: sdktranslator.FormatOpenAI}
+	plan := translate.Plan{Source: sdktranslator.FormatOpenAI, Response: sdktranslator.FormatOpenAI, Upstream: sdktranslator.FormatOpenAI}
 	converter := newStreamConverter(context.Background(), plan, "m", nil, nil)
 	converter.filter = newCloakFilter(sdktranslator.FormatOpenAI, stubbedTools("bash", "read"))
 	_, events := chatReply("Reading it.", [2]string{"read", `{"filePath":"/a"}`}, [2]string{"shell", `{"command":"ls"}`})

@@ -4,209 +4,30 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/translate"
 )
 
-// routePlan says how one request travels between the client's format and
-// the model's native protocol.
-type routePlan struct {
-	// Source is the format of the client's request body.
-	Source sdktranslator.Format
-	// Response is the format the host expects the response in.
-	Response sdktranslator.Format
-	// Upstream is the model's native protocol.
-	Upstream sdktranslator.Format
-	// RequestTo is the translator target for the request body, empty when
-	// the body is forwarded with only the model rewritten.
-	RequestTo sdktranslator.Format
-	// ResponseFrom is the translator source for the response, empty when
-	// the upstream response is already in the Response format.
-	ResponseFrom sdktranslator.Format
-}
-
-func normalizeFormat(name string) sdktranslator.Format {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "", "openai", "chat-completions", "chat_completions":
-		return sdktranslator.FormatOpenAI
-	case "openai-response", "openai-responses", "responses":
-		return sdktranslator.FormatOpenAIResponse
-	case "claude", "anthropic", "messages":
-		return sdktranslator.FormatClaude
-	default:
-		return sdktranslator.Format(strings.ToLower(strings.TrimSpace(name)))
-	}
-}
-
-// translatorSide names the format CPA's translators use for an upstream
-// protocol. CPA registers no pair into openai-response; Responses upstreams
-// are reached through the Codex pair, which speaks the Responses wire.
-func translatorSide(upstream sdktranslator.Format) sdktranslator.Format {
-	if upstream == sdktranslator.FormatOpenAIResponse {
-		return sdktranslator.FormatCodex
-	}
-	return upstream
-}
-
-func planRoute(source, response, upstream sdktranslator.Format) (routePlan, error) {
-	plan := routePlan{Source: source, Response: response, Upstream: upstream}
-	if source != upstream {
-		plan.RequestTo = translatorSide(upstream)
-		if !sdktranslator.HasRequestTransformer(source, plan.RequestTo) {
-			return routePlan{}, fmt.Errorf("no translator from %s requests to %s", source, upstream)
-		}
-	}
-	if response != upstream {
-		plan.ResponseFrom = translatorSide(upstream)
-		if !sdktranslator.HasStreamResponseTransformer(response, plan.ResponseFrom) || !sdktranslator.HasNonStreamResponseTransformer(response, plan.ResponseFrom) {
-			return routePlan{}, fmt.Errorf("no translator from %s responses to %s", upstream, response)
-		}
-	}
-	return plan, nil
+// provider reports a failed buffered Responses object as the stream error
+// the same failure would have streamed.
+var provider = translate.Provider{
+	Name:   displayName,
+	Failed: func(body []byte) error { return streamFailure(body, "") },
 }
 
 // buildUpstreamBody turns the client's request into the model's native
 // request with the bare Go model ID.
-func buildUpstreamBody(ctx context.Context, plan routePlan, payload []byte, upstreamModel string, stream bool) ([]byte, error) {
-	if !gjson.ValidBytes(payload) || !gjson.ParseBytes(payload).IsObject() {
-		return nil, errors.New("request body is not a JSON object")
+func buildUpstreamBody(ctx context.Context, plan translate.Plan, payload []byte, upstreamModel string, stream bool) ([]byte, error) {
+	body, errBuild := translate.BuildRequest(ctx, plan, payload, upstreamModel, stream)
+	if errBuild != nil {
+		return nil, errBuild
 	}
-	body := payload
-	if plan.RequestTo != "" {
-		translated := sdktranslator.TranslateRequestEnvelope(ctx, plan.Source, plan.RequestTo, sdktranslator.RequestEnvelope{
-			Format: plan.Source,
-			Model:  upstreamModel,
-			Stream: stream,
-			Body:   payload,
-		})
-		if translated.Err != nil {
-			return nil, translated.Err
-		}
-		body = translated.Body
-		if plan.RequestTo == sdktranslator.FormatCodex {
-			body = adaptCodexBody(body, payload, plan.Source)
-		}
-	}
-	body, errSet := setJSON(body, "model", upstreamModel)
-	if errSet != nil {
-		return nil, errSet
-	}
-	return setStream(body, stream)
-}
-
-// minResponsesOutputTokens is the lowest max_output_tokens Go's Responses
-// models accept; Chat and Messages clients go lower, as Claude Code's
-// max_tokens 1 probe does.
-const minResponsesOutputTokens = 16
-
-// adaptCodexBody undoes Codex translator defaults written for the ChatGPT
-// backend: it drops the client's max tokens and always asks for medium
-// reasoning and parallel tool calls, whether or not the client did.
-func adaptCodexBody(body, source []byte, sourceFormat sdktranslator.Format) []byte {
-	root := gjson.ParseBytes(source)
-	if limit := sourceMaxTokens(root, sourceFormat); limit > 0 {
-		body, _ = sjson.SetBytes(body, "max_output_tokens", max(limit, minResponsesOutputTokens))
-	}
-	if !sourceAsksReasoning(root, sourceFormat) {
-		body, _ = sjson.DeleteBytes(body, "reasoning.effort")
-		if reasoning := gjson.GetBytes(body, "reasoning"); reasoning.IsObject() && len(reasoning.Map()) == 0 {
-			body, _ = sjson.DeleteBytes(body, "reasoning")
-		}
-	}
-	if tools := gjson.GetBytes(body, "tools"); !tools.IsArray() || len(tools.Array()) == 0 {
-		body, _ = sjson.DeleteBytes(body, "parallel_tool_calls")
-	} else if parallel := root.Get("parallel_tool_calls"); sourceFormat == sdktranslator.FormatOpenAI && (parallel.Type == gjson.True || parallel.Type == gjson.False) {
-		body, _ = sjson.SetBytes(body, "parallel_tool_calls", parallel.Bool())
-	}
-	return body
-}
-
-func sourceMaxTokens(root gjson.Result, format sdktranslator.Format) int64 {
-	if limit := root.Get("max_completion_tokens"); format == sdktranslator.FormatOpenAI && limit.Exists() {
-		return limit.Int()
-	}
-	return root.Get("max_tokens").Int()
-}
-
-// sourceAsksReasoning reports whether the client chose a reasoning level;
-// without one the model's own default applies, and models that take no
-// effort parameter are not sent one.
-func sourceAsksReasoning(root gjson.Result, format sdktranslator.Format) bool {
-	if format == sdktranslator.FormatClaude {
-		return root.Get("thinking").IsObject() || root.Get("output_config.effort").Exists()
-	}
-	return root.Get("reasoning_effort").Exists()
-}
-
-func setJSON(body []byte, path string, value any) ([]byte, error) {
-	if current := gjson.GetBytes(body, path); current.Exists() && current.Value() == value {
-		return body, nil
-	}
-	updated, errSet := sjson.SetBytes(body, path, value)
-	if errSet != nil {
-		return nil, fmt.Errorf("set %s: %w", path, errSet)
-	}
-	return updated, nil
-}
-
-// setStream makes the body's stream flag match the call: the host decides
-// streaming by method, and the Claude-to-Codex translator always sets it.
-func setStream(body []byte, stream bool) ([]byte, error) {
-	current := gjson.GetBytes(body, "stream")
-	if current.Exists() && current.Bool() == stream {
-		return body, nil
-	}
-	if !current.Exists() && !stream {
-		return body, nil
-	}
-	return setJSON(body, "stream", stream)
-}
-
-// convertResponse turns a buffered upstream response into the host's
-// response format.
-func convertResponse(ctx context.Context, plan routePlan, model string, original, request, body []byte) ([]byte, error) {
-	if plan.ResponseFrom == "" {
-		return body, nil
-	}
-	if plan.ResponseFrom == sdktranslator.FormatCodex {
-		event, errEvent := codexTerminalEvent(body)
-		if errEvent != nil {
-			return nil, errEvent
-		}
-		body = event
-	}
-	var param any
-	out := sdktranslator.TranslateNonStream(ctx, plan.ResponseFrom, plan.Response, model, original, request, body, &param)
-	if len(bytes.TrimSpace(out)) == 0 {
-		return nil, fmt.Errorf("translating the %s response to %s produced nothing", plan.Upstream, plan.Response)
-	}
-	return out, nil
-}
-
-// codexTerminalEvent wraps a buffered Responses object in the terminal
-// stream event the Codex translators read, since the Codex backend they were
-// written for only streams.
-func codexTerminalEvent(body []byte) ([]byte, error) {
-	if !gjson.ValidBytes(body) {
-		return nil, errors.New("OpenCode Go returned a Responses body that is not JSON")
-	}
-	eventType := "response.completed"
-	switch gjson.GetBytes(body, "status").String() {
-	case "incomplete":
-		eventType = "response.incomplete"
-	case "failed":
-		return nil, streamFailure(body, "")
-	}
-	event, errSet := sjson.SetRawBytes([]byte(`{"type":""}`), "response", body)
-	if errSet != nil {
-		return nil, errSet
-	}
-	return sjson.SetBytes(event, "type", eventType)
+	return translate.SetStream(body, stream)
 }
 
 // sseFrame is one server-sent event.
@@ -294,7 +115,7 @@ func (s *sseSplitter) frame() (sseFrame, bool) {
 // whole SSE frames for Messages and Responses.
 type streamConverter struct {
 	ctx      context.Context
-	plan     routePlan
+	plan     translate.Plan
 	model    string
 	original []byte
 	request  []byte
@@ -319,7 +140,7 @@ type tokenUsage struct {
 	input, cached, output, reasoning, all int64
 }
 
-func newStreamConverter(ctx context.Context, plan routePlan, model string, original, request []byte) *streamConverter {
+func newStreamConverter(ctx context.Context, plan translate.Plan, model string, original, request []byte) *streamConverter {
 	return &streamConverter{ctx: ctx, plan: plan, model: model, original: original, request: request}
 }
 
