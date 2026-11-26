@@ -26,13 +26,23 @@ that admits only hashed inline code, so the kit is inlined rather than linked.
 A page therefore holds only its own rules and logic:
 
 - Styles use the kit's tokens and components, both listed at the top of
-  `ui/kit.css`. A page defines tokens only for its own subject, such as chart
+  `ui/kit.src.css`. A page defines tokens only for its own subject, such as chart
   series.
 - Scripts reach the shared runtime through the global `kit`: paths, the
   management key (`kit.auth.init`), requests (`kit.api`, `kit.cpa`) and DOM
   helpers (`kit.$`, `kit.h`).
 - Page logic tests that run a page's first `<script>` under `node:vm` load
   `ui/kit.js` into the same context first.
+
+`ui/kit.css` is generated: Tailwind v4 compiles `ui/kit.src.css` and the
+Frost sources in `ui/frost/`. After changing either, regenerate it:
+
+```bash
+nix build .#kit-css && install -m644 result pluginkit/ui/kit.css
+```
+
+`nix flake check` fails while the committed file is stale, including after a
+`flake.lock` update that brings a Tailwind release with different output.
 
 ## Testing
 
