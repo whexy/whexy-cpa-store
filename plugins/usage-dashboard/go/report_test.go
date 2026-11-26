@@ -125,11 +125,11 @@ func TestColorsFoldPastThePalette(t *testing.T) {
 		rows = append(rows, reportRow(now, fmt.Sprintf("acct-%02d", i), "claude", "claude-opus-5-5", counters{Requests: 1, Input: int64(100 - i)}))
 	}
 	report := buildReport(ranges["24h"], groupByAccount, time.UTC, reportInputs{Now: now, Rows: rows, History: rows})
-	if len(report.Groups) != 9 {
-		t.Fatalf("groups = %d, want 8 coloured and Other", len(report.Groups))
+	if len(report.Groups) != paletteSlots+1 {
+		t.Fatalf("groups = %d, want %d coloured and Other", len(report.Groups), paletteSlots)
 	}
-	other := report.Groups[8]
-	if other.Key != otherGroupKey || other.Color != 0 || other.Processed != 91+92 {
+	other := report.Groups[paletteSlots]
+	if other.Key != otherGroupKey || other.Color != 0 || other.Processed != 91+92+93+94 {
 		t.Fatalf("other = %+v", other)
 	}
 }

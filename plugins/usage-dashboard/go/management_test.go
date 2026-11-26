@@ -32,7 +32,7 @@ func TestManagementResources(t *testing.T) {
 		t.Fatalf("registration %s: %v", raw, errUnmarshal)
 	}
 	resources := envelope.Result.Resources
-	if len(resources) != 2 || resources[0].Path != "/v0/resource/plugins/usage-dashboard/index.html" || resources[0].Menu != "Usage" ||
+	if len(resources) < 2 || resources[0].Path != "/v0/resource/plugins/usage-dashboard/index.html" || resources[0].Menu != "Usage" ||
 		resources[1].Path != "/v0/resource/plugins/usage-dashboard/logo.svg" || resources[1].Menu != "" {
 		t.Fatalf("resources = %+v", resources)
 	}

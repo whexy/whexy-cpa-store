@@ -14,7 +14,8 @@ const (
 	groupByFamily  = "family"
 	groupByAccount = "account"
 	otherGroupKey  = "__other__"
-	paletteSlots   = 8
+	// paletteSlots is the page's six chart series; the rest fold into Other.
+	paletteSlots = 6
 )
 
 // rangeSpec is one of the page's time ranges.
@@ -30,18 +31,17 @@ var ranges = map[string]rangeSpec{
 	"90d": {Key: "90d", Days: 90},
 }
 
-// familySlots pins well-known families to a palette slot (1-based, see the
-// page's --series-N colours) so a family keeps its colour across ranges and
-// installs. Other families take the free slots in order of total use.
+// familySlots pins well-known families to a palette slot (1-based, the
+// page's chart series) so a family keeps its colour across ranges and
+// installs. The quota chart gives each provider the slot of the family it
+// serves.
 var familySlots = map[string]int{
-	"Gemini":   1,
-	"Claude":   2,
-	"GPT":      3,
-	"Kimi":     4,
-	"Grok":     5,
-	"GLM":      6,
-	"DeepSeek": 7,
-	"Qwen":     8,
+	"Claude":   1,
+	"GPT":      2,
+	"Gemini":   3,
+	"Grok":     4,
+	"DeepSeek": 5,
+	"Kimi":     6,
 }
 
 type reportQuery struct {
@@ -395,9 +395,9 @@ func familySlotFor(family, groupBy string, colors map[string]int) int {
 	return colors[family]
 }
 
-// assignColors gives each group a palette slot from its use over the whole
-// retained history, so a group keeps its colour when the range changes.
-// Groups past the palette fold into "Other".
+// assignColors gives the most used groups over the whole retained history a
+// palette slot each, so a group keeps its colour when the range changes; a
+// pinned family among them takes its own slot. The rest fold into "Other".
 func assignColors(groupBy string, history []storedRow, groupOf func(storedRow) string) map[string]int {
 	totals := make(map[string]int64)
 	for _, r := range history {
@@ -413,6 +413,7 @@ func assignColors(groupBy string, history []storedRow, groupOf func(storedRow) s
 		}
 		return keys[i] < keys[j]
 	})
+	keys = keys[:min(len(keys), paletteSlots)]
 	colors := make(map[string]int, len(keys))
 	taken := make(map[int]bool)
 	if groupBy == groupByFamily {

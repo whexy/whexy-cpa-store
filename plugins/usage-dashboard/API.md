@@ -91,9 +91,10 @@ days of retention; `range.ranges` lists the ones available.
   is input, cache reads, cache writes and output together; `cost` and
   `cache_savings` are USD, estimated from prices, and leave out the
   `unpriced_tokens`.
-- `groups` are model families or accounts, largest first. Past eight, the
-  rest fold into one with key `__other__` and color 0. `color` is a palette
-  slot from 1 to 8 that a family or account keeps across ranges.
+- `groups` are model families or accounts, largest first. Only the six
+  most used over the retained history get a palette slot; the rest fold into
+  one with key `__other__` and color 0. `color` is a palette slot from 1 to 6
+  that a family or account keeps across ranges.
   `series_tokens` and `series_cost` have one value per point.
 - `points[].point` is an RFC 3339 hour for `24h` and a `YYYY-MM-DD` day
   otherwise.
