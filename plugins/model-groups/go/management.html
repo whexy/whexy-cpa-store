@@ -1038,6 +1038,15 @@
       "use strict";
       const { $, h, AuthError, auth, api, cpa, request, paths } = kit;
       const CONFIG = paths.pluginConfig;
+      // CPA applies this session affinity TTL when config.yaml sets none or
+      // a duration that is not positive: negative, or with no nonzero digit.
+      const CPA_AFFINITY_TTL = "1h";
+      const cpaTTL = (routing) => {
+        const ttl = String(routing?.["session-affinity-ttl"] ?? "").trim();
+        return !ttl.startsWith("-") && /[1-9]/.test(ttl)
+          ? ttl
+          : CPA_AFFINITY_TTL;
+      };
       async function listModels(key) {
         const response = await fetch(paths.base + "/v1/models", {
           headers: key ? { Authorization: "Bearer " + key } : {},
@@ -1194,22 +1203,17 @@
               "span",
               { class: "badge " + (on ? "ok" : "danger") },
               "Session affinity ",
-              h(
-                "b",
-                {},
-                (on ? "on" : "off") +
-                  (routing["session-affinity-ttl"]
-                    ? " · " + routing["session-affinity-ttl"]
-                    : ""),
-              ),
+              h("b", {}, (on ? "on" : "off") + " · " + cpaTTL(routing)),
             ),
           );
+          // CPA routes by round robin unless routing.strategy says otherwise.
+          const strategy = routing.strategy || "round-robin";
           items.push(
             h(
               "span",
               { class: "badge" },
               "CPA accounts ",
-              h("b", {}, policies[routing.strategy] || routing.strategy),
+              h("b", {}, policies[strategy] || strategy),
             ),
           );
           $("affinity-warning").hidden = Boolean(on);
@@ -1579,7 +1583,8 @@
           renderGroups();
           const results = await Promise.allSettled([
             request(CONFIG, { missing: null }),
-            cpa("/config/routing"),
+            // A config without a routing section uses CPA's defaults.
+            cpa("/config/routing", { missing: {} }),
             loadCatalog(),
           ]);
           configLoaded = results[0].status === "fulfilled";
@@ -1657,22 +1662,11 @@
             false,
         );
         const configuredTTL = affinity.ttl || "";
-        const ttl =
-          configuredTTL === routing?.["session-affinity-ttl"]
-            ? ""
-            : configuredTTL;
+        const ttl = configuredTTL === cpaTTL(routing) ? "" : configuredTTL;
         const values = [...new Set(["", ...(ttl ? [ttl] : []), "24h"])];
         $("ttl").replaceChildren(
           ...values.map((value) =>
-            h(
-              "option",
-              { value },
-              value ||
-                "follow CPA" +
-                  (routing?.["session-affinity-ttl"]
-                    ? " · " + routing["session-affinity-ttl"]
-                    : ""),
-            ),
+            h("option", { value }, value || "follow CPA · " + cpaTTL(routing)),
           ),
         );
         $("ttl").value = ttl;
@@ -2182,10 +2176,9 @@
           };
           if ($("ttl").value) affinity.ttl = $("ttl").value;
           else {
-            const currentRouting = await cpa("/config/routing");
-            if (!currentRouting["session-affinity-ttl"])
-              throw new Error("routing.session-affinity-ttl");
-            affinity.ttl = currentRouting["session-affinity-ttl"];
+            affinity.ttl = cpaTTL(
+              await cpa("/config/routing", { missing: {} }),
+            );
           }
           return {
             ...latest,
