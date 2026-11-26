@@ -9,6 +9,7 @@ import (
 )
 
 func TestAGroupAnnouncesItsStoredCapabilities(t *testing.T) {
+	newFakeHost(t)
 	withPluginState(t, newTestState(t, `
 groups:
   - name: fast
@@ -30,7 +31,7 @@ groups:
     members:
       - model: claude-haiku-5-5
         provider: claude
-`, newFakeHost()))
+`))
 	models := registerModels().Models
 	got := models[0]
 	got.Created = 0
@@ -75,7 +76,7 @@ func TestInvalidCapabilitiesAreRejected(t *testing.T) {
 		"{thinking: {min: -1, max: 100}}": "thinking budget",
 	}
 	for capsYAML, want := range cases {
-		_, errParse := parseSettings([]byte(`
+		_, errParse := parseYAML([]byte(`
 groups:
   - name: fast
     members:

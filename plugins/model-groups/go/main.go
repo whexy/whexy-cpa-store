@@ -1,60 +1,7 @@
+// Command model-groups is a CLIProxyAPI plugin that serves groups of models
+// under one model ID each, routes every request for a group to one of its
+// members, and keeps a session on the member it first used.
 package main
-
-/*
-#include <stdint.h>
-#include <stdlib.h>
-
-typedef struct {
-	void* ptr;
-	size_t len;
-} cliproxy_buffer;
-
-typedef int (*cliproxy_host_call_fn)(void*, const char*, const uint8_t*, size_t, cliproxy_buffer*);
-typedef void (*cliproxy_host_free_fn)(void*, size_t);
-
-typedef struct {
-	uint32_t abi_version;
-	void* host_ctx;
-	cliproxy_host_call_fn call;
-	cliproxy_host_free_fn free_buffer;
-} cliproxy_host_api;
-
-typedef int (*cliproxy_plugin_call_fn)(char*, uint8_t*, size_t, cliproxy_buffer*);
-typedef void (*cliproxy_plugin_free_fn)(void*, size_t);
-typedef void (*cliproxy_plugin_shutdown_fn)(void);
-
-typedef struct {
-	uint32_t abi_version;
-	cliproxy_plugin_call_fn call;
-	cliproxy_plugin_free_fn free_buffer;
-	cliproxy_plugin_shutdown_fn shutdown;
-} cliproxy_plugin_api;
-
-extern int cliproxyPluginCall(char*, uint8_t*, size_t, cliproxy_buffer*);
-extern void cliproxyPluginFree(void*, size_t);
-extern void cliproxyPluginShutdown(void);
-
-// The host keeps its API table alive until the plugin is shut down.
-static const cliproxy_host_api* stored_host;
-
-static void store_host_api(const cliproxy_host_api* host) {
-	stored_host = host;
-}
-
-static int call_host_api(const char* method, const uint8_t* request, size_t request_len, cliproxy_buffer* response) {
-	if (stored_host == NULL || stored_host->call == NULL) {
-		return 1;
-	}
-	return stored_host->call(stored_host->host_ctx, method, request, request_len, response);
-}
-
-static void free_host_buffer(void* ptr, size_t len) {
-	if (stored_host != NULL && stored_host->free_buffer != NULL && ptr != NULL) {
-		stored_host->free_buffer(ptr, len);
-	}
-}
-*/
-import "C"
 
 import (
 	"context"
@@ -62,10 +9,13 @@ import (
 	"fmt"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
+	"github.com/whexy/whexy-cpa-store/pluginkit/datadir"
+	"github.com/whexy/whexy-cpa-store/pluginkit/plugin"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 const (
@@ -85,52 +35,82 @@ const (
 var (
 	// pluginStateRef is the process-wide state; a plugin library has exactly
 	// one.
-	pluginStateRef = newPluginState(defaultDataDir())
+	pluginStateRef = newPluginState(datadir.Default(pluginID))
 	pluginStart    = time.Now()
 	loopsOnce      sync.Once
 )
 
-type registration struct {
-	SchemaVersion uint32                 `json:"schema_version"`
-	Metadata      pluginapi.Metadata     `json:"metadata"`
-	Capabilities  registrationCapability `json:"capabilities"`
-}
-
-type registrationCapability struct {
-	ModelRegistrar         bool                         `json:"model_registrar"`
-	ModelRouter            bool                         `json:"model_router"`
-	Executor               bool                         `json:"executor"`
-	ExecutorModelScope     pluginapi.ExecutorModelScope `json:"executor_model_scope"`
-	RequestInterceptor     bool                         `json:"request_interceptor"`
-	RequestLifecyclePlugin bool                         `json:"request_lifecycle_plugin"`
-	ManagementAPI          bool                         `json:"management_api"`
-}
-
-type identifierResponse struct {
-	Identifier string `json:"identifier"`
-}
-
-func pluginRegistration() registration {
-	return registration{
-		SchemaVersion: pluginabi.SchemaVersion,
-		Metadata: pluginapi.Metadata{
-			Name:             displayName,
-			Version:          pluginVersion,
-			Author:           "Whexy",
-			GitHubRepository: "https://github.com/whexy/whexy-cpa-store",
-			Logo:             logoPath,
-			// CPA HTML-escapes these descriptions and Management Center shows
-			// the escapes literally, so they avoid angle brackets, ampersands
-			// and quotes.
-			ConfigFields: []pluginapi.ConfigField{
-				{Name: "prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every group model ID, as in " + defaultPrefix + "/fast. Default " + defaultPrefix + "."},
-				{Name: "affinity.enabled", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Keep a session on the member it first used, which is what keeps CLIProxyAPI on one account for that session. Default true."},
-				{Name: "affinity.ttl", Type: pluginapi.ConfigFieldTypeString, Description: "How long a session keeps its member, as a duration such as 1h or 24h. Default 1h, CLIProxyAPI's own default for routing.session-affinity-ttl; keep it at least that long."},
-				{Name: "affinity.rebind_on_failure", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Move a session to another member as soon as its member fails. Default false, so a session only moves once its member has no credentials left."},
-				{Name: "groups", Type: pluginapi.ConfigFieldTypeArray, Description: "The groups and their members. Manage them on the plugin page."},
-			},
+func init() {
+	plugin.Serve(plugin.Plugin{
+		ID:        pluginID,
+		Handle:    handleMethod,
+		Oversized: oversizedRequest,
+		Shutdown: func() {
+			pluginStateRef.persist()
+			background.Close(shutdownGrace)
 		},
-		Capabilities: registrationCapability{
+	})
+}
+
+func main() {}
+
+func handleMethod(method string, request []byte) ([]byte, error) {
+	switch method {
+	case pluginabi.MethodPluginRegister, pluginabi.MethodPluginReconfigure:
+		pluginStateRef.applyConfig(request)
+		startBackgroundLoops()
+		return rpc.OK(pluginRegistration())
+
+	case pluginabi.MethodPluginQuiesce:
+		return rpc.OK(struct{}{})
+
+	case pluginabi.MethodPluginShutdown:
+		pluginStateRef.persist()
+		return rpc.OK(struct{}{})
+
+	case pluginabi.MethodModelRegister:
+		return rpc.OK(registerModels())
+
+	case pluginabi.MethodExecutorIdentifier:
+		return rpc.OK(rpc.IdentifierResponse{Identifier: providerKey})
+
+	case pluginabi.MethodModelRoute:
+		return routeModel(request)
+
+	case pluginabi.MethodRequestInterceptBefore:
+		return interceptRequestBeforeAuth(request)
+
+	case pluginabi.MethodRequestInterceptAfter:
+		return interceptRequestAfterAuth(request)
+
+	case pluginabi.MethodRequestComplete:
+		return handleRequestComplete(request)
+
+	case pluginabi.MethodManagementRegister:
+		return router.Register()
+
+	case pluginabi.MethodManagementHandle:
+		return router.Handle(request)
+
+	default:
+		return rpc.Fail("unknown_method", "unknown method: "+method), nil
+	}
+}
+
+func pluginRegistration() rpc.Registration {
+	return rpc.Registration{
+		SchemaVersion: pluginabi.SchemaVersion,
+		// CPA HTML-escapes these descriptions and Management Center shows the
+		// escapes literally, so they avoid angle brackets, ampersands and
+		// quotes.
+		Metadata: rpc.NewMetadata(displayName, pluginVersion, router.LogoPath(),
+			pluginapi.ConfigField{Name: "prefix", Type: pluginapi.ConfigFieldTypeString, Description: "Prefix of every group model ID, as in " + defaultPrefix + "/fast. Default " + defaultPrefix + "."},
+			pluginapi.ConfigField{Name: "affinity.enabled", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Keep a session on the member it first used, which is what keeps CLIProxyAPI on one account for that session. Default true."},
+			pluginapi.ConfigField{Name: "affinity.ttl", Type: pluginapi.ConfigFieldTypeString, Description: "How long a session keeps its member, as a duration such as 1h or 24h. Default 1h, CLIProxyAPI's own default for routing.session-affinity-ttl; keep it at least that long."},
+			pluginapi.ConfigField{Name: "affinity.rebind_on_failure", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Move a session to another member as soon as its member fails. Default false, so a session only moves once its member has no credentials left."},
+			pluginapi.ConfigField{Name: "groups", Type: pluginapi.ConfigFieldTypeArray, Description: "The groups and their members. Manage them on the plugin page."},
+		),
+		Capabilities: rpc.Capabilities{
 			ModelRegistrar: true,
 			ModelRouter:    true,
 			// CPA lists the model IDs of a plugin without an executor only
@@ -147,125 +127,19 @@ func pluginRegistration() registration {
 	}
 }
 
-func main() {}
-
-//export cliproxy_plugin_init
-func cliproxy_plugin_init(host *C.cliproxy_host_api, plugin *C.cliproxy_plugin_api) C.int {
-	if plugin == nil {
-		return 1
-	}
-	C.store_host_api(host)
-	plugin.abi_version = C.uint32_t(pluginabi.ABIVersion)
-	plugin.call = C.cliproxy_plugin_call_fn(C.cliproxyPluginCall)
-	plugin.free_buffer = C.cliproxy_plugin_free_fn(C.cliproxyPluginFree)
-	plugin.shutdown = C.cliproxy_plugin_shutdown_fn(C.cliproxyPluginShutdown)
-	return 0
-}
-
-//export cliproxyPluginCall
-func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t, response *C.cliproxy_buffer) C.int {
-	if response != nil {
-		response.ptr = nil
-		response.len = 0
-	}
-	if method == nil {
-		writeResponse(response, errorEnvelope("invalid_method", "method is required"))
-		return 1
-	}
-	var requestBytes []byte
-	if request != nil && requestLen > 0 {
-		requestBytes = C.GoBytes(unsafe.Pointer(request), C.int(requestLen))
-	}
-	raw, errHandle := safeHandleMethod(C.GoString(method), requestBytes)
-	if errHandle != nil {
-		writeResponse(response, errorEnvelope("plugin_error", errHandle.Error()))
-		return 1
-	}
-	writeResponse(response, raw)
-	return 0
-}
-
-// safeHandleMethod contains panics: an unrecovered panic in a c-shared library
-// aborts the whole host process.
-func safeHandleMethod(method string, request []byte) (raw []byte, err error) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			raw = nil
-			err = fmt.Errorf("%s panicked: %v", method, recovered)
-		}
-	}()
-	return handleMethod(method, request)
-}
-
-//export cliproxyPluginFree
-func cliproxyPluginFree(ptr unsafe.Pointer, _ C.size_t) {
-	if ptr != nil {
-		C.free(ptr)
-	}
-}
-
-//export cliproxyPluginShutdown
-func cliproxyPluginShutdown() {
-	pluginStateRef.persist()
-	stopBackground(shutdownGrace)
-}
-
-func handleMethod(method string, request []byte) ([]byte, error) {
+// oversizedRequest answers a request the ABI cannot copy into Go. Every
+// request hook leaves such a request alone rather than failing it.
+func oversizedRequest(method string, length uint64) ([]byte, error) {
 	switch method {
-	case pluginabi.MethodPluginRegister, pluginabi.MethodPluginReconfigure:
-		if errConfigure := configure(request); errConfigure != nil {
-			return nil, errConfigure
-		}
-		startBackgroundLoops()
-		return okEnvelope(pluginRegistration())
-
-	case pluginabi.MethodPluginQuiesce:
-		return okEnvelope(struct{}{})
-
-	case pluginabi.MethodPluginShutdown:
-		pluginStateRef.persist()
-		return okEnvelope(struct{}{})
-
-	case pluginabi.MethodModelRegister:
-		return okEnvelope(registerModels())
-
-	case pluginabi.MethodExecutorIdentifier:
-		return okEnvelope(identifierResponse{Identifier: providerKey})
-
 	case pluginabi.MethodModelRoute:
-		return routeModel(request)
-
-	case pluginabi.MethodRequestInterceptBefore:
-		return interceptRequestBeforeAuth(request)
-
-	case pluginabi.MethodRequestInterceptAfter:
-		return interceptRequestAfterAuth(request)
-
+		return rpc.OK(pluginapi.ModelRouteResponse{})
+	case pluginabi.MethodRequestInterceptBefore, pluginabi.MethodRequestInterceptAfter:
+		return rpc.OK(pluginapi.RequestInterceptResponse{})
 	case pluginabi.MethodRequestComplete:
-		return handleRequestComplete(request)
-
-	case pluginabi.MethodManagementRegister:
-		return managementRegister()
-
-	case pluginabi.MethodManagementHandle:
-		return managementHandle(request)
-
+		return rpc.OK(struct{}{})
 	default:
-		return errorEnvelope("unknown_method", "unknown method: "+method), nil
+		return nil, fmt.Errorf("%s request of %d bytes is too large to read", method, length)
 	}
-}
-
-// configure reads the plugin's own node of config.yaml, which the host forces
-// enabled and priority into.
-func configure(raw []byte) error {
-	var request lifecycleRequest
-	if len(raw) > 0 {
-		if errUnmarshal := json.Unmarshal(raw, &request); errUnmarshal != nil {
-			return fmt.Errorf("decode lifecycle request: %w", errUnmarshal)
-		}
-	}
-	pluginStateRef.applyConfig(request.ConfigYAML)
-	return nil
 }
 
 // registerModels publishes one model ID per enabled group, with the
@@ -296,115 +170,31 @@ func handleRequestComplete(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode request completion: %w", errUnmarshal)
 	}
 	pluginStateRef.observeCompletion(completion)
-	return okEnvelope(struct{}{})
+	return rpc.OK(struct{}{})
 }
-
-// Work that outlives a plugin call (the refresh and persistence loops) runs
-// under backgroundCtx so shutdown can stop it before the host unloads the
-// library.
-var (
-	backgroundCtx, cancelBackground = context.WithCancel(context.Background())
-	backgroundWork                  sync.WaitGroup
-)
 
 func startBackgroundLoops() {
 	loopsOnce.Do(func() {
-		startBackground(func(ctx context.Context) {
+		background.Go(func(ctx context.Context) {
 			pluginStateRef.catalog.refresh()
-			ticker := time.NewTicker(providerRefreshInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					pluginStateRef.catalog.refresh()
-				}
-			}
+			every(ctx, providerRefreshInterval, pluginStateRef.catalog.refresh)
 		})
-		startBackground(func(ctx context.Context) {
-			ticker := time.NewTicker(persistInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					pluginStateRef.persist()
-				}
-			}
+		background.Go(func(ctx context.Context) {
+			every(ctx, persistInterval, pluginStateRef.persist)
 		})
 	})
 }
 
-// startBackground runs fn on its own goroutine under the plugin lifetime
-// context; fn must return promptly once ctx is done. A panic in fn is logged
-// instead of aborting the host.
-func startBackground(fn func(ctx context.Context)) {
-	backgroundWork.Add(1)
-	go func() {
-		defer backgroundWork.Done()
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				hostLog("error", fmt.Sprintf("model-groups: background task panicked: %v", recovered), nil)
-			}
-		}()
-		fn(backgroundCtx)
-	}()
-}
-
-func stopBackground(grace time.Duration) {
-	cancelBackground()
-	done := make(chan struct{})
-	go func() {
-		backgroundWork.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(grace):
-	}
-}
-
-func writeResponse(response *C.cliproxy_buffer, raw []byte) {
-	if response == nil || len(raw) == 0 {
-		return
-	}
-	ptr := C.CBytes(raw)
-	if ptr == nil {
-		return
-	}
-	response.ptr = ptr
-	response.len = C.size_t(len(raw))
-}
-
-func init() {
-	callHost = callNativeHost
-}
-
-func callNativeHost(method string, payload []byte) ([]byte, error) {
-	cMethod := C.CString(method)
-	defer C.free(unsafe.Pointer(cMethod))
-	var requestPtr *C.uint8_t
-	if len(payload) > 0 {
-		cPayload := C.CBytes(payload)
-		if cPayload == nil {
-			return nil, fmt.Errorf("allocate host callback payload for %s", method)
+// every runs fn each interval until ctx is done.
+func every(ctx context.Context, interval time.Duration, fn func()) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fn()
 		}
-		defer C.free(cPayload)
-		requestPtr = (*C.uint8_t)(cPayload)
 	}
-	var response C.cliproxy_buffer
-	code := C.call_host_api(cMethod, requestPtr, C.size_t(len(payload)), &response)
-	var raw []byte
-	if response.ptr != nil && response.len > 0 {
-		raw = C.GoBytes(response.ptr, C.int(response.len))
-	}
-	if response.ptr != nil {
-		C.free_host_buffer(response.ptr, response.len)
-	}
-	if len(raw) == 0 {
-		return nil, fmt.Errorf("host callback %s returned no response (code %d)", method, int(code))
-	}
-	return raw, nil
 }

@@ -2,10 +2,8 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/base64"
+	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,26 +13,13 @@ import (
 	"sync"
 	"time"
 
-	_ "embed"
-
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
 const (
-	// resourcePagePath is the page Management Center embeds under the plugin's
-	// sidebar entry. Resource routes are not authenticated.
-	resourcePagePath = "/v0/resource/plugins/" + pluginID + "/index.html"
-	// logoPath is Metadata.Logo: Management Center shows it on the sidebar
-	// entry, on the Plugins page and in the store listing.
-	logoPath = "/v0/resource/plugins/" + pluginID + "/logo.svg"
-	// managementBasePath prefixes the authenticated routes. The host matches
-	// exact paths, so a group travels in the query or the body.
-	managementBasePath  = "/v0/management/" + pluginID
-	statePath           = managementBasePath + "/state"
-	sessionsPath        = managementBasePath + "/sessions"
-	sessionsReleasePath = sessionsPath + "/release"
-
 	maxSessionListLimit = 100
 	authLabelCacheTTL   = time.Minute
 )
@@ -45,171 +30,30 @@ const (
 //go:embed management.html
 var managementPage []byte
 
-var managementPageCSP = pageCSP(managementPage)
-
 // logoSVG is the plugin mark; ../logo.svg is the copy the store registry
 // links to.
 //
 //go:embed logo.svg
 var logoSVG []byte
 
-type rpcManagementRequest struct {
-	pluginapi.ManagementRequest
-	HostCallbackID string `json:"host_callback_id,omitempty"`
-}
+// The host matches exact paths, so a group travels in the query or the body.
+var (
+	statePath           = manage.APIPath(pluginID, "state")
+	sessionsPath        = manage.APIPath(pluginID, "sessions")
+	sessionsReleasePath = manage.APIPath(pluginID, "sessions/release")
+)
 
-type managementRegistration struct {
-	Routes    []managementRoute `json:"routes,omitempty"`
-	Resources []resourceRoute   `json:"resources,omitempty"`
-}
-
-// managementRoute is one authenticated route under /v0/management/<plugin id>.
-type managementRoute struct {
-	Method      string
-	Path        string
-	Description string
-	handle      func(req pluginapi.ManagementRequest) (int, any, error)
-}
-
-// resourceRoute is one unauthenticated page or asset under
-// /v0/resource/plugins/<plugin id>.
-type resourceRoute struct {
-	Path        string
-	Menu        string
-	Description string
-}
-
-var managementRoutes = []managementRoute{
-	{Method: http.MethodGet, Path: statePath, Description: "Read the groups, their members, live state and session counts.", handle: handleState},
-	{Method: http.MethodGet, Path: sessionsPath, Description: "Read the sessions a group holds: member, provider and the credential CPA bound them to: ?group=&limit=.", handle: handleSessions},
-	{Method: http.MethodPost, Path: sessionsReleasePath, Description: "Release one session or a whole group so it decides again: {group, session} or {group, all:true}.", handle: handleSessionsRelease},
-}
-
-func managementRegister() ([]byte, error) {
-	return okEnvelope(managementRegistration{
-		Routes: managementRoutes,
-		Resources: []resourceRoute{
-			{Path: resourcePagePath, Menu: displayName, Description: "Create groups of models CPA serves and pick how a request chooses one of them."},
-			{Path: logoPath, Description: displayName + " logo."},
-		},
-	})
-}
-
-func managementHandle(raw []byte) ([]byte, error) {
-	var req rpcManagementRequest
-	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-		return nil, fmt.Errorf("decode management request: %w", errUnmarshal)
-	}
-	return okEnvelope(routeManagement(req.ManagementRequest))
-}
-
-func routeManagement(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
-	method := strings.ToUpper(strings.TrimSpace(req.Method))
-	if method == http.MethodGet && req.Path == resourcePagePath {
-		return pluginapi.ManagementResponse{
-			StatusCode: http.StatusOK,
-			Headers: http.Header{
-				"Content-Type":            {"text/html; charset=utf-8"},
-				"Cache-Control":           {"no-cache"},
-				"Content-Security-Policy": {managementPageCSP},
-				"X-Content-Type-Options":  {"nosniff"},
-				"Referrer-Policy":         {"no-referrer"},
-			},
-			Body: managementPage,
-		}
-	}
-	if method == http.MethodGet && req.Path == logoPath {
-		return pluginapi.ManagementResponse{
-			StatusCode: http.StatusOK,
-			Headers: http.Header{
-				"Content-Type":            {"image/svg+xml"},
-				"Cache-Control":           {"public, max-age=3600"},
-				"Content-Security-Policy": {"default-src 'none'"},
-				"X-Content-Type-Options":  {"nosniff"},
-			},
-			Body: logoSVG,
-		}
-	}
-	for _, route := range managementRoutes {
-		if route.Method != method || route.Path != req.Path {
-			continue
-		}
-		status, body, errHandle := route.handle(req)
-		if errHandle != nil {
-			var failure *apiError
-			if errors.As(errHandle, &failure) {
-				return managementJSON(failure.status, map[string]string{"error": failure.message})
-			}
-			return managementJSON(http.StatusInternalServerError, map[string]string{"error": errHandle.Error()})
-		}
-		return managementJSON(status, body)
-	}
-	return managementJSON(http.StatusNotFound, map[string]string{"error": "no " + pluginID + " route " + method + " " + req.Path})
-}
-
-// managementJSON encodes a route response.
-func managementJSON(status int, body any) pluginapi.ManagementResponse {
-	raw, errMarshal := json.Marshal(body)
-	if errMarshal != nil {
-		status = http.StatusInternalServerError
-		raw, _ = json.Marshal(map[string]string{"error": "encode response: " + errMarshal.Error()})
-	}
-	return pluginapi.ManagementResponse{
-		StatusCode: status,
-		Headers: http.Header{
-			"Content-Type":           {"application/json; charset=utf-8"},
-			"Cache-Control":          {"no-store"},
-			"X-Content-Type-Options": {"nosniff"},
-		},
-		Body: raw,
-	}
-}
-
-// pageCSP admits only the page's own inline scripts and styles and requests to
-// its own origin, so injected markup can neither run nor send the management
-// key elsewhere. It sets no frame-ancestors because Management Center may be
-// served from another origin than CLIProxyAPI.
-func pageCSP(page []byte) string {
-	return "default-src 'none'; script-src " + inlineHashes(page, "script") +
-		"; style-src " + inlineHashes(page, "style") +
-		"; connect-src 'self'; base-uri 'none'; form-action 'none'"
-}
-
-// inlineHashes lists the hash of every <tag> block of the page.
-func inlineHashes(page []byte, tag string) string {
-	open, end := []byte("<"+tag+">"), []byte("</"+tag+">")
-	var hashes []string
-	for {
-		start := bytes.Index(page, open)
-		if start < 0 {
-			break
-		}
-		page = page[start+len(open):]
-		stop := bytes.Index(page, end)
-		if stop < 0 {
-			break
-		}
-		sum := sha256.Sum256(page[:stop])
-		hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'")
-		page = page[stop+len(end):]
-	}
-	if len(hashes) == 0 {
-		return "'none'"
-	}
-	return strings.Join(hashes, " ")
-}
-
-// apiError is a route failure shown to the reader as is.
-type apiError struct {
-	status  int
-	message string
-}
-
-func (e *apiError) Error() string { return e.message }
-
-func failf(status int, format string, args ...any) error {
-	return &apiError{status: status, message: fmt.Sprintf(format, args...)}
-}
+var router = manage.NewRouter(manage.Config{
+	PluginID: pluginID,
+	Name:     displayName,
+	Page:     &manage.Page{Menu: displayName, Description: "Create groups of models CPA serves and pick how a request chooses one of them.", HTML: managementPage},
+	Logo:     logoSVG,
+	Routes: []manage.Route{
+		{Method: http.MethodGet, Path: statePath, Description: "Read the groups, their members, live state and session counts.", Handle: handleState},
+		{Method: http.MethodGet, Path: sessionsPath, Description: "Read the sessions a group holds: member, provider and the credential CPA bound them to: ?group=&limit=.", Handle: handleSessions},
+		{Method: http.MethodPost, Path: sessionsReleasePath, Description: "Release one session or a whole group so it decides again: {group, session} or {group, all:true}.", Handle: handleSessionsRelease},
+	},
+})
 
 type stateView struct {
 	Prefix           string       `json:"prefix"`
@@ -279,7 +123,7 @@ type accountView struct {
 	Unavailable bool   `json:"unavailable"`
 }
 
-func handleState(pluginapi.ManagementRequest) (int, any, error) {
+func handleState(manage.Request) (int, any, error) {
 	now := time.Now()
 	providers := pluginStateRef.catalogSnapshot()
 	available, observed := pluginStateRef.availableProviders(now)
@@ -347,8 +191,8 @@ func handleState(pluginapi.ManagementRequest) (int, any, error) {
 	return http.StatusOK, view, nil
 }
 
-func handleSessions(req pluginapi.ManagementRequest) (int, any, error) {
-	groupID, errGroup := groupIDFromQuery(req.Query)
+func handleSessions(req manage.Request) (int, any, error) {
+	groupID, errGroup := resolveGroupID(req.Query.Get("group"))
 	if errGroup != nil {
 		return 0, nil, errGroup
 	}
@@ -364,14 +208,12 @@ func handleSessions(req pluginapi.ManagementRequest) (int, any, error) {
 		}
 	}
 	outcomes := map[string]string{}
-	if group, ok := pluginStateRef.byID[groupID]; ok {
-		for index, member := range group.cfg.Members {
-			outcomes[member.Model] = group.stats[index].LastOutcome
-		}
-	}
 	slug := groupID
 	if group, ok := pluginStateRef.byID[groupID]; ok {
 		slug = group.cfg.Slug
+		for index, member := range group.cfg.Members {
+			outcomes[member.Model] = group.stats[index].LastOutcome
+		}
 	}
 	pluginStateRef.mu.Unlock()
 
@@ -393,7 +235,7 @@ func handleSessions(req pluginapi.ManagementRequest) (int, any, error) {
 	return http.StatusOK, map[string]any{"sessions": view}, nil
 }
 
-func handleSessionsRelease(req pluginapi.ManagementRequest) (int, any, error) {
+func handleSessionsRelease(req manage.Request) (int, any, error) {
 	var body struct {
 		Group   string `json:"group"`
 		Session string `json:"session"`
@@ -401,18 +243,15 @@ func handleSessionsRelease(req pluginapi.ManagementRequest) (int, any, error) {
 	}
 	if len(bytes.TrimSpace(req.Body)) > 0 {
 		if errUnmarshal := json.Unmarshal(req.Body, &body); errUnmarshal != nil {
-			return 0, nil, failf(http.StatusBadRequest, "decode request body: %v", errUnmarshal)
+			return 0, nil, manage.Errorf(http.StatusBadRequest, "decode request body: %v", errUnmarshal)
 		}
-	}
-	if strings.TrimSpace(body.Group) == "" {
-		return 0, nil, failf(http.StatusBadRequest, "group is required")
 	}
 	groupID, errGroup := resolveGroupID(body.Group)
 	if errGroup != nil {
 		return 0, nil, errGroup
 	}
 	if !body.All && strings.TrimSpace(body.Session) == "" {
-		return 0, nil, failf(http.StatusBadRequest, "session or all is required")
+		return 0, nil, manage.Errorf(http.StatusBadRequest, "session or all is required")
 	}
 	released := pluginStateRef.release(groupID, strings.TrimSpace(body.Session), body.All)
 	if released > 0 {
@@ -505,7 +344,7 @@ func credentialLabel(provider, authIndex, authID string, now time.Time) string {
 
 	var resp pluginapi.HostAuthGetRuntimeResponse
 	label := fallbackLabel(provider, authIndex, authID)
-	if errCall := invokeHost(pluginabi.MethodHostAuthGetRuntime, pluginapi.HostAuthGetRequest{AuthIndex: authIndex}, &resp); errCall == nil {
+	if errCall := host.Invoke(pluginabi.MethodHostAuthGetRuntime, pluginapi.HostAuthGetRequest{AuthIndex: authIndex}, &resp); errCall == nil {
 		entry := resp.Auth
 		name := strings.TrimSpace(entry.Email)
 		if name == "" {
@@ -569,20 +408,12 @@ func mergeProviderNames(available map[string]bool, providers catalogSnapshot) []
 	return names
 }
 
-func groupIDFromQuery(values url.Values) (string, error) {
-	group := ""
-	if values != nil {
-		group = strings.TrimSpace(values.Get("group"))
-	}
-	if group == "" {
-		return "", failf(http.StatusBadRequest, "group is required")
-	}
-	return resolveGroupID(group)
-}
-
 // resolveGroupID accepts the group's slug or its full model ID.
 func resolveGroupID(value string) (string, error) {
 	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", manage.Errorf(http.StatusBadRequest, "group is required")
+	}
 	pluginStateRef.mu.Lock()
 	defer pluginStateRef.mu.Unlock()
 	if _, ok := pluginStateRef.byID[value]; ok {
@@ -593,13 +424,10 @@ func resolveGroupID(value string) (string, error) {
 			return group.cfg.ID, nil
 		}
 	}
-	return "", failf(http.StatusNotFound, "no group %q in the plugin configuration", value)
+	return "", manage.Errorf(http.StatusNotFound, "no group %q in the plugin configuration", value)
 }
 
 func queryInt(values url.Values, key string, fallback, min, max int) int {
-	if values == nil {
-		return fallback
-	}
 	raw := strings.TrimSpace(values.Get(key))
 	if raw == "" {
 		return fallback

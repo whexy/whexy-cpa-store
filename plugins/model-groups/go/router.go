@@ -10,6 +10,7 @@ import (
 	cliproxysession "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/session"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // routeModel answers the model.route hook. Requests for a model this plugin
@@ -21,11 +22,8 @@ func routeModel(request []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(request, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode model route request: %w", errUnmarshal)
 	}
-	resp, handled := pluginStateRef.route(req)
-	if !handled {
-		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
-	}
-	return okEnvelope(resp)
+	resp, _ := pluginStateRef.route(req)
+	return rpc.OK(resp)
 }
 
 // sessionIdentity derives the same canonical session identity CPA's session

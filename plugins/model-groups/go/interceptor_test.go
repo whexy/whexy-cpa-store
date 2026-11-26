@@ -9,20 +9,10 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
 
-// decodeInterceptResult unwraps the RPC envelope and decodes its result.
 func decodeInterceptResult(t *testing.T, raw []byte) pluginapi.RequestInterceptResponse {
 	t.Helper()
-	var env envelope
-	if errUnmarshal := json.Unmarshal(raw, &env); errUnmarshal != nil {
-		t.Fatalf("decode envelope: %v", errUnmarshal)
-	}
-	if !env.OK {
-		t.Fatalf("envelope not ok: %s", string(raw))
-	}
 	var resp pluginapi.RequestInterceptResponse
-	if errUnmarshal := json.Unmarshal(env.Result, &resp); errUnmarshal != nil {
-		t.Fatalf("decode intercept response: %v", errUnmarshal)
-	}
+	decodeResult(t, raw, &resp)
 	return resp
 }
 
@@ -43,9 +33,9 @@ func interceptRequestPayload(t *testing.T, req pluginapi.RequestInterceptRequest
 }
 
 func TestInterceptBeforeIsANoOp(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
-	state := newTestState(t, roundRobinConfig, host)
+	state := newTestState(t, roundRobinConfig)
 	withPluginState(t, state)
 
 	// Even a group request with a session must pass through untouched and
@@ -67,8 +57,8 @@ func TestInterceptBeforeIsANoOp(t *testing.T) {
 }
 
 func TestInterceptAfterIgnoresNonGroupModel(t *testing.T) {
-	host := newFakeHost()
-	state := newTestState(t, roundRobinConfig, host)
+	newFakeHost(t)
+	state := newTestState(t, roundRobinConfig)
 	withPluginState(t, state)
 
 	payload := interceptRequestPayload(t, pluginapi.RequestInterceptRequest{

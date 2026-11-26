@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // providerState is what the plugin can count for one provider: the credentials
@@ -39,7 +41,7 @@ func newCatalog() *catalog {
 
 // refresh rebuilds the provider view from every credential the host has.
 func (c *catalog) refresh() {
-	entries, errList := hostAuthList()
+	entries, errList := host.AuthList()
 	if errList != nil {
 		c.mu.Lock()
 		c.err = errList.Error()

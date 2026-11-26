@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // recentDecision remembers which provider served a member last, so a request
@@ -82,16 +82,16 @@ func newPluginState(dir string) *pluginState {
 	return state
 }
 
-// applyConfig replaces the configuration. A config this plugin cannot parse
-// keeps the previous groups running: a wrong edit in the Plugins page or in
-// config.yaml must not take routing down.
-func (s *pluginState) applyConfig(configYAML []byte) {
-	cfg, errParse := parseSettings(configYAML)
+// applyConfig replaces the configuration from a lifecycle request. A config
+// this plugin cannot parse keeps the previous groups running: a wrong edit in
+// the Plugins page or in config.yaml must not take routing down.
+func (s *pluginState) applyConfig(request []byte) {
+	cfg, errParse := parseSettings(request)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if errParse != nil {
 		s.cfgErr = errParse.Error()
-		hostLog("warn", "model-groups: keeping the previous groups", map[string]any{"error": errParse.Error()})
+		host.Log("warn", "keeping the previous groups", map[string]any{"error": errParse.Error()})
 		return
 	}
 	s.cfg = cfg
@@ -159,8 +159,12 @@ func (s *pluginState) route(req pluginapi.ModelRouteRequest) (pluginapi.ModelRou
 	}
 
 	now := time.Now()
+	// Every model route request carries the providers CPA has credentials
+	// for, so the newest list replaces the previous one: an empty list means
+	// no provider can serve anything.
 	available := availableProviderSet(req.AvailableProviders)
-	s.observeAvailableLocked(req.AvailableProviders, now)
+	s.availableSet = available
+	s.availableAt = now
 	sessionID := sessionIdentity(req)
 	chosen, ok := s.decideLocked(group, sessionID, available, now)
 	if !ok {
@@ -183,41 +187,18 @@ func (s *pluginState) route(req pluginapi.ModelRouteRequest) (pluginapi.ModelRou
 	}, true
 }
 
-// observeAvailableLocked records which providers CPA says have credentials.
-// Every model route request carries that list, so the newest one replaces the
-// previous snapshot: an empty list means no provider can serve anything.
-func (s *pluginState) observeAvailableLocked(providers []string, now time.Time) {
-	set := make(map[string]bool, len(providers))
-	for _, provider := range providers {
-		if name := providerKeyOf(provider); name != "" {
-			set[name] = true
-		}
-	}
-	s.availableSet = set
-	s.availableAt = now
-}
-
 // recordAccount remembers the credential CPA selected for a session, reported
 // by the post-credential request interceptor.
 func (s *pluginState) recordAccount(groupID, sessionID, authID, authIndex string, now time.Time) {
 	if groupID == "" || sessionID == "" {
 		return
 	}
-	key := bindingKey(groupID, sessionID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, ok := s.byID[groupID]; !ok {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.accounts[key] = accountRecord{AuthID: authID, AuthIndex: authIndex, At: now}
-}
-
-// accountOf returns the recorded credential of one session.
-func (s *pluginState) accountOf(groupID, sessionID string) (accountRecord, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	record, ok := s.accounts[bindingKey(groupID, sessionID)]
-	return record, ok
+	s.accounts[bindingKey(groupID, sessionID)] = accountRecord{AuthID: authID, AuthIndex: authIndex, At: now}
 }
 
 // availableProviders reports the provider keys CPA listed most recently, and
@@ -272,7 +253,7 @@ func (s *pluginState) decideLocked(group *groupRuntime, sessionID string, availa
 		if index == excluded || len(member.Providers) == 0 {
 			continue
 		}
-		if !servesNow(member, available) {
+		if _, serves := usableProvider(member, "", available); !serves {
 			continue
 		}
 		reachable = append(reachable, index)
@@ -423,7 +404,7 @@ func (s *pluginState) observeCompletion(completion pluginapi.RequestCompletion) 
 
 	switch completion.Outcome {
 	case pluginapi.RequestCompletionSucceeded:
-		stats.recordSuccess(provider, now)
+		stats.recordSuccess(provider)
 	case pluginapi.RequestCompletionCanceled:
 		stats.recordCanceled()
 	case pluginapi.RequestCompletionRejected:
@@ -506,7 +487,7 @@ func (s *pluginState) persist() {
 	s.mu.Unlock()
 
 	if errSave := saveBindings(dir, bindings); errSave != nil {
-		hostLog("warn", "model-groups: cannot persist session bindings", map[string]any{"error": errSave.Error()})
+		host.Log("warn", "cannot persist session bindings", map[string]any{"error": errSave.Error()})
 	}
 }
 
@@ -571,17 +552,6 @@ func healthyProvider(group *groupRuntime, index int, member memberConfig, prefer
 	return "", false
 }
 
-// servesNow reports whether the member has any provider with credentials at
-// all, ignoring breaker windows.
-func servesNow(member memberConfig, available map[string]bool) bool {
-	for _, provider := range member.Providers {
-		if available[provider] {
-			return true
-		}
-	}
-	return false
-}
-
 func preferredProvider(member memberConfig, preferred string) string {
 	if preferred != "" && containsString(member.Providers, preferred) {
 		return preferred
@@ -622,15 +592,6 @@ func completionError(completion pluginapi.RequestCompletion) string {
 		return fmt.Sprintf("HTTP %d", completion.StatusCode)
 	}
 	return "request failed"
-}
-
-// sortedGroupIDs lists the registered model IDs, for the page.
-func (s *pluginState) registeredModelIDs() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	ids := s.cfg.registeredModelIDs()
-	sort.Strings(ids)
-	return ids
 }
 
 // settingsSnapshot returns the parsed configuration the router is using.

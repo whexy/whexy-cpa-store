@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
 // withPluginState points the route handlers at a test state.
@@ -21,16 +22,16 @@ func withPluginState(t *testing.T, state *pluginState) {
 }
 
 func TestStateRouteDescribesTheGroups(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("claude", 2, credentialReady)
 	host.addProvider("opencode-go", 1, credentialCooling)
-	state := newTestState(t, multiProviderConfig, host)
+	state := newTestState(t, multiProviderConfig)
 	withPluginState(t, state)
 
 	for range 4 {
 		routeFor(state, "auto-group/fast", nil, []string{"claude", "opencode-go"})
 	}
-	status, body, errHandle := handleState(pluginapi.ManagementRequest{})
+	status, body, errHandle := handleState(manage.Request{})
 	if errHandle != nil {
 		t.Fatalf("state route: %v", errHandle)
 	}
@@ -76,13 +77,13 @@ func TestStateRouteDescribesTheGroups(t *testing.T) {
 }
 
 func TestStateRouteWireKeys(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("claude", 1, credentialReady)
 	host.addProvider("opencode-go", 1, credentialReady)
-	state := newTestState(t, multiProviderConfig, host)
+	state := newTestState(t, multiProviderConfig)
 	withPluginState(t, state)
 
-	_, body, _ := handleState(pluginapi.ManagementRequest{})
+	_, body, _ := handleState(manage.Request{})
 	raw, errMarshal := json.Marshal(body)
 	if errMarshal != nil {
 		t.Fatalf("marshal: %v", errMarshal)
@@ -102,10 +103,10 @@ func TestStateRouteWireKeys(t *testing.T) {
 }
 
 func TestSessionsRouteReportsTheBoundAccountAndReleasesIt(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
 	host.addProvider("p2", 1, credentialReady)
-	state := newTestState(t, roundRobinConfig, host)
+	state := newTestState(t, roundRobinConfig)
 	withPluginState(t, state)
 
 	headers := map[string][]string{"X-Claude-Code-Session-Id": {"session-a"}}
@@ -117,7 +118,7 @@ func TestSessionsRouteReportsTheBoundAccountAndReleasesIt(t *testing.T) {
 	host.addRuntime("7", "p1", "seven@example.com")
 	observeAccount(t, "auto-group/cycle", "session-a", "p1-key-1", "7")
 
-	status, body, errHandle := handleSessions(pluginapi.ManagementRequest{Query: url.Values{"group": {"cycle"}}})
+	status, body, errHandle := handleSessions(managementRequest(pluginapi.ManagementRequest{Query: url.Values{"group": {"cycle"}}}))
 	if errHandle != nil || status != http.StatusOK {
 		t.Fatalf("sessions route: %v, status %d", errHandle, status)
 	}
@@ -149,7 +150,7 @@ func TestSessionsRouteReportsTheBoundAccountAndReleasesIt(t *testing.T) {
 	}
 
 	releaseBody, _ := json.Marshal(map[string]any{"group": "cycle", "session": session})
-	statusRelease, released, errRelease := handleSessionsRelease(pluginapi.ManagementRequest{Body: releaseBody})
+	statusRelease, released, errRelease := handleSessionsRelease(managementRequest(pluginapi.ManagementRequest{Body: releaseBody}))
 	if errRelease != nil || statusRelease != http.StatusOK {
 		t.Fatalf("release route: %v, status %d", errRelease, statusRelease)
 	}
@@ -162,10 +163,10 @@ func TestSessionsRouteReportsTheBoundAccountAndReleasesIt(t *testing.T) {
 }
 
 func TestAccountIsRecordedOnlyForGroupRequestsWithASession(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
 	host.addProvider("p2", 1, credentialReady)
-	state := newTestState(t, roundRobinConfig, host)
+	state := newTestState(t, roundRobinConfig)
 	withPluginState(t, state)
 
 	// A model this plugin does not own, and a group request without a
@@ -184,7 +185,7 @@ func TestAccountIsRecordedOnlyForGroupRequestsWithASession(t *testing.T) {
 
 	// The session list reports it, with the credential's own label.
 	host.addRuntime("2", "p1", "two@example.com")
-	_, body, errHandle := handleSessions(pluginapi.ManagementRequest{Query: url.Values{"group": {"cycle"}}})
+	_, body, errHandle := handleSessions(managementRequest(pluginapi.ManagementRequest{Query: url.Values{"group": {"cycle"}}}))
 	if errHandle != nil {
 		t.Fatalf("sessions route: %v", errHandle)
 	}
@@ -198,12 +199,12 @@ func TestMemberStateUsesTheProvidersCPAReports(t *testing.T) {
 	// The credential cache cannot see keys that live in config.yaml, so a
 	// member whose provider CPA lists as available must not read as
 	// unavailable just because the cache is empty.
-	host := newFakeHost()
-	state := newTestState(t, roundRobinConfig, host)
+	newFakeHost(t)
+	state := newTestState(t, roundRobinConfig)
 	withPluginState(t, state)
 
 	routeFor(state, "auto-group/cycle", nil, []string{"p1", "p2"})
-	_, body, errHandle := handleState(pluginapi.ManagementRequest{})
+	_, body, errHandle := handleState(manage.Request{})
 	if errHandle != nil {
 		t.Fatalf("state route: %v", errHandle)
 	}
@@ -217,7 +218,7 @@ func TestMemberStateUsesTheProvidersCPAReports(t *testing.T) {
 
 	// Once CPA stops listing both providers, the member reads as unavailable.
 	routeFor(state, "auto-group/cycle", nil, []string{})
-	_, body, _ = handleState(pluginapi.ManagementRequest{})
+	_, body, _ = handleState(manage.Request{})
 	view = body.(stateView)
 	if view.Groups[0].Members[0].State != "unavailable" {
 		t.Fatalf("member state %q, want unavailable", view.Groups[0].Members[0].State)
@@ -225,25 +226,26 @@ func TestMemberStateUsesTheProvidersCPAReports(t *testing.T) {
 }
 
 func TestSessionsRouteRejectsAnUnknownGroup(t *testing.T) {
-	host := newFakeHost()
-	state := newTestState(t, roundRobinConfig, host)
-	withPluginState(t, state)
+	newFakeHost(t)
+	withPluginState(t, newTestState(t, roundRobinConfig))
 
-	if _, _, errHandle := handleSessions(pluginapi.ManagementRequest{Query: url.Values{"group": {"nope"}}}); errHandle == nil {
-		t.Fatalf("an unknown group was accepted")
-	}
-	if _, _, errHandle := handleSessions(pluginapi.ManagementRequest{Query: url.Values{"group": {"nope"}}}); !isAPIError(errHandle) {
-		t.Fatalf("failure %T, want an apiError", errHandle)
+	_, _, errHandle := handleSessions(managementRequest(pluginapi.ManagementRequest{Query: url.Values{"group": {"nope"}}}))
+	var failure *manage.Error
+	if !errors.As(errHandle, &failure) || failure.Status != http.StatusNotFound {
+		t.Fatalf("an unknown group answered %v, want a 404", errHandle)
 	}
 }
 
-func isAPIError(err error) bool {
-	var failure *apiError
-	return errors.As(err, &failure)
+func managementRequest(req pluginapi.ManagementRequest) manage.Request {
+	return manage.Request{ManagementRequest: req}
+}
+
+func serve(method, path string) pluginapi.ManagementResponse {
+	return router.Serve(managementRequest(pluginapi.ManagementRequest{Method: method, Path: path}))
 }
 
 func TestPageAndLogoRoutes(t *testing.T) {
-	page := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: resourcePagePath})
+	page := serve(http.MethodGet, router.PagePath())
 	if page.StatusCode != http.StatusOK || len(page.Body) == 0 {
 		t.Fatalf("page status %d, %d bytes", page.StatusCode, len(page.Body))
 	}
@@ -258,14 +260,13 @@ func TestPageAndLogoRoutes(t *testing.T) {
 		t.Fatalf("page CSP %q", csp)
 	}
 
-	logo := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: logoPath})
+	logo := serve(http.MethodGet, router.LogoPath())
 	if logo.StatusCode != http.StatusOK || !strings.Contains(string(logo.Body), "<svg") {
 		t.Fatalf("logo status %d", logo.StatusCode)
 	}
 
-	missing := routeManagement(pluginapi.ManagementRequest{Method: http.MethodPost, Path: statePath})
-	if missing.StatusCode != http.StatusNotFound {
-		t.Fatalf("unknown route status %d, want 404", missing.StatusCode)
+	if wrong := serve(http.MethodPost, statePath); wrong.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("POST %s status %d, want 405", statePath, wrong.StatusCode)
 	}
 }
 

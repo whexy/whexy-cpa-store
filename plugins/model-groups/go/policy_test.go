@@ -8,10 +8,10 @@ import (
 )
 
 func TestWeightedRoundRobinSharesTrafficByWeight(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("claude", 1, credentialReady)
 	host.addProvider("opencode-go", 1, credentialReady)
-	state := newTestState(t, multiProviderConfig, host)
+	state := newTestState(t, multiProviderConfig)
 
 	counts := map[string]int{}
 	for range 100 {
@@ -40,9 +40,9 @@ groups:
       - model: c
         providers: [p1]
 `
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
-	state := newTestState(t, config, host)
+	state := newTestState(t, config)
 
 	var order []string
 	for range 6 {
@@ -72,10 +72,10 @@ groups:
       - model: second
         providers: [p2]
 `
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
 	host.addProvider("p2", 1, credentialReady)
-	state := newTestState(t, config, host)
+	state := newTestState(t, config)
 
 	for range 5 {
 		resp, handled := routeFor(state, "auto-group/primary", nil, []string{"p1", "p2"})
@@ -100,10 +100,10 @@ groups:
       - model: second
         providers: [p2]
 `
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialDisabled)
 	host.addProvider("p2", 1, credentialReady)
-	state := newTestState(t, config, host)
+	state := newTestState(t, config)
 
 	resp, handled := routeFor(state, "auto-group/primary", nil, []string{"p2"})
 	if !handled {
@@ -126,10 +126,10 @@ groups:
       - model: second
         providers: [p2]
 `
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
 	host.addProvider("p2", 1, credentialReady)
-	state := newTestState(t, config, host)
+	state := newTestState(t, config)
 
 	resp, _ := routeFor(state, "auto-group/primary", nil, []string{"p1", "p2"})
 	if resp.TargetModel != "first" {
@@ -157,10 +157,10 @@ groups:
 }
 
 func TestSessionKeepsItsMemberAndProviderAcrossFailures(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("claude", 1, credentialReady)
 	host.addProvider("opencode-go", 1, credentialReady)
-	state := newTestState(t, multiProviderConfig, host)
+	state := newTestState(t, multiProviderConfig)
 
 	headers := map[string][]string{"X-Claude-Code-Session-Id": {"session-a"}}
 	first, _ := routeFor(state, "auto-group/fast", headers, []string{"claude", "opencode-go"})
@@ -196,10 +196,10 @@ groups:
       - model: second
         providers: [p2]
 `
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
 	host.addProvider("p2", 1, credentialReady)
-	state := newTestState(t, config, host)
+	state := newTestState(t, config)
 
 	headers := map[string][]string{"X-Claude-Code-Session-Id": {"session-a"}}
 	first, _ := routeFor(state, "auto-group/primary", headers, []string{"p1", "p2"})
@@ -229,10 +229,10 @@ groups:
       - model: shared
         providers: [p1, p2]
 `
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
 	host.addProvider("p2", 1, credentialReady)
-	state := newTestState(t, config, host)
+	state := newTestState(t, config)
 
 	headers := map[string][]string{"X-Claude-Code-Session-Id": {"session-a"}}
 	first, _ := routeFor(state, "auto-group/wide", headers, []string{"p1", "p2"})
@@ -251,9 +251,9 @@ groups:
 }
 
 func TestUnknownModelIsNotHandled(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("claude", 1, credentialReady)
-	state := newTestState(t, multiProviderConfig, host)
+	state := newTestState(t, multiProviderConfig)
 
 	for _, model := range []string{"claude-haiku-5-5", "auto-group", "", "auto-group/unknown"} {
 		if _, handled := routeFor(state, model, nil, []string{"claude"}); handled {
@@ -272,9 +272,9 @@ groups:
       - model: first
         providers: [p1]
 `
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
-	state := newTestState(t, config, host)
+	state := newTestState(t, config)
 
 	if _, handled := routeFor(state, "auto-group/off", nil, []string{"p1"}); handled {
 		t.Fatalf("a disabled group was routed")
@@ -285,10 +285,10 @@ groups:
 }
 
 func TestThinkingSuffixIsPreserved(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("claude", 1, credentialReady)
 	host.addProvider("opencode-go", 1, credentialReady)
-	state := newTestState(t, multiProviderConfig, host)
+	state := newTestState(t, multiProviderConfig)
 
 	resp, handled := routeFor(state, "auto-group/fast(high)", nil, []string{"claude", "opencode-go"})
 	if !handled {
@@ -303,8 +303,8 @@ func TestThinkingSuffixIsPreserved(t *testing.T) {
 }
 
 func TestRoutingSurvivesWhenNoProviderHasCredentials(t *testing.T) {
-	host := newFakeHost()
-	state := newTestState(t, multiProviderConfig, host)
+	newFakeHost(t)
+	state := newTestState(t, multiProviderConfig)
 
 	resp, handled := routeFor(state, "auto-group/fast", nil, nil)
 	if !handled {

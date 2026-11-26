@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // binding pins one session to one member, and for a member that several
@@ -50,7 +52,7 @@ func loadBindings(dir string) map[string]*binding {
 	}
 	var persisted bindingFile
 	if errUnmarshal := json.Unmarshal(raw, &persisted); errUnmarshal != nil {
-		hostLog("warn", "model-groups: ignoring unreadable state file", map[string]any{"error": errUnmarshal.Error()})
+		host.Log("warn", "ignoring unreadable state file", map[string]any{"error": errUnmarshal.Error()})
 		return bindings
 	}
 	for index := range persisted.Bindings {

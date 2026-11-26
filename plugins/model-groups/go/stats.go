@@ -52,8 +52,7 @@ func (m *memberStats) recordDecision(now time.Time) {
 }
 
 // recordSuccess clears the provider's breaker.
-func (m *memberStats) recordSuccess(provider string, now time.Time) {
-	_ = now
+func (m *memberStats) recordSuccess(provider string) {
 	m.LastOutcome = "ok"
 	m.LastError = ""
 	delete(m.breakers, providerKeyOf(provider))

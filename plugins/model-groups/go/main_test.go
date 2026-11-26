@@ -1,11 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // CPA lists a plugin's model IDs without a credential only when the plugin
@@ -20,16 +20,11 @@ func TestGroupIDsAreRegisteredUnderTheExecutorsProvider(t *testing.T) {
 	if errHandle != nil {
 		t.Fatalf("executor.identifier: %v", errHandle)
 	}
-	var env envelope
-	if errUnmarshal := json.Unmarshal(raw, &env); errUnmarshal != nil || !env.OK {
-		t.Fatalf("executor.identifier answered %s", string(raw))
-	}
-	var identifier identifierResponse
-	if errUnmarshal := json.Unmarshal(env.Result, &identifier); errUnmarshal != nil {
-		t.Fatalf("decode identifier: %v", errUnmarshal)
-	}
+	var identifier rpc.IdentifierResponse
+	decodeResult(t, raw, &identifier)
 
-	withPluginState(t, newTestState(t, roundRobinConfig, newFakeHost()))
+	newFakeHost(t)
+	withPluginState(t, newTestState(t, roundRobinConfig))
 	if provider := registerModels().Provider; identifier.Identifier != provider {
 		t.Fatalf("executor serves %q, group IDs are registered under %q", identifier.Identifier, provider)
 	}

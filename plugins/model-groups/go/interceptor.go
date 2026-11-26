@@ -2,18 +2,20 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // interceptRequestBeforeAuth is a no-op: the host calls it because the plugin
 // declares a request interceptor, but only the after-auth hook has the
 // selected credential this plugin records.
 func interceptRequestBeforeAuth(_ []byte) ([]byte, error) {
-	return okEnvelope(pluginapi.RequestInterceptResponse{})
+	return rpc.OK(pluginapi.RequestInterceptResponse{})
 }
 
 // interceptRequestAfterAuth observes which credential CPA picked for a session.
@@ -33,22 +35,22 @@ func interceptRequestAfterAuth(request []byte) ([]byte, error) {
 	// is not this plugin's business is answered from a field lookup alone,
 	// without decoding the payload.
 	if _, ok := pluginStateRef.groupIDForRequested(gjson.GetBytes(request, "RequestedModel").String()); !ok {
-		return okEnvelope(pluginapi.RequestInterceptResponse{})
+		return rpc.OK(pluginapi.RequestInterceptResponse{})
 	}
 	var req pluginapi.RequestInterceptRequest
 	if errUnmarshal := json.Unmarshal(request, &req); errUnmarshal != nil {
-		return nil, errUnmarshal
+		return nil, fmt.Errorf("decode request intercept request: %w", errUnmarshal)
 	}
 	groupID, ok := pluginStateRef.groupIDForRequested(req.RequestedModel)
 	if !ok {
-		return okEnvelope(pluginapi.RequestInterceptResponse{})
+		return rpc.OK(pluginapi.RequestInterceptResponse{})
 	}
 	sessionID := sessionIdentityOf(req.Headers, req.Body, req.Metadata, req.SourceFormat)
 	if sessionID == "" {
-		return okEnvelope(pluginapi.RequestInterceptResponse{})
+		return rpc.OK(pluginapi.RequestInterceptResponse{})
 	}
 	pluginStateRef.recordAccount(groupID, sessionID, metadataString(req.Metadata, "selected_auth_id"), metadataString(req.Metadata, "selected_auth_index"), time.Now())
-	return okEnvelope(pluginapi.RequestInterceptResponse{})
+	return rpc.OK(pluginapi.RequestInterceptResponse{})
 }
 
 // groupIDForRequested reports whether a requested model is one of the enabled

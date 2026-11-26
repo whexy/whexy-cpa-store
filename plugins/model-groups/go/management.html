@@ -5,108 +5,6 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Model Groups</title>
     <style>
-      :root {
-        --font-sans:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu,
-          Cantarell, "Helvetica Neue", sans-serif;
-        --font-mono:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-        --radius: 8px;
-        /* Management Center floats its toolbar (and, when narrow, its menu
-           button) over the top 76px of the frame. */
-        --toolbar-clearance: 84px;
-        --bg-page: #faf9f5;
-        --bg-card: #f0eee8;
-        --bg-subtle: #e9e6df;
-        --bg-hover: #e2ded6;
-        --fg: #2d2a26;
-        --fg-2: #6d6760;
-        --fg-3: #a29c95;
-        --fg-4: #c0bab3;
-        --line: #e3e1db;
-        --line-2: #d5d2cb;
-        --line-3: #cecac4;
-        --accent: #8b8680;
-        --accent-hover: #7f7a74;
-        --accent-contrast: #ffffff;
-        --ok: #10b981;
-        --ok-text: #065f46;
-        --warn: #c65746;
-        --warn-text: #8a3a30;
-        --amber: #d97706;
-        --amber-text: #92400e;
-        --scrim: rgba(45, 42, 38, 0.28);
-        --hover-bg: rgba(0, 0, 0, 0.03);
-        color-scheme: light;
-      }
-      [data-theme="white"] {
-        --bg-page: #fff;
-        --bg-card: #fff;
-        --bg-subtle: #f6f6f6;
-        --bg-hover: #eee;
-        --line: #e5e5e5;
-        --line-2: #d5d5d5;
-        --line-3: #ccc;
-      }
-      [data-theme="dark"] {
-        --bg-page: #151412;
-        --bg-card: #1d1b18;
-        --bg-subtle: #262320;
-        --bg-hover: #2e2a26;
-        --fg: #f6f4f1;
-        --fg-2: #c9c3bb;
-        --fg-3: #9c958d;
-        --fg-4: #6f6962;
-        --line: #3a3530;
-        --line-2: #4a453f;
-        --line-3: #5a544d;
-        --accent-hover: #9a948e;
-        --ok: #0fae78;
-        --ok-text: #6ee7b7;
-        --warn-text: #f1b0a6;
-        --amber: #f59e0b;
-        --amber-text: #fcd34d;
-        --scrim: rgba(0, 0, 0, 0.45);
-        --hover-bg: rgba(255, 255, 255, 0.04);
-        color-scheme: dark;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        font-family: var(--font-sans);
-        background: var(--bg-page);
-        color: var(--fg);
-        font-size: 13px;
-        line-height: 1.45;
-      }
-      [hidden] {
-        display: none !important;
-      }
-      .page {
-        flex: 1;
-        min-width: 0;
-        padding: var(--toolbar-clearance) 18px 22px;
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        position: relative;
-      }
-      .head {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .head h1 {
-        margin: 0;
-        font-size: 15px;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-      }
-      .head .spacer {
-        flex: 1;
-      }
       .facts {
         display: flex;
         flex-wrap: wrap;
@@ -116,21 +14,21 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        font-size: 11px;
-        color: var(--fg-3);
-        background: var(--bg-subtle);
-        border: 1px solid var(--line);
+        border: 1px solid var(--border);
         border-radius: 999px;
         padding: 2px 9px;
+        background: var(--bg-subtle);
+        color: var(--text-tertiary);
+        font-size: 11px;
       }
       .fact b {
-        color: var(--fg-2);
+        color: var(--text-secondary);
         font-weight: 600;
       }
-      .fact.warn {
-        color: var(--warn-text);
-        border-color: color-mix(in srgb, var(--warn) 35%, transparent);
-        background: color-mix(in srgb, var(--warn) 12%, transparent);
+      .fact.error {
+        border-color: var(--error-border);
+        background: var(--error-bg);
+        color: var(--error-text);
       }
       .fact .dot {
         width: 6px;
@@ -138,41 +36,12 @@
         border-radius: 50%;
         background: var(--ok);
       }
-      .fact.warn .dot {
-        background: var(--warn);
-      }
-
-      .btn {
-        border: 1px solid var(--line-2);
-        background: var(--bg-card);
-        color: var(--fg);
-        font: inherit;
-        font-size: 12px;
-        padding: 5px 11px;
-        border-radius: 6px;
-        cursor: pointer;
-      }
-      .btn:hover {
-        background: var(--bg-hover);
-      }
-      .btn.primary {
-        background: var(--accent);
-        border-color: var(--accent);
-        color: var(--accent-contrast);
-        font-weight: 600;
-      }
-      .btn.ghost {
-        background: transparent;
-        border-color: transparent;
-        color: var(--fg-2);
-      }
-      .btn.ghost:hover {
-        background: var(--hover-bg);
-        color: var(--fg);
+      .fact.error .dot {
+        background: var(--error);
       }
 
       .group {
-        border: 1px solid var(--line);
+        border: 1px solid var(--border);
         border-radius: var(--radius);
         background: var(--bg-card);
         overflow: hidden;
@@ -180,457 +49,19 @@
       .group + .group {
         margin-top: 10px;
       }
-      .group .row {
+      .group-row {
         display: flex;
         align-items: flex-start;
         gap: 10px;
         padding: 11px 12px;
       }
-      .group.open .row {
-        border-bottom: 1px solid var(--line);
-      }
-      .gid {
-        font-family: var(--font-mono);
-        font-size: 12.5px;
-        color: var(--fg);
-      }
-      .gid .copy {
-        margin-left: 6px;
-        color: var(--fg-4);
-        cursor: pointer;
-      }
-      .sub {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 7px;
-      }
-      .chip {
-        display: inline-flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0 5px;
-        font-size: 11px;
-        border: 1px solid var(--line);
-        border-radius: 5px;
-        padding: 1px 6px;
-        color: var(--fg-2);
-        background: var(--bg-page);
-      }
-      .chip .mono {
-        font-family: var(--font-mono);
-        font-size: 11px;
-      }
-      .chip .prov {
-        color: var(--fg-3);
-        font-size: 10px;
-        letter-spacing: 0.02em;
-        text-transform: lowercase;
-      }
-      .chip.warn {
-        color: var(--warn-text);
-        border-color: color-mix(in srgb, var(--warn) 35%, transparent);
-        background: color-mix(in srgb, var(--warn) 10%, transparent);
-      }
-      .chip.amber {
-        color: var(--amber-text);
-        border-color: color-mix(in srgb, var(--amber) 35%, transparent);
-        background: color-mix(in srgb, var(--amber) 10%, transparent);
-      }
-      .chip.plain {
-        border-style: dashed;
-      }
-      .meta {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        color: var(--fg-3);
-        font-size: 11.5px;
-        white-space: nowrap;
-        padding-top: 2px;
-      }
-      .meta .num {
-        color: var(--fg-2);
-        font-variant-numeric: tabular-nums;
-      }
-      .caret {
-        color: var(--fg-4);
-        padding-top: 3px;
-      }
-
-      .body {
-        padding: 4px 12px 12px;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 12px;
-      }
-      th {
-        text-align: left;
-        font-weight: 500;
-        color: var(--fg-3);
-        font-size: 10.5px;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        padding: 8px 6px 6px;
-      }
-      td {
-        padding: 7px 6px;
-        border-top: 1px solid var(--line);
-        vertical-align: middle;
-      }
-      td.mono,
-      th.mono {
-        font-family: var(--font-mono);
-        font-size: 11.5px;
-      }
-      td.num {
-        font-variant-numeric: tabular-nums;
-        color: var(--fg-2);
-        text-align: right;
-      }
-      .meter {
-        height: 5px;
-        border-radius: 3px;
-        background: var(--bg-subtle);
-        overflow: hidden;
-        min-width: 54px;
-      }
-      .meter span {
-        display: block;
-        height: 100%;
-        background: var(--accent);
-      }
-      .meter.zero span {
-        background: transparent;
-      }
-      .sec-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin: 12px 0 2px;
-        font-size: 11px;
-        color: var(--fg-3);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-      }
-      .sec-title .spacer {
-        flex: 1;
-      }
-
-      .scrim {
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.45);
-      }
-      .scrim {
-        background: rgba(45, 42, 38, 0.28);
-      }
-      .drawer {
-        position: absolute;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: 430px;
-        background: var(--bg-card);
-        border-left: 1px solid var(--line-2);
-        display: flex;
-        flex-direction: column;
-      }
-      .drawer .dhead {
-        padding: var(--toolbar-clearance) 14px 10px;
-        border-bottom: 1px solid var(--line);
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .drawer .dbody {
-        padding: 12px 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        overflow: auto;
-      }
-      .drawer .dfoot {
-        margin-top: auto;
-        padding: 10px 14px;
-        border-top: 1px solid var(--line);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .drawer .dfoot .spacer {
-        flex: 1;
-      }
-      label.f {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-        font-size: 11px;
-        color: var(--fg-3);
-      }
-      input[type="text"],
-      select {
-        font: inherit;
-        font-size: 12.5px;
-        color: var(--fg);
-        background: var(--bg-page);
-        border: 1px solid var(--line-2);
-        border-radius: 6px;
-        padding: 5px 8px;
-        width: 100%;
-      }
-      .seg {
-        display: flex;
-        border: 1px solid var(--line-2);
-        border-radius: 6px;
-        overflow: hidden;
-      }
-      .seg button {
-        flex: 1;
-        font: inherit;
-        font-size: 11.5px;
-        padding: 5px 4px;
-        background: var(--bg-page);
-        color: var(--fg-3);
-        border: 0;
-        border-right: 1px solid var(--line);
-        cursor: pointer;
-      }
-      .seg button:last-child {
-        border-right: 0;
-      }
-      .seg button[aria-pressed="true"] {
-        background: var(--accent);
-        color: var(--accent-contrast);
-        font-weight: 600;
-      }
-      .note {
-        font-size: 11px;
-        color: var(--fg-3);
-      }
-      .mrow {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto auto;
-        align-items: center;
-        gap: 6px 8px;
-        padding: 7px 8px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        background: var(--bg-page);
-      }
-      .mrow + .mrow {
-        margin-top: 6px;
-      }
-      .mrow .grip {
-        color: var(--fg-4);
-        cursor: grab;
-        font-size: 12px;
-      }
-      .mrow .m {
-        flex: 1;
-        min-width: 0;
-      }
-      .mrow .m .id {
-        font-family: var(--font-mono);
-        font-size: 11.5px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        display: block;
-      }
-      .mrow input[type="text"] {
-        width: 46px;
-        text-align: center;
-      }
-      .mrow select {
-        width: auto;
-        font-size: 11.5px;
-        padding: 4px 6px;
-      }
-      .mrow .limits {
-        display: block;
-        color: var(--amber-text);
-      }
-      .caps {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
-        gap: 4px 12px;
-        margin: 0;
-        font-size: 12px;
-      }
-      .caps dt {
-        color: var(--fg-3);
-      }
-      .caps dd {
-        margin: 0;
-        font-family: var(--font-mono);
-        font-size: 11.5px;
-        overflow-wrap: anywhere;
-      }
-      .pick {
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        overflow: hidden;
-      }
-      .pick .search {
-        padding: 8px;
-        border-bottom: 1px solid var(--line);
-      }
-      .pick ul {
-        list-style: none;
-        margin: 0;
-        padding: 4px;
-        max-height: 132px;
-        overflow: auto;
-      }
-      .pick li {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 5px 6px;
-        border-radius: 5px;
-        font-size: 12px;
-      }
-      .pick li:hover {
-        background: var(--hover-bg);
-      }
-      .pick li .box {
-        width: 13px;
-        height: 13px;
-        border: 1px solid var(--line-2);
-        border-radius: 3px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 10px;
-        color: var(--accent-contrast);
-      }
-      .pick li[data-on="1"] .box {
-        background: var(--accent);
-        border-color: var(--accent);
-      }
-      .pick li .m {
-        flex: 1;
-        min-width: 0;
-        font-family: var(--font-mono);
-        font-size: 11.5px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .pick li .st {
-        font-size: 10.5px;
-        color: var(--fg-3);
-        white-space: nowrap;
-      }
-      .pick li .st.warn {
-        color: var(--warn-text);
-      }
-      .pick li .st.amber {
-        color: var(--amber-text);
-      }
-      .switch {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 12px;
-        color: var(--fg-2);
-      }
-      .switch .t {
-        width: 30px;
-        height: 17px;
-        border-radius: 999px;
-        background: var(--bg-subtle);
-        border: 1px solid var(--line-2);
-        position: relative;
-        flex: 0 0 auto;
-      }
-      .switch .t::after {
-        content: "";
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 11px;
-        height: 11px;
-        border-radius: 50%;
-        background: var(--fg-3);
-      }
-      .switch[data-on="1"] .t {
-        background: var(--accent);
-        border-color: var(--accent);
-      }
-      .switch[data-on="1"] .t::after {
-        left: 15px;
-        background: #fff;
-      }
-      .stackrow {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 12px;
-      }
-      .stackrow .k {
-        color: var(--fg-3);
-        font-size: 11.5px;
-      }
-
-      .page {
-        max-width: 1200px;
-        margin: auto;
-        min-height: 100vh;
-      }
-      .spacer,
-      .grow {
-        flex: 1;
-        min-width: 0;
-      }
-      .mono {
-        font-family: var(--font-mono);
-      }
-      :focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 3px;
-      }
-      button:disabled {
-        opacity: 0.5;
-        cursor: default;
-      }
-      .btn.primary:hover {
-        background: var(--accent-hover);
-      }
-      .btn.danger {
-        background: var(--warn);
-        border-color: var(--warn);
-        color: #ffffff;
-        font-weight: 600;
-      }
-      .btn.danger:hover {
-        background: color-mix(in srgb, var(--warn) 85%, #000000);
-      }
-      #delete {
-        color: var(--warn-text);
-      }
-      .error {
-        color: var(--warn-text);
-        font-size: 12px;
-        margin: 0;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-      }
-      .empty {
-        padding: 32px;
-        text-align: center;
-        border: 1px dashed var(--line);
-        border-radius: 8px;
+      .group.open .group-row {
+        border-bottom: 1px solid var(--border);
       }
       .expander {
         border: 0;
         background: transparent;
-        color: inherit;
         text-align: left;
-        font: inherit;
         padding: 0;
         cursor: pointer;
         display: flex;
@@ -639,15 +70,25 @@
         flex: 1;
         min-width: 0;
       }
+      .grow {
+        flex: 1;
+        min-width: 0;
+      }
       .gid {
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+        font-size: 12.5px;
         overflow-wrap: anywhere;
+      }
+      .gid .copy {
+        margin-left: 6px;
+        color: var(--text-quaternary);
       }
       .copy {
         padding: 0 4px;
         border: 0;
         background: transparent;
-        font: inherit;
-        color: var(--fg-3);
+        color: var(--text-tertiary);
         cursor: pointer;
       }
       .copy-id {
@@ -674,72 +115,140 @@
         left: calc(50% - 3px);
         background: var(--bg-card);
       }
+      .sub {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 7px;
+      }
+      /* A member chip holds the model ID and, beside it, its providers or
+         state in the body font. */
+      .chip {
+        flex-wrap: wrap;
+        gap: 0 5px;
+        font-family: var(--font-sans);
+      }
+      .chip .mono {
+        font-size: 11px;
+      }
+      .chip .prov {
+        color: var(--text-tertiary);
+        font-size: 10px;
+        letter-spacing: 0.02em;
+        text-transform: lowercase;
+      }
+      .chip.plain {
+        border-style: dashed;
+      }
+      .meta {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding-top: 2px;
+        color: var(--text-tertiary);
+        font-size: 11.5px;
+        white-space: nowrap;
+      }
+      .meta .num {
+        color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+      }
+      .caret {
+        padding-top: 3px;
+        color: var(--text-quaternary);
+      }
+
+      .body {
+        padding: 4px 12px 12px;
+      }
       .table-wrap {
         overflow: auto;
       }
-      th.num {
-        text-align: right;
+      .table {
+        font-size: 12px;
+      }
+      .table .mono {
+        font-size: 11.5px;
+      }
+      .table td.num {
+        color: var(--text-secondary);
       }
       .share {
         width: 96px;
       }
-      progress.meter {
+      .meter {
         appearance: none;
-        border: 0;
-        width: 100%;
         display: block;
+        width: 100%;
+        min-width: 54px;
         height: 5px;
+        border: 0;
+        border-radius: 3px;
+        overflow: hidden;
         background: var(--bg-subtle);
       }
-      progress.meter::-webkit-progress-bar {
+      .meter::-webkit-progress-bar {
         background: var(--bg-subtle);
         border-radius: 3px;
       }
-      progress.meter::-webkit-progress-value {
-        background: var(--accent);
+      .meter::-webkit-progress-value {
+        background: var(--primary);
         border-radius: 3px;
       }
-      progress.meter::-moz-progress-bar {
-        background: var(--accent);
+      .meter::-moz-progress-bar {
+        background: var(--primary);
         border-radius: 3px;
       }
       .share-value {
+        color: var(--text-secondary);
         font-size: 10.5px;
-        color: var(--fg-2);
       }
-      .scrim {
-        background: var(--scrim);
-        position: fixed;
-        z-index: 2;
-      }
-      .drawer {
-        position: fixed;
-        z-index: 3;
-        width: min(430px, 100%);
-        margin: 0;
-      }
-      .drawer:focus {
-        outline: none;
-      }
-      .dbody {
-        flex: 1;
-        min-height: 0;
-      }
-      .field-stack {
+      .sec-title {
         display: flex;
-        flex-direction: column;
-        gap: 6px;
+        align-items: center;
+        gap: 8px;
+        margin: 12px 0 2px;
+        color: var(--text-tertiary);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
       }
-      .session-controls {
+
+      .drawer {
+        width: min(430px, 100%);
+      }
+      .drawer-head {
         display: flex;
         flex-direction: column;
         gap: 8px;
       }
-      .section-label {
-        margin-bottom: 6px;
+      .mrow {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 6px 8px;
+        padding: 7px 8px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--bg-page);
+      }
+      .mrow + .mrow {
+        margin-top: 6px;
       }
       .mrow .m {
         grid-area: 1 / 2;
+      }
+      .mrow .m .id {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mrow .limits {
+        display: block;
+        color: var(--warn-text);
       }
       .mrow .weight {
         grid-area: 1 / 3;
@@ -750,23 +259,23 @@
       .mrow .provider {
         grid-area: 2 / 2 / 3 / 4;
       }
-      .mrow input[type="number"] {
-        width: 52px;
-        text-align: center;
-        font: inherit;
-        font-size: 12px;
-        color: var(--fg);
-        background: var(--bg-page);
-        border: 1px solid var(--line-2);
-        border-radius: 6px;
-        padding: 4px;
-      }
       .mrow label {
         display: flex;
         flex-direction: column;
         gap: 2px;
+        color: var(--text-tertiary);
         font-size: 10px;
-        color: var(--fg-3);
+      }
+      .mrow select {
+        width: auto;
+        padding: 4px 6px;
+        font-size: 11.5px;
+      }
+      .mrow input[type="number"] {
+        width: 52px;
+        padding: 4px;
+        font-size: 12px;
+        text-align: center;
       }
       .order {
         display: flex;
@@ -774,11 +283,54 @@
       }
       .order button {
         border: 0;
-        background: transparent;
-        color: var(--fg-3);
-        cursor: pointer;
-        font-size: 10px;
         padding: 0 3px;
+        background: transparent;
+        color: var(--text-tertiary);
+        font-size: 10px;
+        cursor: pointer;
+      }
+      .caps {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 4px 12px;
+        margin: 0;
+        font-size: 12px;
+      }
+      .caps dt {
+        color: var(--text-tertiary);
+      }
+      .caps dd {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        overflow-wrap: anywhere;
+      }
+      .pick {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+      }
+      .pick .search {
+        padding: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      .pick ul {
+        list-style: none;
+        margin: 0;
+        padding: 4px;
+        max-height: 132px;
+        overflow: auto;
+      }
+      .pick li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 6px;
+        border-radius: 5px;
+        font-size: 12px;
+      }
+      .pick li:hover {
+        background: var(--bg-hover);
       }
       .pick label {
         display: flex;
@@ -788,71 +340,45 @@
         cursor: pointer;
       }
       .pick input[type="checkbox"] {
-        accent-color: var(--accent);
         margin: 0;
       }
-      .switch {
-        position: relative;
-        cursor: pointer;
-      }
-      .switch input {
-        position: absolute;
-        opacity: 0;
-        width: 30px;
-        height: 17px;
-        margin: 0;
-      }
-      .switch input:focus-visible + .t {
-        outline: 2px solid var(--accent);
-        outline-offset: 3px;
-      }
-      .switch input:checked + .t {
-        background: var(--accent);
-        border-color: var(--accent);
-      }
-      .switch input:checked + .t::after {
-        left: 15px;
-        background: #fff;
-      }
-      .stackrow select {
-        width: auto;
-      }
-      .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip-path: inset(50%);
+      .pick li .m {
+        flex: 1;
+        min-width: 0;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
         white-space: nowrap;
-        border: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
-      #auth {
-        max-width: 360px;
-        padding: 20px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
+      .pick li .st {
+        color: var(--text-tertiary);
+        font-size: 10.5px;
+        white-space: nowrap;
+      }
+      .pick li .st.warn {
+        color: var(--warn-text);
+      }
+      .pick li .st.error {
+        color: var(--error-text);
+      }
+      .session-controls {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
+        font-size: 12px;
       }
-      #auth input {
-        font: inherit;
-        padding: 7px;
-        color: var(--fg);
-        background: var(--bg-page);
-        border: 1px solid var(--line-2);
-        border-radius: 6px;
+      .session-controls .switch + label {
+        color: var(--text-secondary);
+      }
+      #ttl {
+        width: auto;
       }
       @media (max-width: 700px) {
-        .page {
-          padding-inline: 12px;
-        }
         /* The ID shares its line with copy and Edit, and the summary spans the
            card below it. The expander takes the row's tracks as a subgrid so
            the ID stays clear of the buttons laid over its right side. */
-        .group .row {
+        .group-row {
           display: grid;
           grid-template-columns: minmax(0, 1fr) auto auto;
           align-items: center;
@@ -881,10 +407,10 @@
           grid-area: 3 / 1 / 4 / -1;
           margin-top: 0;
         }
-        .row > .copy-id {
+        .group-row > .copy-id {
           grid-area: 1 / 2;
         }
-        .row > .btn {
+        .group-row > .btn {
           grid-area: 1 / 3;
         }
         /* The member chips above the table already name each member's
@@ -912,7 +438,7 @@
           align-items: center;
           gap: 4px 8px;
           padding: 7px 6px;
-          border-top: 1px solid var(--line);
+          border-top: 1px solid var(--border);
         }
         .sessions td {
           padding: 0;
@@ -920,7 +446,7 @@
         }
         .sessions .session {
           grid-area: session;
-          color: var(--fg-3);
+          color: var(--text-tertiary);
         }
         .sessions .member {
           grid-area: member;
@@ -934,19 +460,17 @@
         .sessions .action {
           grid-area: action;
         }
-        .dfoot {
+        .drawer-foot {
           flex-wrap: wrap;
         }
       }
       /* iOS zooms the page into any field under 16px when it is focused, and
          a finger needs larger targets than a pointer. */
       @media (pointer: coarse) {
-        input[type="text"],
-        input[type="password"],
+        input,
         select,
         .mrow select,
-        .mrow input[type="number"],
-        #auth input {
+        .mrow input[type="number"] {
           font-size: 16px;
         }
         .btn,
@@ -981,14 +505,15 @@
           New group
         </button>
       </div>
-      <form id="auth" hidden>
-        <label class="f" for="auth-key">Management key</label
+      <form class="auth" id="auth" hidden>
+        <label for="auth-key">Management key</label
         ><input
           id="auth-key"
           type="password"
           autocomplete="current-password"
           required
         /><button class="btn primary" type="submit">Continue</button>
+        <p class="error" id="auth-error" role="alert" hidden></p>
       </form>
       <p id="error" class="error" role="alert" hidden></p>
       <div id="facts" class="facts"></div>
@@ -997,7 +522,7 @@
         in config.yaml.
       </p>
       <div id="groups" aria-live="polite">
-        <span class="note">Loading…</span>
+        <span class="hint">Loading…</span>
       </div>
     </main>
     <div id="scrim" class="scrim" hidden></div>
@@ -1010,47 +535,44 @@
       tabindex="-1"
       hidden
     >
-      <div class="dhead">
-        <span id="preview" class="gid"></span
-        ><label class="f" for="name"
-          >Name<input
-            id="name"
-            type="text"
-            required
-            autocomplete="off" /></label
-        ><label class="f" for="slug"
-          >Slug<input
+      <div class="drawer-head">
+        <span id="preview" class="gid"></span>
+        <div class="field">
+          <label for="name">Name</label
+          ><input id="name" type="text" required autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="slug">Slug</label
+          ><input
             id="slug"
             type="text"
             required
             pattern="[a-z0-9-]+"
             autocomplete="off"
-        /></label>
+          />
+        </div>
       </div>
-      <div class="dbody">
-        <div class="field-stack">
-          <span id="policy-label" class="note">Policy</span>
+      <div class="drawer-body">
+        <div class="field">
+          <span id="policy-label" class="label">Policy</span>
           <div
             id="policy"
             class="seg"
             role="group"
             aria-labelledby="policy-label"
           ></div>
-          <span class="note" id="policy-note"></span>
+          <span class="hint" id="policy-note"></span>
         </div>
-        <div>
-          <div class="note section-label" id="members-label">Members</div>
+        <div class="field">
+          <span class="label" id="members-label">Members</span>
           <div id="members"></div>
-          <p class="note" id="weight-hint" hidden>
-            Weight for weighted round robin.
-          </p>
         </div>
-        <div id="shared" hidden>
-          <div class="note section-label">Every member supports</div>
+        <div class="field" id="shared" hidden>
+          <span class="label">Every member supports</span>
           <dl id="capabilities" class="caps"></dl>
         </div>
-        <div>
-          <div class="note section-label">Add models CPA serves now</div>
+        <div class="field">
+          <span class="label">Add models CPA serves now</span>
           <div class="pick">
             <div class="search">
               <label class="sr-only" for="search"
@@ -1067,28 +589,49 @@
           </div>
         </div>
         <div class="session-controls">
-          <span class="note">Sessions</span
-          ><label class="switch"
-            ><input id="keep" type="checkbox" /><span class="t"></span
-            ><span>Keep a session on one member</span></label
-          ><label class="switch"
-            ><input id="rebind" type="checkbox" /><span class="t"></span
-            ><span>Move the session when that member fails</span></label
-          ><label class="stackrow" for="ttl"
-            ><span class="k">Keep for</span
-            ><select id="ttl"></select
-          ></label>
+          <span class="hint">Sessions</span>
+          <div class="row">
+            <button
+              id="keep"
+              class="switch"
+              type="button"
+              role="switch"
+              aria-checked="false"
+              aria-labelledby="keep-label"
+            ></button
+            ><label id="keep-label" for="keep"
+              >Keep a session on one member</label
+            >
+          </div>
+          <div class="row">
+            <button
+              id="rebind"
+              class="switch"
+              type="button"
+              role="switch"
+              aria-checked="false"
+              aria-labelledby="rebind-label"
+            ></button
+            ><label id="rebind-label" for="rebind"
+              >Move the session when that member fails</label
+            >
+          </div>
+          <div class="row">
+            <label class="hint" for="ttl">Keep for</label
+            ><select id="ttl"></select>
+          </div>
         </div>
         <p id="editor-error" class="error" role="alert" hidden></p>
       </div>
-      <div class="dfoot" id="foot">
-        <button id="delete" type="button" class="btn ghost">Delete</button
-        ><span class="note">Save reloads the CPA config.</span
+      <div class="drawer-foot" id="foot">
+        <button id="delete" type="button" class="btn ghost danger">
+          Delete</button
+        ><span class="hint">Save reloads the CPA config.</span
         ><span class="spacer"></span
         ><button id="cancel" type="button" class="btn">Cancel</button
         ><button id="save" class="btn primary" type="submit">Save</button>
       </div>
-      <div class="dfoot" id="confirm" hidden>
+      <div class="drawer-foot" id="confirm" hidden>
         <span id="confirm-text" class="grow"></span
         ><button id="confirm-cancel" type="button" class="btn">Cancel</button
         ><button id="confirm-delete" type="button" class="btn danger">
@@ -1183,27 +726,6 @@
           if (prefix && !out.has(id)) out.set(id, { ...model, id });
         }
         return [...out.values()];
-      }
-      async function listModels(key) {
-        const response = await fetch("/v1/models", {
-          headers: key ? { Authorization: "Bearer " + key } : {},
-          cache: "no-store",
-          credentials: "omit",
-        });
-        let data;
-        try {
-          data = await response.json();
-        } catch (_) {
-          throw new Error("/v1/models · HTTP " + response.status);
-        }
-        if (!response.ok || !Array.isArray(data.data))
-          throw new Error(
-            "/v1/models · " +
-              (typeof data.error === "string"
-                ? data.error
-                : data.error?.message || "HTTP " + response.status),
-          );
-        return data.data;
       }
       // The models CPA serves are the ones its /v1/models lists. Every client
       // key reads it, because a client-keys policy shortens one key's list;
@@ -1545,124 +1067,12 @@
       }
     </script>
     <script>
-      const $ = (id) => document.getElementById(id);
-      const API = "/v0/management/model-groups";
-      const CPA = "/v8/management";
-      const CONFIG = CPA + "/config/plugins/configs/model-groups";
-      const SESSION_KEY = "model-groups.management-key";
-      const REJECTED_KEY = "model-groups.rejected-mc-auth";
-      const MC_AUTH_KEY = "cli-proxy-auth";
-      const MC_THEME_KEY = "cli-proxy-theme";
-      function storageGet(storage, key) {
-        try {
-          return storage.getItem(key);
-        } catch (_) {
-          return null;
-        }
-      }
-      function storageSet(storage, key, value) {
-        try {
-          storage.setItem(key, value);
-        } catch (_) {}
-      }
-      function storageRemove(storage, key) {
-        try {
-          storage.removeItem(key);
-        } catch (_) {}
-      }
-      function managementCenterTheme() {
-        try {
-          if (window.parent !== window)
-            return (
-              window.parent.document.documentElement.getAttribute(
-                "data-theme",
-              ) || "light"
-            );
-        } catch (_) {}
-        let saved = "auto";
-        try {
-          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
-          saved = persisted?.state?.theme || saved;
-        } catch (_) {}
-        return saved === "auto"
-          ? matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "white"
-          : saved;
-      }
-      function applyTheme() {
-        document.documentElement.setAttribute(
-          "data-theme",
-          managementCenterTheme(),
-        );
-      }
-      applyTheme();
-      matchMedia("(prefers-color-scheme: dark)").addEventListener(
-        "change",
-        applyTheme,
-      );
-      window.addEventListener("storage", (event) => {
-        if (event.key === MC_THEME_KEY) applyTheme();
-      });
-      try {
-        if (window.parent !== window)
-          new MutationObserver(applyTheme).observe(
-            window.parent.document.documentElement,
-            { attributes: true, attributeFilter: ["data-theme"] },
-          );
-      } catch (_) {}
-      function deobfuscate(payload) {
-        const prefix = "enc::v1::";
-        if (!payload.startsWith(prefix)) return payload;
-        const binary = atob(payload.slice(prefix.length));
-        const secret = new TextEncoder().encode(
-          "cli-proxy-api-webui::secure-storage|" +
-            location.host +
-            "|" +
-            navigator.userAgent,
-        );
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++)
-          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
-        return new TextDecoder().decode(bytes);
-      }
-      function resolveKey() {
-        const typed = storageGet(sessionStorage, SESSION_KEY);
-        if (typed) return { key: typed, source: "session" };
-        const raw = storageGet(localStorage, MC_AUTH_KEY);
-        if (raw && raw !== storageGet(sessionStorage, REJECTED_KEY)) {
-          try {
-            const key = JSON.parse(deobfuscate(raw))?.state?.managementKey;
-            if (typeof key === "string" && key.trim())
-              return { key: key.trim(), source: "mc" };
-          } catch (_) {}
-        }
-        return { key: "", source: "" };
-      }
-      const auth = resolveKey();
-      class AuthError extends Error {}
-      function forgetKey() {
-        if (auth.source === "mc")
-          storageSet(
-            sessionStorage,
-            REJECTED_KEY,
-            storageGet(localStorage, MC_AUTH_KEY) || "",
-          );
-        storageRemove(sessionStorage, SESSION_KEY);
-        auth.key = "";
-        auth.source = "";
-        closeEditor(true);
-        $("auth").hidden = false;
-        $("auth-key").focus();
-      }
-      async function request(path, method = "GET", body, missing) {
-        if (!auth.key) throw new AuthError("No management key.");
-        const headers = { Authorization: "Bearer " + auth.key };
-        if (body !== undefined) headers["Content-Type"] = "application/json";
-        const response = await fetch(path, {
-          method,
-          headers,
-          body: body === undefined ? undefined : JSON.stringify(body),
+      "use strict";
+      const { $, h, AuthError, auth, api, cpa, request, paths } = kit;
+      const CONFIG = paths.pluginConfig;
+      async function listModels(key) {
+        const response = await fetch(paths.base + "/v1/models", {
+          headers: key ? { Authorization: "Bearer " + key } : {},
           cache: "no-store",
           credentials: "omit",
         });
@@ -1670,38 +1080,16 @@
         try {
           data = await response.json();
         } catch (_) {
-          throw new Error(path + " · HTTP " + response.status);
+          throw new Error("/v1/models · HTTP " + response.status);
         }
-        if (response.status === 401) {
-          forgetKey();
-          throw new AuthError(data.error || "Management key rejected.");
-        }
-        if (
-          response.status === 404 &&
-          missing !== undefined &&
-          data.error === "not_found"
-        )
-          return missing;
-        if (!response.ok)
-          throw new Error(data.error || path + " · HTTP " + response.status);
-        return data;
-      }
-      function h(tag, props = {}, ...children) {
-        const el = document.createElement(tag);
-        for (const [key, value] of Object.entries(props)) {
-          if (value === false || value === undefined || value === null)
-            continue;
-          if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
-          else el.setAttribute(key, value === true ? "" : String(value));
-        }
-        for (const child of children.flat(Infinity))
-          if (child !== null && child !== undefined && child !== false)
-            el.append(
-              child instanceof Node
-                ? child
-                : document.createTextNode(String(child)),
-            );
-        return el;
+        if (!response.ok || !Array.isArray(data.data))
+          throw new Error(
+            "/v1/models · " +
+              (typeof data.error === "string"
+                ? data.error
+                : data.error?.message || "HTTP " + response.status),
+          );
+        return data.data;
       }
       function button(text, action, className = "btn ghost", props = {}) {
         return h(
@@ -1713,6 +1101,16 @@
       function showError(id, message) {
         $(id).textContent = message;
         $(id).hidden = !message;
+      }
+      // A rejected key already shows in the key prompt.
+      function failure(error) {
+        return error instanceof AuthError ? "" : error.message;
+      }
+      function switchOn(id) {
+        return $(id).getAttribute("aria-checked") === "true";
+      }
+      function setSwitch(id, on) {
+        $(id).setAttribute("aria-checked", String(Boolean(on)));
       }
       const policies = {
         "round-robin": "round robin",
@@ -1775,9 +1173,9 @@
       }
       function tone(status) {
         return status === "cooling"
-          ? "amber"
+          ? "warn"
           : status === "unavailable" || status === "missing"
-            ? "warn"
+            ? "error"
             : "";
       }
       function chip(text, status = "") {
@@ -1799,8 +1197,7 @@
         if (catalogPromise) return catalogPromise;
         catalogPromise = (async () => {
           catalogErrors = [];
-          const get = (path, missing) =>
-            request(CPA + path, "GET", undefined, missing);
+          const get = (path, missing) => cpa(path, { missing });
           catalog = await loadModelCatalog({
             get,
             list: listModels,
@@ -1809,7 +1206,8 @@
           await loadCapabilities({ get, catalog, errors: catalogErrors });
           catalogLoaded = true;
         })().catch((error) => {
-          catalogErrors = [error.message];
+          catalogErrors = [failure(error)].filter(Boolean);
+          catalogPromise = null;
           throw error;
         });
         return catalogPromise;
@@ -1826,7 +1224,7 @@
           items.push(
             h(
               "span",
-              { class: "fact" + (on ? "" : " warn") },
+              { class: "fact" + (on ? "" : " error") },
               h("span", { class: "dot" }),
               "Session affinity ",
               h(
@@ -1873,7 +1271,7 @@
           { class: "table-wrap" },
           h(
             "table",
-            { class: "members" },
+            { class: "table members" },
             h(
               "thead",
               {},
@@ -1959,7 +1357,7 @@
         if (view?.error)
           items.push(h("p", { class: "error", role: "alert" }, view.error));
         if (!view || view.loading)
-          items.push(h("span", { class: "note" }, "Loading…"));
+          items.push(h("span", { class: "hint" }, "Loading…"));
         if (view?.sessions)
           items.push(
             h(
@@ -1967,7 +1365,7 @@
               { class: "table-wrap" },
               h(
                 "table",
-                { class: "sessions" },
+                { class: "table sessions" },
                 h(
                   "thead",
                   {},
@@ -2111,7 +1509,7 @@
           expander.replaceChildren(summary, meta);
           const row = h(
             "div",
-            { class: "row" },
+            { class: "group-row" },
             expander,
             button("", () => copyID(group.id), "copy copy-id", {
               "aria-label": "Copy · " + group.id,
@@ -2169,12 +1567,12 @@
         sessionViews.set(slug, view);
         renderGroups();
         try {
-          const data = await request(
-            API + "/sessions?group=" + encodeURIComponent(slug) + "&limit=100",
+          const data = await api(
+            "/sessions?group=" + encodeURIComponent(slug) + "&limit=100",
           );
           view.sessions = data.sessions;
         } catch (error) {
-          view.error = error.message;
+          view.error = failure(error);
         } finally {
           view.loading = false;
           if (sessionViews.get(slug) === view) renderGroups();
@@ -2187,16 +1585,16 @@
         view.error = "";
         renderGroups();
         try {
-          await request(
-            API + "/sessions/release",
-            "POST",
-            session === undefined
-              ? { group: slug, all: true }
-              : { group: slug, session },
-          );
+          await api("/sessions/release", {
+            method: "POST",
+            body:
+              session === undefined
+                ? { group: slug, all: true }
+                : { group: slug, session },
+          });
           await reload();
         } catch (error) {
-          view.error = error.message;
+          view.error = failure(error);
         } finally {
           view.busy = false;
           renderGroups();
@@ -2210,23 +1608,23 @@
         showError("error", "");
         const errors = [];
         try {
-          state = await request(API + "/state");
+          state = await api("/state");
           renderGroups();
           const results = await Promise.allSettled([
-            request(CONFIG, "GET", undefined, null),
-            request(CPA + "/config/routing"),
+            request(CONFIG, { missing: null }),
+            cpa("/config/routing"),
             loadCatalog(),
           ]);
           configLoaded = results[0].status === "fulfilled";
           if (configLoaded) config = results[0].value;
-          else errors.push(results[0].reason.message);
+          else errors.push(failure(results[0].reason));
           if (results[1].status === "fulfilled") routing = results[1].value;
           else {
             routing = null;
-            errors.push(results[1].reason.message);
+            errors.push(failure(results[1].reason));
           }
           if (results[2].status === "rejected")
-            errors.push(results[2].reason.message);
+            errors.push(failure(results[2].reason));
           else if (catalogErrors.length) errors.push(catalogErrorText());
           if (state.config_error) errors.push(state.config_error);
           renderFacts();
@@ -2239,12 +1637,12 @@
               .map(loadSessions),
           );
         } catch (error) {
-          errors.push(error.message);
+          errors.push(failure(error));
         } finally {
           loading = false;
           $("reload").disabled = false;
           $("new").disabled = !configLoaded || !catalogLoaded || !auth.key;
-          showError("error", [...new Set(errors)].join("\n"));
+          showError("error", [...new Set(errors)].filter(Boolean).join("\n"));
           renderGroups();
         }
       }
@@ -2284,11 +1682,13 @@
         $("name").value = draft.name;
         $("slug").value = draft.slug;
         $("slug").dataset.manual = slug === null ? "" : "true";
-        $("keep").checked = affinity.enabled ?? state.affinity?.enabled ?? true;
-        $("rebind").checked =
+        setSwitch("keep", affinity.enabled ?? state.affinity?.enabled ?? true);
+        setSwitch(
+          "rebind",
           affinity.rebind_on_failure ??
-          state.affinity?.rebind_on_failure ??
-          false;
+            state.affinity?.rebind_on_failure ??
+            false,
+        );
         const configuredTTL = affinity.ttl || "";
         const ttl =
           configuredTTL === routing?.["session-affinity-ttl"]
@@ -2348,8 +1748,8 @@
       // cannot save the group being deleted.
       function lockEditor() {
         const locked = saving || !$("confirm").hidden;
-        $("editor").querySelector(".dhead").inert = locked;
-        $("editor").querySelector(".dbody").inert = locked;
+        $("editor").querySelector(".drawer-head").inert = locked;
+        $("editor").querySelector(".drawer-body").inert = locked;
         for (const id of [
           "save",
           "cancel",
@@ -2376,7 +1776,7 @@
           "? ",
           h(
             "span",
-            { class: "note" },
+            { class: "hint" },
             "Requests for it fail" +
               (sessions
                 ? " · in use by " +
@@ -2394,7 +1794,7 @@
         saving = true;
         lockEditor();
         try {
-          const latest = await request(CONFIG, "GET", undefined, null);
+          const latest = await request(CONFIG, { missing: null });
           const groups = [...(latest?.groups || [])];
           const index =
             originalSlug === null
@@ -2406,14 +1806,17 @@
               JSON.stringify(groups[index]) !== JSON.stringify(original))
           )
             throw new Error("config · " + originalSlug + " · Reload");
-          await request(CONFIG, "PATCH", await change(latest, groups, index));
+          await request(CONFIG, {
+            method: "PATCH",
+            body: await change(latest, groups, index),
+          });
           saving = false;
           closeEditor();
           await reload();
         } catch (error) {
           showError(
             $("editor").hidden ? "error" : "editor-error",
-            error.message,
+            failure(error),
           );
         } finally {
           saving = false;
@@ -2478,8 +1881,6 @@
         $("members-label").textContent = "Members · " + draft.members.length;
         const { capabilities, lowers } = draftCapabilities();
         renderCapabilities(capabilities);
-        $("weight-hint").hidden =
-          draft.policy === "weighted-round-robin" || !draft.members.length;
         $("members").replaceChildren(
           ...draft.members.map((member, index) => {
             const known = knownProviders(member.model);
@@ -2509,11 +1910,11 @@
                 { class: "m" },
                 h("span", { class: "id" }, member.model),
                 !known.length
-                  ? h("span", { class: "note error" }, "not served by CPA")
+                  ? h("span", { class: "hint error" }, "not served by CPA")
                   : member.changed
                     ? h(
                         "span",
-                        { class: "note" },
+                        { class: "hint" },
                         "Providers · " +
                           (member.previous.join(", ") || "—") +
                           " → " +
@@ -2523,7 +1924,7 @@
                 limits.length
                   ? h(
                       "span",
-                      { class: "note limits" },
+                      { class: "hint limits" },
                       "Limits · " + limits.join(", "),
                     )
                   : null,
@@ -2576,6 +1977,10 @@
               required: true,
               value: member.weight,
               disabled: draft.policy !== "weighted-round-robin",
+              title:
+                draft.policy === "weighted-round-robin"
+                  ? null
+                  : "Weight applies to weighted round robin",
               oninput: (event) => {
                 member.weight = Number(event.target.value);
               },
@@ -2681,7 +2086,7 @@
               box.checked = selected;
               return h(
                 "li",
-                { "data-on": selected ? "1" : "0" },
+                {},
                 h(
                   "label",
                   {},
@@ -2805,12 +2210,12 @@
           else groups[index] = next;
           const affinity = {
             ...latest?.affinity,
-            enabled: $("keep").checked,
-            rebind_on_failure: $("rebind").checked,
+            enabled: switchOn("keep"),
+            rebind_on_failure: switchOn("rebind"),
           };
           if ($("ttl").value) affinity.ttl = $("ttl").value;
           else {
-            const currentRouting = await request(CPA + "/config/routing");
+            const currentRouting = await cpa("/config/routing");
             if (!currentRouting["session-affinity-ttl"])
               throw new Error("routing.session-affinity-ttl");
             affinity.ttl = currentRouting["session-affinity-ttl"];
@@ -2843,25 +2248,10 @@
           $("delete").focus();
         }
       });
-      $("auth").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        auth.key = $("auth-key").value.trim();
-        auth.source = "typed";
-        if (!auth.key) return;
-        $("auth").hidden = true;
-        await reload();
-        if (auth.key && state) {
-          storageSet(sessionStorage, SESSION_KEY, auth.key);
-          auth.source = "session";
-          $("auth-key").value = "";
-        } else $("auth").hidden = false;
-      });
-      if (auth.key) reload();
-      else {
-        $("auth").hidden = false;
-        $("groups").replaceChildren();
-        showError("error", "No management key.");
-      }
+      for (const id of ["keep", "rebind"])
+        $(id).addEventListener("click", () => setSwitch(id, !switchOn(id)));
+      auth.onRejected(() => closeEditor(true));
+      auth.init(reload);
     </script>
   </body>
 </html>

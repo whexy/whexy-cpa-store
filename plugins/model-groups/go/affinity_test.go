@@ -21,10 +21,10 @@ groups:
 `
 
 func TestSessionKeepsItsMemberAcrossRequests(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
 	host.addProvider("p2", 1, credentialReady)
-	state := newTestState(t, roundRobinConfig, host)
+	state := newTestState(t, roundRobinConfig)
 	available := []string{"p1", "p2"}
 
 	sessionA := map[string][]string{"X-Claude-Code-Session-Id": {"session-a"}}
@@ -51,14 +51,13 @@ func TestSessionKeepsItsMemberAcrossRequests(t *testing.T) {
 
 func TestBindingsSurviveAPluginReload(t *testing.T) {
 	dir := t.TempDir()
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
 	host.addProvider("p2", 1, credentialReady)
-	host.install(t)
 	available := []string{"p1", "p2"}
 
 	before := newPluginState(dir)
-	before.applyConfig([]byte(roundRobinConfig))
+	before.applyConfig(lifecycle(roundRobinConfig))
 	sessionA := map[string][]string{"X-Claude-Code-Session-Id": {"session-a"}}
 	sessionB := map[string][]string{"X-Claude-Code-Session-Id": {"session-b"}}
 	if resp, _ := routeFor(before, "auto-group/cycle", sessionA, available); resp.TargetModel != "first" {
@@ -70,7 +69,7 @@ func TestBindingsSurviveAPluginReload(t *testing.T) {
 	before.persist()
 
 	after := newPluginState(dir)
-	after.applyConfig([]byte(roundRobinConfig))
+	after.applyConfig(lifecycle(roundRobinConfig))
 	resp, handled := routeFor(after, "auto-group/cycle", sessionB, available)
 	if !handled {
 		t.Fatalf("the request was not routed after the reload")
@@ -118,10 +117,10 @@ func TestPruneBindingsCapsTheStoredSessions(t *testing.T) {
 }
 
 func TestReleaseDropsOneSessionOrAWholeGroup(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("p1", 1, credentialReady)
 	host.addProvider("p2", 1, credentialReady)
-	state := newTestState(t, roundRobinConfig, host)
+	state := newTestState(t, roundRobinConfig)
 	available := []string{"p1", "p2"}
 
 	for _, session := range []string{"one", "two"} {

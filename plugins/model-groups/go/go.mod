@@ -1,11 +1,11 @@
-module github.com/router-for-me/CLIProxyAPI/v8/whexy-cpa-store/plugins/model-groups
+module github.com/whexy/whexy-cpa-store/plugins/model-groups
 
 go 1.26.0
 
 require (
 	github.com/router-for-me/CLIProxyAPI/v8 v8.0.27
 	github.com/tidwall/gjson v1.18.0
-	gopkg.in/yaml.v3 v3.0.1
+	github.com/whexy/whexy-cpa-store/pluginkit v0.0.0
 )
 
 require (
@@ -39,4 +39,7 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/whexy/whexy-cpa-store/pluginkit => ../../../pluginkit

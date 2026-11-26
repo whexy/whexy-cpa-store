@@ -7,7 +7,7 @@ import (
 )
 
 func TestDefaultsForAnEmptyConfig(t *testing.T) {
-	cfg, errParse := parseSettings(nil)
+	cfg, errParse := parseYAML(nil)
 	if errParse != nil {
 		t.Fatalf("parse: %v", errParse)
 	}
@@ -23,7 +23,7 @@ func TestDefaultsForAnEmptyConfig(t *testing.T) {
 }
 
 func TestGroupNameBecomesTheModelIDSuffix(t *testing.T) {
-	cfg, errParse := parseSettings([]byte(`
+	cfg, errParse := parseYAML([]byte(`
 groups:
   - name: Daily driver
     members:
@@ -57,7 +57,7 @@ func TestPolicyAliases(t *testing.T) {
 		"  Round-Robin  ":      policyRoundRobin,
 	}
 	for input, want := range cases {
-		cfg, errParse := parseSettings([]byte(`
+		cfg, errParse := parseYAML([]byte(`
 groups:
   - slug: g
     policy: "` + input + `"
@@ -128,7 +128,7 @@ groups:
 `,
 	}
 	for name, config := range cases {
-		if _, errParse := parseSettings([]byte(config)); errParse == nil {
+		if _, errParse := parseYAML([]byte(config)); errParse == nil {
 			t.Fatalf("%s: the config was accepted", name)
 		}
 	}
@@ -138,7 +138,7 @@ func TestMemberWithoutProvidersIsKeptButInert(t *testing.T) {
 	// The page resolves a member's providers before saving; a hand-written
 	// config may name a model only, which stays in the group but cannot be
 	// routed until it names a provider.
-	cfg, errParse := parseSettings([]byte(`
+	cfg, errParse := parseYAML([]byte(`
 groups:
   - slug: g
     members: [{model: m}, {model: n, providers: [p]}]
@@ -152,7 +152,7 @@ groups:
 }
 
 func TestSelfReferencingMemberIsRejected(t *testing.T) {
-	_, errParse := parseSettings([]byte(`
+	_, errParse := parseYAML([]byte(`
 groups:
   - slug: g
     members: [{model: auto-group/g, providers: [p]}]
@@ -163,11 +163,11 @@ groups:
 }
 
 func TestInvalidConfigKeepsThePreviousGroups(t *testing.T) {
-	host := newFakeHost()
+	host := newFakeHost(t)
 	host.addProvider("claude", 1, credentialReady)
-	state := newTestState(t, multiProviderConfig, host)
+	state := newTestState(t, multiProviderConfig)
 
-	state.applyConfig([]byte("groups:\n  - slug: g\n"))
+	state.applyConfig(lifecycle("groups:\n  - slug: g\n"))
 	if state.cfgErr == "" {
 		t.Fatalf("the broken config was not reported")
 	}
@@ -180,7 +180,7 @@ func TestInvalidConfigKeepsThePreviousGroups(t *testing.T) {
 }
 
 func TestAffinityTTLAndPrefixAreConfigurable(t *testing.T) {
-	cfg, errParse := parseSettings([]byte(`
+	cfg, errParse := parseYAML([]byte(`
 prefix: groups
 affinity:
   enabled: false

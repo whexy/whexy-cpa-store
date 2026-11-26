@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/whexy/whexy-cpa-store/pluginkit/config"
 )
 
 const (
@@ -107,28 +107,27 @@ func defaultSettings() settings {
 	return settings{Prefix: defaultPrefix, AffinityEnabled: true, AffinityTTL: defaultAffinityTTL}
 }
 
-func parseSettings(configYAML []byte) (settings, error) {
+// parseSettings reads the plugin's node of config.yaml from a lifecycle
+// request; the host's own fields in it (enabled, priority) are ignored.
+func parseSettings(request []byte) (settings, error) {
 	cfg := defaultSettings()
-	if len(configYAML) == 0 {
-		return cfg, nil
-	}
 	var raw rawSettings
-	if errUnmarshal := yaml.Unmarshal(configYAML, &raw); errUnmarshal != nil {
-		return settings{}, fmt.Errorf("decode plugin config: %w", errUnmarshal)
+	if errDecode := config.Decode(request, &raw); errDecode != nil {
+		return settings{}, errDecode
 	}
 
-	prefix := strings.Trim(strings.TrimSpace(raw.Prefix), "/")
+	prefix, errPrefix := config.ModelPrefix("prefix", raw.Prefix)
+	if errPrefix != nil {
+		return settings{}, errPrefix
+	}
 	if raw.Prefix != "" && prefix == "" {
 		return settings{}, fmt.Errorf("prefix must not be empty")
 	}
 	if prefix != "" {
-		if strings.ContainsAny(prefix, " \t\r\n()*") {
-			return settings{}, fmt.Errorf("prefix must not contain spaces, parentheses or *, got %q", raw.Prefix)
-		}
 		cfg.Prefix = prefix
 	}
-	if errPrefix := validatePrefix(cfg.Prefix); errPrefix != nil {
-		return settings{}, errPrefix
+	if errValidate := validatePrefix(cfg.Prefix); errValidate != nil {
+		return settings{}, errValidate
 	}
 
 	if raw.Affinity.Enabled != nil {
@@ -305,17 +304,6 @@ func slugify(name string) string {
 	return strings.Trim(builder.String(), "-")
 }
 
-// groupByID returns the configured group for a model ID without its thinking
-// suffix.
-func (s settings) groupByID(id string) (groupConfig, bool) {
-	for _, group := range s.Groups {
-		if group.ID == id {
-			return group, true
-		}
-	}
-	return groupConfig{}, false
-}
-
 // registeredModelIDs lists the model IDs the host should publish for the
 // enabled groups.
 func (s settings) registeredModelIDs() []string {
@@ -327,3 +315,6 @@ func (s settings) registeredModelIDs() []string {
 	}
 	return ids
 }
+
+// providerKeyOf normalizes the provider keys this plugin compares.
+func providerKeyOf(value string) string { return strings.ToLower(strings.TrimSpace(value)) }
