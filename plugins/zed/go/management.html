@@ -6,84 +6,101 @@
     <meta name="referrer" content="no-referrer" />
     <title>Zed</title>
     <style>
-      .stack {
+      .tab {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: calc(var(--spacing) * 4);
       }
-      .card h2 {
-        margin: 0;
-        font-size: 13px;
-        font-weight: 600;
+      .account {
+        gap: calc(var(--spacing) * 2);
       }
       .account .title {
         flex: 1;
         min-width: 0;
-        font-weight: 600;
+        font-family: var(--font-title);
+        font-weight: var(--font-weight-semibold);
         overflow-wrap: anywhere;
       }
       .toggle {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: calc(var(--spacing) * 2);
         cursor: pointer;
       }
-      .login-url {
+      .login-url,
+      .sample {
         margin: 0;
-        padding: 8px 10px;
-        border-radius: var(--radius-sm);
-        background: var(--bg-subtle);
+        padding: calc(var(--spacing) * 3);
+        border-radius: var(--radius-xl);
+        background-color: var(--color-fill);
         overflow-wrap: anywhere;
+      }
+      .sample {
+        overflow: auto;
       }
       #callback-url,
       #dashboard-cookie {
-        min-height: 62px;
+        min-height: calc(var(--spacing) * 16);
         font-family: var(--font-mono);
       }
+      details.card:not([open]) {
+        gap: 0;
+      }
       details > summary {
-        color: var(--text-secondary);
+        color: var(--color-ink-soft);
+        font-family: var(--font-title);
+        font-weight: var(--font-weight-medium);
         cursor: pointer;
       }
-      details[open] > summary {
-        margin-bottom: 10px;
-      }
-      .sample {
-        margin: 8px 0;
-        padding: 10px;
-        border-radius: var(--radius-sm);
-        background: var(--bg-subtle);
-        overflow: auto;
-      }
       #model-search {
-        max-width: 260px;
+        max-width: calc(var(--spacing) * 64);
       }
-      .table td .muted {
-        font-size: 12px;
+      .scroll {
+        overflow-x: auto;
+        scrollbar-color: var(--color-line-strong) transparent;
+      }
+      .table td .mono {
+        white-space: nowrap;
       }
       .table .switch {
         display: block;
       }
-      .toast {
-        position: fixed;
-        z-index: 4;
-        right: 18px;
-        bottom: 18px;
-        max-width: min(420px, calc(100% - 36px));
-        box-shadow: var(--shadow-pop);
+      /* Every glass card here is page-level, so it goes square and edge to
+         edge on phones like the kit's header. */
+      @media (width < 40rem) {
+        .glass-card {
+          border-radius: 0;
+        }
       }
     </style>
   </head>
   <body>
     <main class="page">
       <div class="head">
+        <img class="head-logo" src="logo.svg" alt="" />
         <h1>Zed</h1>
         <span class="spacer"></span>
-        <div class="seg" role="group" aria-label="Section">
-          <button type="button" data-tab="accounts" aria-pressed="true">
+        <div class="segmented" role="group" aria-label="Section">
+          <button
+            class="segmented-item"
+            type="button"
+            data-tab="accounts"
+            aria-pressed="true"
+          >
             Accounts</button
-          ><button type="button" data-tab="models" aria-pressed="false">
+          ><button
+            class="segmented-item"
+            type="button"
+            data-tab="models"
+            aria-pressed="false"
+          >
             Models</button
-          ><button type="button" data-tab="settings" aria-pressed="false">
+          ><button
+            class="segmented-item"
+            type="button"
+            data-tab="settings"
+            aria-pressed="false"
+          >
             Settings
           </button>
         </div>
@@ -95,19 +112,19 @@
           type="password"
           autocomplete="current-password"
           required
-        /><button class="btn primary" type="submit">Continue</button>
+        /><button class="btn-solid" type="submit">Continue</button>
         <p class="error" id="auth-error" role="alert" hidden></p>
       </form>
 
-      <section id="tab-accounts" class="stack">
-        <div id="accounts" class="stack" aria-live="polite"></div>
+      <section id="tab-accounts" class="tab">
+        <div id="accounts" class="tab" aria-live="polite"></div>
 
-        <div class="card stack">
+        <div class="glass-card card">
           <h2>Add an account</h2>
           <div class="row">
-            <button class="btn primary" type="button" id="start-login">
+            <button class="btn-solid" type="button" id="start-login">
               Start sign-in</button
-            ><button class="btn" type="button" id="open-login" hidden>
+            ><button class="btn-glass" type="button" id="open-login" hidden>
               Open page
             </button>
             <span class="hint" id="login-expiry"></span>
@@ -127,13 +144,18 @@
             >
           </div>
           <div class="row">
-            <button class="btn" type="button" id="complete-login" disabled>
+            <button
+              class="btn-glass"
+              type="button"
+              id="complete-login"
+              disabled
+            >
               Finish sign-in
             </button>
           </div>
         </div>
 
-        <details class="card">
+        <details class="paper card">
           <summary>Add an account by importing its auth file</summary>
           <span class="hint"
             >Put a file of type <code>zed</code> in the auth directory, or
@@ -156,7 +178,7 @@
         </details>
       </section>
 
-      <section id="tab-models" class="card stack" hidden>
+      <section id="tab-models" class="paper card" hidden>
         <div class="row">
           <input
             id="model-search"
@@ -165,17 +187,17 @@
             aria-label="Filter models"
           />
           <span class="muted spacer" id="model-summary"></span>
-          <button class="btn" type="button" id="refresh-models">
+          <button class="btn-glass" type="button" id="refresh-models">
             Refresh list
           </button>
         </div>
-        <div id="models"></div>
+        <div id="models" class="scroll"></div>
       </section>
 
-      <form id="tab-settings" class="card stack" hidden>
+      <form id="tab-settings" class="glass-card card" hidden>
         <div class="row">
-          <h2 class="spacer">Plugin settings</h2>
-          <button class="btn primary" type="submit" id="save-settings">
+          <span class="spacer"></span>
+          <button class="btn-solid" type="submit" id="save-settings">
             Save
           </button>
         </div>
@@ -247,11 +269,10 @@
         </div>
       </form>
     </main>
-    <div id="toast" class="notice toast" role="status" hidden></div>
 
     <script>
       "use strict";
-      const { $, h, AuthError, auth, api, request, paths } = kit;
+      const { $, h, AuthError, auth, api, request, paths, toast } = kit;
       const CONFIG = paths.pluginConfig;
       const TABS = ["accounts", "models", "settings"];
 
@@ -265,19 +286,10 @@
         loginTimer: null,
       };
 
-      let toastTimer = null;
-      function toast(message, error = false) {
-        const el = $("toast");
-        el.textContent = message;
-        el.classList.toggle("error", error);
-        el.hidden = false;
-        clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => (el.hidden = true), 5000);
-      }
       // fail reports an error; a rejected key is already reported by the
       // key prompt.
       function fail(err) {
-        if (!(err instanceof AuthError)) toast(err.message, true);
+        if (!(err instanceof AuthError)) toast(err.message, "danger");
       }
 
       function setSwitch(button, on) {
@@ -327,19 +339,19 @@
                     method: "PATCH",
                     body: { id: entry.auth_index, disabled: !on },
                   });
-                  toast(name + (on ? " enabled" : " disabled"));
+                  toast(name + (on ? " enabled" : " disabled"), "ok");
                   await loadAccounts();
                 }),
             });
             const plan = entry.plan_label || entry.plan;
             return h(
               "div",
-              { class: "card account stack" },
+              { class: "glass-card card account" },
               h(
                 "div",
                 { class: "row" },
                 h("span", { class: "title" }, name),
-                plan && h("span", { class: "badge ok" }, plan),
+                plan && h("span", { class: "badge" }, plan),
                 toggle,
               ),
               h(
@@ -470,14 +482,14 @@
         if (!served) disabled.push(model.upstream_id);
         await saveConfig({ disabled_models: disabled });
         model.disabled = !served;
-        toast(model.id + (served ? " enabled" : " disabled"));
+        toast(model.id + (served ? " enabled" : " disabled"), "ok");
       }
 
       async function loadModels() {
         const data = await api("/models");
         state.models = data?.models || [];
         state.prefix = data?.prefix || "";
-        if (data?.error) toast(data.error, true);
+        if (data?.error) toast(data.error, "danger");
         state.config = (await request(CONFIG, { missing: {} })) || {};
         renderModels();
       }
@@ -506,7 +518,7 @@
             dashboard_account: $("dashboard-account").value.trim(),
             dashboard_cookie: $("dashboard-cookie").value.trim(),
           });
-          toast("Settings saved");
+          toast("Settings saved", "ok");
         } catch (err) {
           fail(err);
         }
@@ -551,7 +563,7 @@
         state.login = null;
         $("callback-url").value = "";
         renderLogin();
-        toast(message);
+        toast(message, "ok");
         await loadAccounts();
         await loadModels();
       }
@@ -578,7 +590,7 @@
               stopLoginPoll();
               state.login = null;
               renderLogin();
-              toast(result.message || "Sign-in failed", true);
+              toast(result.message || "Sign-in failed", "danger");
             }
           } catch (err) {
             stopLoginPoll();
@@ -591,7 +603,7 @@
         if (!state.login) return;
         const callback = $("callback-url").value.trim();
         if (!callback) {
-          toast("Paste the callback URL first.", true);
+          toast("Paste the callback URL first.", "danger");
           $("callback-url").focus();
           return;
         }
@@ -620,7 +632,7 @@
             method: "POST",
             body: {},
           });
-          if (result?.errors?.length) toast(result.errors.join("; "), true);
+          if (result?.errors?.length) toast(result.errors.join("; "), "danger");
           await loadModels();
         } catch (err) {
           fail(err);
@@ -629,7 +641,7 @@
       }
 
       function switchTab(name) {
-        for (const button of document.querySelectorAll(".seg button"))
+        for (const button of document.querySelectorAll(".segmented-item"))
           button.setAttribute(
             "aria-pressed",
             button.dataset.tab === name ? "true" : "false",
@@ -648,7 +660,7 @@
         }
       }
 
-      for (const button of document.querySelectorAll(".seg button"))
+      for (const button of document.querySelectorAll(".segmented-item"))
         button.addEventListener("click", () => switchTab(button.dataset.tab));
       $("start-login").addEventListener("click", startLogin);
       $("open-login").addEventListener("click", () => {
