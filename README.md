@@ -39,26 +39,34 @@ will not be merged. See [CONTRIBUTING.md](CONTRIBUTING.md).
 ```
 plugins/<id>/
   plugin.json          # store metadata (id, name, description, ...), no version
-  vendor-hash.nix      # fixed-output hash of the vendored Go dependencies
+  vendor-hash.nix      # fixed-output hash of the plugin's downloaded Go modules
   CHANGELOG.md         # written by release/bump.mjs
   go/                  # plugin source (Go module); main.go declares pluginVersion
+pluginkit/             # shared library every plugin builds on (Go module)
 tools/registry-check/  # validates registry.json and plugin.json with the host's parser
 release/               # validation scope, version bumps, tagging, release publication and registry tooling
 nix/packages/plugins/  # .#plugins.<id> builds, tests and zips one plugin
+nix/checks/            # flake checks, including pluginkit's tests
 ```
 
-## Module path caveat
+## pluginkit
 
-Plugins that import `github.com/router-for-me/CLIProxyAPI/v7/internal/...` are
-constrained by Go's `internal` visibility rule: the module path must stay
-rooted at `github.com/router-for-me/CLIProxyAPI/v7/...`. The pinned
-CLIProxyAPI release in `go.mod` supplies the module; no upstream checkout is
-needed at build time.
+Plugins build on `pluginkit/`, a shared Go module that holds the C ABI, RPC
+envelopes, host callbacks, management routes, and the stylesheet and script
+every Management Center page shares. A plugin's `main` package keeps only what
+the plugin does. [pluginkit/README.md](pluginkit/README.md) lists its
+packages.
+
+A pluginkit change rebuilds every plugin but releases none: a plugin ships it
+with its next version bump. It leaves every `vendor-hash.nix` valid, because
+the hash covers only downloaded modules.
 
 ## Adding a plugin
 
-1. Copy the plugin source to `plugins/<id>/go/` and set the module path as
-   described above (`github.com/router-for-me/CLIProxyAPI/v7/whexy-cpa-store/plugins/<id>`).
+1. Create `plugins/<id>/go/` as module `github.com/whexy/whexy-cpa-store/plugins/<id>`
+   with the pluginkit `require` and `replace` lines (copy them from
+   `plugins/system-prompt/go/go.mod`), and serve the plugin with
+   `plugin.Serve` from `init`.
 2. Add `plugins/<id>/plugin.json` without a `version` (id must equal the
    directory name).
 3. In `go/main.go`, declare `pluginVersion = "0.0.0"` in a `const` block and
@@ -152,10 +160,11 @@ URL of the registry it came from and stops offering updates when it changes.
 ## Local development
 
 ```bash
-nix develop                                # go, node, jq, gh + pre-commit hooks
+nix develop                                # go, gcc, node, jq, gh + pre-commit hooks
 nix fmt                                    # treefmt: nixfmt, gofmt, shfmt, prettier
 nix flake check                            # lint, registry check, release tests, build + test every plugin
 nix build .#plugins.usage-dashboard        # one plugin's release zip in ./result
+(cd pluginkit && go test ./...)            # the shared library's tests alone
 node --test release/release.test.mjs       # the release tooling's tests alone
 ```
 
