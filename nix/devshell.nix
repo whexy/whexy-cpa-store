@@ -5,6 +5,8 @@ in
 pkgs.mkShell {
   packages = [
     pkgs.go
+    # Plugins are cgo shared libraries, so go test needs a C compiler.
+    pkgs.gcc
     pkgs.zip
     pkgs.jq
     pkgs.nodejs_24
