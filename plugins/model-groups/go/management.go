@@ -13,8 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
@@ -342,9 +340,8 @@ func credentialLabel(provider, authIndex, authID string, now time.Time) string {
 	}
 	labelCacheMu.Unlock()
 
-	var resp pluginapi.HostAuthGetRuntimeResponse
 	label := fallbackLabel(provider, authIndex, authID)
-	if errCall := host.Invoke(pluginabi.MethodHostAuthGetRuntime, pluginapi.HostAuthGetRequest{AuthIndex: authIndex}, &resp); errCall == nil {
+	if resp, errCall := host.AuthGetRuntime(authIndex); errCall == nil {
 		entry := resp.Auth
 		name := strings.TrimSpace(entry.Email)
 		if name == "" {
