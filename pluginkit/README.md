@@ -15,6 +15,7 @@ The library every plugin in this store builds on. Plugins require
 | `config`        | Decoding the plugin's settings and validating URL and model-prefix settings.                       |
 | `datadir`       | The plugin's data directory beside the host's plugins directory.                                   |
 | `background`    | Work that outlives a call, stopped before the host unloads the library.                            |
+| `translate`     | A provider's route between client formats and model protocols, through CPA's translators.          |
 
 ## Pages
 

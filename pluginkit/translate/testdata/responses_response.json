@@ -1,0 +1,55 @@
+{
+  "id": "resp_0e8d53eb6d51022d006acd739e037087d290c2507ea9304a33",
+  "object": "response",
+  "created_at": 1791849374,
+  "completed_at": 1791849374,
+  "status": "completed",
+  "parallel_tool_calls": true,
+  "temperature": 1,
+  "top_p": 0.98,
+  "max_output_tokens": 32,
+  "previous_response_id": null,
+  "background": false,
+  "truncation": "disabled",
+  "top_logprobs": 0,
+  "max_tool_calls": null,
+  "prompt_cache_retention": "24h",
+  "model": "gpt-6-luna",
+  "error": null,
+  "incomplete_details": null,
+  "output": [
+    {
+      "id": "msg_0e8d53eb6d51022d006acd739e834c87d2ae5d2a74af8f8d9a",
+      "type": "message",
+      "status": "completed",
+      "role": "assistant",
+      "phase": "final_answer",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "OK",
+          "annotations": [],
+          "logprobs": []
+        }
+      ]
+    }
+  ],
+  "usage": {
+    "input_tokens": 9,
+    "output_tokens": 5,
+    "total_tokens": 14,
+    "input_tokens_details": { "cached_tokens": 0, "cache_write_tokens": 0 },
+    "output_tokens_details": { "reasoning_tokens": 0 }
+  },
+  "instructions": null,
+  "tool_choice": "auto",
+  "tools": [],
+  "reasoning": {
+    "context": "all_turns",
+    "effort": "medium",
+    "mode": "standard",
+    "summary": null
+  },
+  "text": { "verbosity": "medium", "format": { "type": "text" } },
+  "moderation": null
+}

@@ -4,7 +4,10 @@
 package rpc
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"sync/atomic"
 	"time"
 
@@ -46,9 +49,14 @@ func WithStatus(status int) FailOption {
 	return func(e *Error) { e.HTTPStatus = status }
 }
 
-// WithRetryAfter sets the cooldown the host applies to the failed auth.
+// WithRetryAfter sets the cooldown the host applies to the failed auth. A
+// duration that is not positive sets none.
 func WithRetryAfter(d time.Duration) FailOption {
-	return func(e *Error) { e.RetryAfterSeconds = d.Seconds() }
+	return func(e *Error) {
+		if d > 0 {
+			e.RetryAfterSeconds = d.Seconds()
+		}
+	}
 }
 
 // Fail encodes a failed envelope. The message passes through the redactor
@@ -60,6 +68,16 @@ func Fail(code, message string, opts ...FailOption) []byte {
 	}
 	raw, _ := json.Marshal(Envelope{Error: failure})
 	return raw
+}
+
+// TransportFailure encodes an upstream request to provider that got no
+// response. A canceled request is a 408, as the client is gone or the plugin
+// is shutting down; any other failure is a 502 the host may retry elsewhere.
+func TransportFailure(provider string, err error) []byte {
+	if errors.Is(err, context.Canceled) {
+		return Fail("canceled", provider+" request canceled", WithStatus(http.StatusRequestTimeout))
+	}
+	return Fail("upstream_unreachable", provider+" request failed: "+err.Error(), WithStatus(http.StatusBadGateway))
 }
 
 var redactor atomic.Pointer[func(string) string]
