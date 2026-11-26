@@ -11,8 +11,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
+
+// Host callbacks a poll makes, as implemented by CLIProxyAPI v8.0.27 to
+// v8.0.44: host.auth.list answers every file-backed and runtime credential,
+// with the provider, email and routing state, and host.auth.get one
+// credential's auth file, tokens included. Credentials synthesized from
+// config.yaml api-keys are in neither, so they stay accounts whose quota is
+// unknown. None of these calls is made on the scheduler.pick path: the
+// scheduler runs inside every credential selection, and answers from memory
+// alone.
 
 // Responses keep the accounts CPA uses current; the usage endpoints cover the
 // ones it does not, and use spent outside CPA. These are the endpoints and
@@ -68,12 +78,12 @@ type pollResult struct {
 // poll reads one account's usage endpoint. It never refreshes a token: CPA
 // owns the credential, and a rejected token waits for CPA to refresh it.
 func poll(ctx context.Context, target pollTarget, now time.Time) pollResult {
-	raw, errFile := hostAuthFile(target.authIndex)
+	stored, errFile := host.AuthGet(target.authIndex)
 	if errFile != nil {
 		return pollResult{problem: "auth file unreadable"}
 	}
 	var file authFile
-	if json.Unmarshal(raw, &file) != nil || strings.TrimSpace(file.AccessToken) == "" {
+	if json.Unmarshal(stored.JSON, &file) != nil || strings.TrimSpace(file.AccessToken) == "" {
 		return pollResult{problem: "no access token in the auth file"}
 	}
 	// host.http.do applies only the global proxy, so a request for an account
@@ -104,7 +114,9 @@ func poll(ctx context.Context, target pollTarget, now time.Time) pollResult {
 		headers.Set("User-Agent", claudeUserAgent)
 		headers.Set("Anthropic-Beta", "oauth-2025-04-20")
 	}
-	resp, errGet := hostGet(ctx, url, headers)
+	ctx, cancel := context.WithTimeout(ctx, pollTimeout)
+	defer cancel()
+	resp, errGet := host.Detached().Do(ctx, pluginapi.HTTPRequest{Method: http.MethodGet, URL: url, Headers: headers})
 	if errGet != nil {
 		return pollResult{problem: "usage endpoint unreachable"}
 	}
@@ -188,44 +200,4 @@ func nextPoll(q *quota, now time.Time, interval time.Duration) time.Time {
 		}
 	}
 	return next
-}
-
-type hostHTTPRequest struct {
-	OperationID string      `json:"operation_id,omitempty"`
-	Method      string      `json:"method"`
-	URL         string      `json:"url"`
-	Headers     http.Header `json:"headers,omitempty"`
-}
-
-type hostOperation struct {
-	OperationID string `json:"operation_id,omitempty"`
-}
-
-// hostGet sends one GET through the host's HTTP client under a host
-// operation, because a blocked host.http.do can only be interrupted by
-// cancelling its operation.
-func hostGet(ctx context.Context, url string, headers http.Header) (hostHTTPResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, pollTimeout)
-	defer cancel()
-	var opened hostOperation
-	if errOpen := invokeHost(pluginabi.MethodHostHTTPOperationOpen, hostOperation{}, &opened); errOpen != nil {
-		return hostHTTPResponse{}, errOpen
-	}
-	stop := context.AfterFunc(ctx, func() {
-		_ = invokeHost(pluginabi.MethodHostHTTPCancel, opened, nil)
-	})
-	defer stop()
-	var resp hostHTTPResponse
-	errCall := invokeHost(pluginabi.MethodHostHTTPDo, hostHTTPRequest{OperationID: opened.OperationID, Method: http.MethodGet, URL: url, Headers: headers}, &resp)
-	if errCtx := ctx.Err(); errCtx != nil {
-		return hostHTTPResponse{}, errCtx
-	}
-	return resp, errCall
-}
-
-// hostHTTPResponse is pluginapi.HTTPResponse, which travels without JSON tags.
-type hostHTTPResponse struct {
-	StatusCode int
-	Headers    http.Header
-	Body       []byte
 }

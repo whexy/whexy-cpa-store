@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 func codexHeaders(fiveUsed, weekUsed string) http.Header {
@@ -98,7 +100,7 @@ func TestHandleUsageReadsTheHostWire(t *testing.T) {
 	if errHandle != nil {
 		t.Fatal(errHandle)
 	}
-	var env envelope
+	var env rpc.Envelope
 	if json.Unmarshal(out, &env) != nil || !env.OK {
 		t.Fatalf("envelope %s", out)
 	}

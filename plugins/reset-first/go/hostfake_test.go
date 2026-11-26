@@ -2,77 +2,82 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"sync"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
 )
 
-// fakeHost answers the host callbacks this plugin makes, so tests never need
-// CLIProxyAPI itself.
+// fakeHost serves the credentials and upstream answers a poll reads.
 type fakeHost struct {
 	mu    sync.Mutex
 	auths []pluginapi.HostAuthFileEntry
 	// files are the auth files by auth index.
 	files map[string]string
 	// answers are the upstream responses by URL.
-	answers  map[string]hostHTTPResponse
-	requests []hostHTTPRequest
-	opened   int
+	answers  map[string]pluginapi.HTTPResponse
+	requests []upstreamRequest
 }
 
-func newFakeHost() *fakeHost {
-	return &fakeHost{files: map[string]string{}, answers: map[string]hostHTTPResponse{}}
+// upstreamRequest is the host.http.do payload.
+type upstreamRequest struct {
+	OperationID string      `json:"operation_id"`
+	Method      string      `json:"method"`
+	URL         string      `json:"url"`
+	Headers     http.Header `json:"headers"`
 }
 
-func (h *fakeHost) install(t *testing.T) {
+func installFakeHost(t *testing.T) *fakeHost {
 	t.Helper()
-	callHost = h.call
-	t.Cleanup(func() { callHost = nil })
-}
-
-func (h *fakeHost) call(method string, payload []byte) ([]byte, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	switch method {
-	case pluginabi.MethodHostAuthList:
-		return okEnvelope(hostAuthListResponse{Files: h.auths})
-	case pluginabi.MethodHostAuthGet:
-		var req hostAuthGetRequest
-		_ = json.Unmarshal(payload, &req)
+	h := &fakeHost{files: map[string]string{}, answers: map[string]pluginapi.HTTPResponse{}}
+	fake := hosttest.Install(t)
+	fake.Handle(pluginabi.MethodHostAuthList, func(json.RawMessage) (any, error) {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return map[string]any{"files": h.auths}, nil
+	})
+	fake.Handle(pluginabi.MethodHostAuthGet, func(payload json.RawMessage) (any, error) {
+		var req pluginapi.HostAuthGetRequest
+		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
+			return nil, errUnmarshal
+		}
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		file, ok := h.files[req.AuthIndex]
 		if !ok {
-			return errorEnvelope("not_found", "no auth "+req.AuthIndex), nil
+			return nil, &host.CallError{Code: "not_found", Message: "no auth " + req.AuthIndex}
 		}
-		return okEnvelope(hostAuthGetResponse{JSON: json.RawMessage(file)})
-	case pluginabi.MethodHostHTTPOperationOpen:
-		h.opened++
-		return okEnvelope(hostOperation{OperationID: fmt.Sprintf("op-%d", h.opened)})
-	case pluginabi.MethodHostHTTPCancel, pluginabi.MethodHostLog:
-		return okEnvelope(struct{}{})
-	case pluginabi.MethodHostHTTPDo:
-		var req hostHTTPRequest
-		_ = json.Unmarshal(payload, &req)
+		return pluginapi.HostAuthGetResponse{AuthIndex: req.AuthIndex, JSON: json.RawMessage(file)}, nil
+	})
+	fake.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+		var req upstreamRequest
+		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
+			return nil, errUnmarshal
+		}
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		h.requests = append(h.requests, req)
 		answer, ok := h.answers[req.URL]
 		if !ok {
-			return errorEnvelope("http_error", "connection refused"), nil
+			return nil, errors.New("connection refused")
 		}
-		return okEnvelope(answer)
-	}
-	return errorEnvelope("unknown_method", method), nil
+		return answer, nil
+	})
+	return h
 }
 
 func (h *fakeHost) answer(url string, status int, body string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.answers[url] = hostHTTPResponse{StatusCode: status, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(body)}
+	h.answers[url] = pluginapi.HTTPResponse{StatusCode: status, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(body)}
 }
 
-func (h *fakeHost) lastRequest(t *testing.T) hostHTTPRequest {
+func (h *fakeHost) lastRequest(t *testing.T) upstreamRequest {
 	t.Helper()
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -6,117 +6,11 @@
     <meta name="referrer" content="no-referrer" />
     <title>Reset First</title>
     <style>
-      :root {
-        --bg-page: #faf9f5;
-        --bg-subtle: #f0eee8;
-        --bg-card: #fffefb;
-        --bg-input: #faf9f5;
-        --text-primary: #2d2a26;
-        --text-secondary: #6d6760;
-        --text-tertiary: #a29c95;
-        --border: #e3e1db;
-        --border-strong: #2d2a26;
-        --track: #e9e6df;
-        --fill: #6d6760;
-        --error-text: #b04a3b;
-        --focus: #2a78d6;
-        --font-sans:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-          "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-          sans-serif;
-        --font-mono:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-        color-scheme: light;
+      #refresh {
+        padding: 6px;
       }
 
-      [data-theme="white"] {
-        --bg-page: #ffffff;
-        --bg-subtle: #f4f4f4;
-        --bg-card: #ffffff;
-        --bg-input: #ffffff;
-        --border: #e5e5e5;
-        --track: #ececec;
-      }
-
-      [data-theme="dark"] {
-        --bg-page: #151412;
-        --bg-subtle: #23211e;
-        --bg-card: #1b1a17;
-        --bg-input: #151412;
-        --text-primary: #f6f4f1;
-        --text-secondary: #c9c3bb;
-        --text-tertiary: #8f8881;
-        --border: #3a3530;
-        --border-strong: #c9c3bb;
-        --track: #2c2925;
-        --fill: #a29c95;
-        --error-text: #f1b0a6;
-        --focus: #3987e5;
-        color-scheme: dark;
-      }
-
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-      }
-
-      html,
-      body {
-        margin: 0;
-        background: var(--bg-page);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: 14px;
-        line-height: 1.45;
-      }
-
-      [hidden] {
-        display: none !important;
-      }
-
-      /* Management Center floats its toolbar over the top 76px of the frame. */
-      main {
-        max-width: 1080px;
-        margin: 0 auto;
-        padding: 84px clamp(16px, 3vw, 40px) 56px;
-      }
-
-      .bar {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 24px;
-      }
-
-      h1 {
-        margin: 0;
-        font-size: 18px;
-        font-weight: 600;
-      }
-
-      .spacer {
-        flex: 1;
-      }
-
-      .icon-button {
-        display: inline-grid;
-        place-items: center;
-        width: 32px;
-        height: 32px;
-        border: 0;
-        border-radius: 8px;
-        background: transparent;
-        color: var(--text-secondary);
-        cursor: pointer;
-      }
-
-      .icon-button:hover {
-        background: var(--bg-subtle);
-        color: var(--text-primary);
-      }
-
-      .icon-button svg {
+      #refresh svg {
         width: 17px;
         height: 17px;
       }
@@ -131,64 +25,9 @@
         }
       }
 
-      button:focus-visible,
-      input:focus-visible {
-        outline: 2px solid var(--focus);
-        outline-offset: 2px;
-      }
-
-      .notice {
-        margin: 0 0 20px;
-        padding: 10px 14px;
-        border-radius: 10px;
-        background: color-mix(in srgb, var(--error-text) 12%, transparent);
-        color: var(--error-text);
-      }
-
-      .auth {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        max-width: 520px;
-        margin-bottom: 24px;
-      }
-
-      .auth input {
-        flex: 1;
-        min-width: 220px;
-        padding: 8px 10px;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        background: var(--bg-input);
-        color: var(--text-primary);
-        font: inherit;
-      }
-
-      .auth button {
-        padding: 8px 14px;
-        border: 0;
-        border-radius: 8px;
-        background: var(--text-primary);
-        color: var(--bg-page);
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-      }
-
-      .empty {
-        color: var(--text-secondary);
-      }
-
       #cards {
         display: grid;
         gap: 16px;
-      }
-
-      .card {
-        padding: 16px 18px 14px;
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        background: var(--bg-card);
       }
 
       .card-head {
@@ -214,12 +53,11 @@
       .meta {
         margin-left: auto;
         color: var(--text-secondary);
-        font-size: 13px;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
       }
 
-      .rows {
+      .accounts {
         display: grid;
         gap: 6px;
         margin: 0;
@@ -227,21 +65,21 @@
         list-style: none;
       }
 
-      .row {
+      .account {
         display: grid;
         grid-template-columns: 14px minmax(0, 1fr) auto 10.5em;
         align-items: center;
         gap: 12px;
         padding: 8px 12px;
         border: 1px solid transparent;
-        border-radius: 10px;
+        border-radius: var(--radius);
       }
 
-      .row.chosen {
-        border-color: var(--border-strong);
+      .account.chosen {
+        border-color: var(--text-primary);
       }
 
-      .row.absent {
+      .account.absent {
         opacity: 0.55;
       }
 
@@ -264,8 +102,8 @@
         white-space: nowrap;
       }
 
-      /* Only the name gives way: the tags after it say why a row lost. */
-      .label {
+      /* Only the name gives way: the badges after it say why a row lost. */
+      .who .label {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -275,20 +113,14 @@
         font-weight: 600;
       }
 
-      .sub,
-      .tag {
+      .who .sub,
+      .who .badge {
         flex: none;
         margin-left: 6px;
-        color: var(--text-secondary);
       }
 
-      .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
+      .sub {
+        color: var(--text-secondary);
       }
 
       .meters {
@@ -315,7 +147,7 @@
         width: 64px;
         height: 4px;
         border-radius: 2px;
-        background: var(--track);
+        background: var(--bg-hover);
         overflow: hidden;
       }
 
@@ -323,14 +155,15 @@
         position: absolute;
         inset: 0 auto 0 0;
         width: var(--used, 0%);
-        background: var(--fill);
+        background: var(--text-secondary);
       }
 
       .meter.spent .fill {
-        background: var(--error-text);
+        background: var(--error);
       }
 
-      .meter.spent .m-value {
+      .meter.spent .m-value,
+      .when.alert {
         color: var(--error-text);
       }
 
@@ -341,15 +174,9 @@
 
       .when {
         color: var(--text-secondary);
-        font-size: 13px;
         font-variant-numeric: tabular-nums;
         text-align: right;
         white-space: nowrap;
-      }
-
-      .when.alert,
-      .tag.failed {
-        color: var(--error-text);
       }
 
       .meters.note {
@@ -364,7 +191,7 @@
       }
 
       @media (max-width: 720px) {
-        .row {
+        .account {
           grid-template-columns: 14px minmax(0, 1fr) auto;
         }
 
@@ -376,12 +203,12 @@
     </style>
   </head>
   <body>
-    <main>
-      <div class="bar">
+    <main class="page">
+      <div class="head">
         <h1>Reset First</h1>
         <span class="spacer"></span>
         <button
-          class="icon-button"
+          class="btn ghost"
           id="refresh"
           type="button"
           aria-label="Refresh"
@@ -402,22 +229,22 @@
         </button>
       </div>
 
-      <p class="notice" id="notice" hidden></p>
-
       <form class="auth" id="auth" hidden>
-        <input
-          id="key"
+        <label for="auth-key">Management key</label
+        ><input
+          id="auth-key"
           type="password"
-          autocomplete="off"
-          placeholder="Management key"
-          aria-label="Management key"
-        />
-        <button type="submit">Open</button>
+          autocomplete="current-password"
+          required
+        /><button class="btn primary" type="submit">Open</button>
+        <p class="error" id="auth-error" role="alert" hidden></p>
       </form>
 
-      <p class="empty" id="empty" hidden>
+      <p class="notice error" id="notice" role="alert" hidden></p>
+
+      <div class="empty" id="empty" hidden>
         No model was routed in the past 24 hours.
-      </p>
+      </div>
       <div id="cards"></div>
     </main>
 
@@ -628,201 +455,8 @@
     <script>
       "use strict";
 
-      // The page is served at <base>/v0/resource/plugins/reset-first/index.html,
-      // where <base> is empty unless a reverse proxy adds a path prefix.
-      const API =
-        location.pathname.replace(
-          /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
-          "",
-        ) + "/v0/management/reset-first";
-      const SESSION_KEY = "reset-first.management-key";
-      const REJECTED_KEY = "reset-first.rejected-mc-auth";
-      const MC_AUTH_KEY = "cli-proxy-auth";
-      const MC_THEME_KEY = "cli-proxy-theme";
+      const { $, h, auth, api, AuthError } = kit;
       const REFRESH_EVERY = 15 * 1000;
-
-      const $ = (id) => document.getElementById(id);
-
-      function storageGet(storage, key) {
-        try {
-          return storage.getItem(key);
-        } catch (_) {
-          return null;
-        }
-      }
-
-      function storageSet(storage, key, value) {
-        try {
-          storage.setItem(key, value);
-        } catch (_) {}
-      }
-
-      function storageRemove(storage, key) {
-        try {
-          storage.removeItem(key);
-        } catch (_) {}
-      }
-
-      // Theme: follow Management Center's own setting. Its document carries
-      // data-theme ("dark", "white", or none for its light theme); when the
-      // page cannot reach it, read the persisted setting instead.
-      function managementCenterTheme() {
-        try {
-          if (window.parent !== window) {
-            return (
-              window.parent.document.documentElement.getAttribute(
-                "data-theme",
-              ) || "light"
-            );
-          }
-        } catch (_) {}
-        let saved = "auto";
-        try {
-          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
-          if (persisted && persisted.state && persisted.state.theme)
-            saved = persisted.state.theme;
-        } catch (_) {}
-        if (saved === "auto") {
-          return matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "white";
-        }
-        return saved;
-      }
-
-      function applyTheme() {
-        document.documentElement.setAttribute(
-          "data-theme",
-          managementCenterTheme(),
-        );
-      }
-
-      applyTheme();
-      matchMedia("(prefers-color-scheme: dark)").addEventListener(
-        "change",
-        applyTheme,
-      );
-      window.addEventListener("storage", (event) => {
-        if (event.key === MC_THEME_KEY) applyTheme();
-      });
-      try {
-        if (window.parent !== window) {
-          new MutationObserver(applyTheme).observe(
-            window.parent.document.documentElement,
-            { attributes: true, attributeFilter: ["data-theme"] },
-          );
-        }
-      } catch (_) {}
-
-      // Management key: Management Center persists it, when "remember" is on,
-      // as zustand state {"state":{"managementKey":...}} obfuscated by
-      // src/utils/encryption.ts. A key typed here lives in sessionStorage.
-      function deobfuscate(payload) {
-        const prefix = "enc::v1::";
-        if (!payload.startsWith(prefix)) return payload;
-        const binary = atob(payload.slice(prefix.length));
-        const secret = new TextEncoder().encode(
-          "cli-proxy-api-webui::secure-storage|" +
-            location.host +
-            "|" +
-            navigator.userAgent,
-        );
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
-        }
-        return new TextDecoder().decode(bytes);
-      }
-
-      function managementCenterKey() {
-        const raw = storageGet(localStorage, MC_AUTH_KEY);
-        if (!raw || storageGet(sessionStorage, REJECTED_KEY) === raw) return "";
-        try {
-          const persisted = JSON.parse(deobfuscate(raw));
-          const key =
-            persisted && persisted.state && persisted.state.managementKey;
-          return typeof key === "string" ? key.trim() : "";
-        } catch (_) {
-          return "";
-        }
-      }
-
-      const auth = { key: "", source: "" };
-
-      function resolveKey() {
-        const typed = storageGet(sessionStorage, SESSION_KEY);
-        if (typed) return { key: typed, source: "session" };
-        const shared = managementCenterKey();
-        if (shared) return { key: shared, source: "mc" };
-        return { key: "", source: "" };
-      }
-
-      // A rejected key is never retried: five failures ban the address for
-      // 30 minutes.
-      function forgetKey() {
-        if (auth.source === "session")
-          storageRemove(sessionStorage, SESSION_KEY);
-        if (auth.source === "mc") {
-          storageSet(
-            sessionStorage,
-            REJECTED_KEY,
-            storageGet(localStorage, MC_AUTH_KEY) || "",
-          );
-        }
-        auth.key = "";
-        auth.source = "";
-      }
-
-      class AuthError extends Error {}
-
-      async function api(path) {
-        if (!auth.key) throw new AuthError("No management key.");
-        let response;
-        try {
-          response = await fetch(API + path, {
-            headers: { Authorization: "Bearer " + auth.key },
-            cache: "no-store",
-            credentials: "omit",
-          });
-        } catch (err) {
-          throw new Error("CLIProxyAPI did not answer: " + err.message);
-        }
-        let data = null;
-        try {
-          data = await response.json();
-        } catch (_) {}
-        if (response.status === 401) {
-          forgetKey();
-          throw new AuthError(
-            "Management key rejected. Five wrong keys block this address for 30 minutes.",
-          );
-        }
-        if (!response.ok) {
-          throw new Error(
-            (data && typeof data.error === "string" && data.error) ||
-              "CLIProxyAPI answered HTTP " + response.status + ".",
-          );
-        }
-        return data;
-      }
-
-      function h(tag, props, ...children) {
-        const el = document.createElement(tag);
-        for (const [name, value] of Object.entries(props || {})) {
-          if (value === undefined || value === null || value === false)
-            continue;
-          if (name === "class") el.className = value;
-          else el.setAttribute(name, value === true ? "" : String(value));
-        }
-        for (const child of children.flat()) {
-          if (child === null || child === undefined || child === false)
-            continue;
-          el.append(
-            child instanceof Node ? child : document.createTextNode(child),
-          );
-        }
-        return el;
-      }
 
       const clock = new Intl.DateTimeFormat(undefined, {
         weekday: "short",
@@ -860,12 +494,12 @@
               m.meta,
             ),
           ),
-          h("ol", { class: "rows" }, m.rows.map(renderRow)),
+          h("ol", { class: "accounts" }, m.rows.map(renderRow)),
         );
       }
 
       function renderRow(row) {
-        const classes = ["row"];
+        const classes = ["account"];
         if (row.chosen) classes.push("chosen");
         if (!row.offered) classes.push("absent");
         const meters = row.note
@@ -905,8 +539,8 @@
             h("span", { class: "label", title: row.label }, row.label),
             row.sub && h("span", { class: "sub" }, row.sub),
             row.absent &&
-              h("span", { class: "tag", title: row.absentTitle }, row.absent),
-            row.failed && h("span", { class: "tag failed" }, row.failed),
+              h("span", { class: "badge", title: row.absentTitle }, row.absent),
+            row.failed && h("span", { class: "badge error" }, row.failed),
           ),
           meters,
           h(
@@ -925,63 +559,40 @@
         $("notice").hidden = !text;
       }
 
-      function showAuth(message) {
-        $("auth").hidden = false;
-        $("cards").replaceChildren();
-        $("empty").hidden = true;
-        showNotice(message);
-        $("key").focus();
-      }
-
-      $("auth").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const key = $("key").value.trim();
-        if (!key) return;
-        storageSet(sessionStorage, SESSION_KEY, key);
-        $("key").value = "";
-        $("auth").hidden = true;
-        showNotice("");
-        load();
-      });
-
-      $("refresh").addEventListener("click", () => load());
-
       let loadSeq = 0;
 
       async function load() {
         const seq = ++loadSeq;
-        if (!auth.key) Object.assign(auth, resolveKey());
-        if (!auth.key) {
-          showAuth("Enter the management key to read the decisions.");
-          return;
-        }
         document.body.classList.add("busy");
         try {
           const data = await api("/decisions");
           if (seq !== loadSeq) return;
           const now = time(data.now);
-          $("auth").hidden = true;
           showNotice("");
           $("empty").hidden = data.cards.length > 0;
           $("cards").replaceChildren(
             ...data.cards.map((card) => renderCard(card, now)),
           );
         } catch (err) {
-          if (err instanceof AuthError) showAuth(err.message);
-          else showNotice(err.message);
+          if (!(err instanceof AuthError)) showNotice(err.message);
         } finally {
           if (seq === loadSeq) document.body.classList.remove("busy");
         }
       }
 
+      $("refresh").addEventListener("click", () => load());
       setInterval(() => {
         if (auth.key && !document.hidden) load();
       }, REFRESH_EVERY);
       document.addEventListener("visibilitychange", () => {
         if (!document.hidden && auth.key) load();
       });
-
-      load();
+      auth.onRejected(() => {
+        $("cards").replaceChildren();
+        $("empty").hidden = true;
+        showNotice("");
+      });
+      auth.init(load);
     </script>
   </body>
 </html>

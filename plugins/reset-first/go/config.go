@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -10,7 +9,9 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
-	"gopkg.in/yaml.v3"
+	"github.com/whexy/whexy-cpa-store/pluginkit/config"
+	"github.com/whexy/whexy-cpa-store/pluginkit/datadir"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 const (
@@ -48,14 +49,13 @@ func configFields() []pluginapi.ConfigField {
 	}
 }
 
-func parseSettings(configYAML []byte) (settings, error) {
+// parseSettings reads plugins.configs.reset-first from a lifecycle request.
+func parseSettings(request []byte) (settings, error) {
 	var raw struct {
 		PollInterval string `yaml:"poll_interval"`
 	}
-	if len(configYAML) > 0 {
-		if errUnmarshal := yaml.Unmarshal(configYAML, &raw); errUnmarshal != nil {
-			return settings{}, fmt.Errorf("decode plugin config: %w", errUnmarshal)
-		}
+	if errDecode := config.Decode(request, &raw); errDecode != nil {
+		return settings{}, errDecode
 	}
 	cfg := settings{PollInterval: defaultPollInterval}
 	switch value := strings.ToLower(strings.TrimSpace(raw.PollInterval)); value {
@@ -74,44 +74,35 @@ func parseSettings(configYAML []byte) (settings, error) {
 
 // configure handles plugin.register and plugin.reconfigure, and register again
 // after a failed hot upgrade rolled back to this library.
-func configure(raw []byte) error {
-	var request lifecycleRequest
-	if len(raw) > 0 {
-		if errUnmarshal := json.Unmarshal(raw, &request); errUnmarshal != nil {
-			return fmt.Errorf("decode lifecycle request: %w", errUnmarshal)
-		}
-	}
-	cfg, errParse := parseSettings(request.ConfigYAML)
+func configure(request []byte) error {
+	cfg, errParse := parseSettings(request)
 	if errParse != nil {
 		return errParse
 	}
 	currentConfig.Store(&cfg)
-	current.load(defaultDataDir())
-	background.start()
+	current.load(datadir.Default(pluginID))
+	poller.start()
 	return nil
 }
 
-// quiesce hands the state file to the library replacing this one: it saves
-// everything and stops writing. This library may still answer an in-flight
-// call afterwards, from memory.
+// quiesce saves everything and stops writing, on shutdown and to hand the
+// state file to the library replacing this one in a hot upgrade. This library
+// may still answer an in-flight call afterwards, from memory.
 func quiesce() {
-	background.stop(shutdownGrace)
+	poller.stop(shutdownGrace)
 	current.persist(time.Now())
 }
 
-func shutdown() {
-	background.stop(shutdownGrace)
-	current.persist(time.Now())
-}
-
-// loop is the background work; start and stop may each come more than once.
+// loop is the background work. Unlike pluginkit/background it starts again
+// after a stop: a failed hot upgrade rolls back to this library with
+// plugin.register after quiesce.
 type loop struct {
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-var background loop
+var poller loop
 
 func (l *loop) start() {
 	l.mu.Lock()
@@ -143,7 +134,7 @@ func (l *loop) run(ctx context.Context, done chan struct{}) {
 	defer close(done)
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			hostLog("error", fmt.Sprintf("reset-first: background loop panicked: %v", recovered), nil)
+			host.Log("error", fmt.Sprintf("reset-first: background loop panicked: %v", recovered), nil)
 		}
 	}()
 	ticker := time.NewTicker(tick)
@@ -160,7 +151,7 @@ func (l *loop) run(ctx context.Context, done chan struct{}) {
 
 // refresh is one round of background work.
 func refresh(ctx context.Context) {
-	if entries, errList := hostAuthList(); errList == nil {
+	if entries, errList := host.AuthList(); errList == nil {
 		current.syncAccounts(entries, time.Now())
 	}
 	if interval := currentSettings().PollInterval; interval > 0 {

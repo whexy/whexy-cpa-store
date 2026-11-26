@@ -11,8 +11,7 @@ import (
 )
 
 func TestRefreshPollsNewAccounts(t *testing.T) {
-	host := newFakeHost()
-	host.install(t)
+	host := installFakeHost(t)
 	current = newState()
 	t.Cleanup(func() { current = newState() })
 	host.auths = []pluginapi.HostAuthFileEntry{
@@ -68,8 +67,7 @@ func TestRefreshPollsNewAccounts(t *testing.T) {
 }
 
 func TestPollWaitsForANewTokenAfterARejection(t *testing.T) {
-	host := newFakeHost()
-	host.install(t)
+	host := installFakeHost(t)
 	current = newState()
 	t.Cleanup(func() { current = newState() })
 	host.auths = []pluginapi.HostAuthFileEntry{{ID: "claude-b", AuthIndex: "2", Provider: "claude"}}
@@ -101,10 +99,9 @@ func TestPollWaitsForANewTokenAfterARejection(t *testing.T) {
 }
 
 func TestPollBacksOffAfterRateLimits(t *testing.T) {
-	host := newFakeHost()
-	host.install(t)
+	host := installFakeHost(t)
 	host.files["1"] = `{"access_token":"tok"}`
-	host.answers[claudeUsageURL] = hostHTTPResponse{StatusCode: http.StatusTooManyRequests, Headers: http.Header{"Retry-After": {"18000"}}}
+	host.answers[claudeUsageURL] = pluginapi.HTTPResponse{StatusCode: http.StatusTooManyRequests, Headers: http.Header{"Retry-After": {"18000"}}}
 	result := poll(context.Background(), pollTarget{id: "c", authIndex: "1", provider: providerClaude}, t0)
 	if !result.limited || result.retryAfter != 5*time.Hour || !strings.Contains(result.problem, "429") {
 		t.Fatalf("result = %+v", result)
@@ -138,8 +135,7 @@ func TestPollBacksOffAfterRateLimits(t *testing.T) {
 }
 
 func TestPollSkipsAccountsWithTheirOwnRoute(t *testing.T) {
-	host := newFakeHost()
-	host.install(t)
+	host := installFakeHost(t)
 	host.files["1"] = `{"access_token":"tok","proxy_url":"socks5://10.0.0.1:1080"}`
 	result := poll(context.Background(), pollTarget{id: "a", authIndex: "1", provider: providerCodex}, t0)
 	if result.quota != nil || !strings.Contains(result.problem, "proxy") || len(host.requests) != 0 {
@@ -152,8 +148,7 @@ func TestPollSkipsAccountsWithTheirOwnRoute(t *testing.T) {
 }
 
 func TestPollIsOffWithoutAnInterval(t *testing.T) {
-	host := newFakeHost()
-	host.install(t)
+	host := installFakeHost(t)
 	current = newState()
 	t.Cleanup(func() {
 		current = newState()

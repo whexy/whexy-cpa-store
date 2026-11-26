@@ -1,9 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
+
+func lifecycle(configYAML string) []byte {
+	raw, _ := json.Marshal(rpc.LifecycleRequest{ConfigYAML: []byte(configYAML)})
+	return raw
+}
 
 func TestParseSettings(t *testing.T) {
 	cases := []struct {
@@ -17,13 +25,13 @@ func TestParseSettings(t *testing.T) {
 		{"poll_interval: \"0\"\n", 0},
 	}
 	for _, c := range cases {
-		cfg, errParse := parseSettings([]byte(c.yaml))
+		cfg, errParse := parseSettings(lifecycle(c.yaml))
 		if errParse != nil || cfg.PollInterval != c.want {
 			t.Errorf("parseSettings(%q) = %v, %v; want %v", c.yaml, cfg.PollInterval, errParse, c.want)
 		}
 	}
 	for _, bad := range []string{"poll_interval: 30s\n", "poll_interval: often\n", "poll_interval: [\n"} {
-		if _, errParse := parseSettings([]byte(bad)); errParse == nil {
+		if _, errParse := parseSettings(lifecycle(bad)); errParse == nil {
 			t.Errorf("parseSettings(%q) accepted", bad)
 		}
 	}

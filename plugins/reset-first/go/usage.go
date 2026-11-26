@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // usageRecord is the part of pluginapi.UsageRecord read here. The record
@@ -32,7 +34,7 @@ func handleUsage(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode usage record: %w", errUnmarshal)
 	}
 	current.observe(rec, time.Now(), currentSettings().PollInterval)
-	return okEnvelope(struct{}{})
+	return rpc.OK(struct{}{})
 }
 
 // observe reads the quota a response reported and counts it on its model's

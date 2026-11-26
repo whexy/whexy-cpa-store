@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // stickiness is how much sooner another account must reset before a model
@@ -37,7 +38,7 @@ func handlePick(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode scheduler pick: %w", errUnmarshal)
 	}
-	return okEnvelope(current.pick(req, time.Now()))
+	return rpc.OK(current.pick(req, time.Now()))
 }
 
 // pick answers one credential selection: the offered account with quota to

@@ -2,16 +2,24 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
+
+func serve(method, path string) pluginapi.ManagementResponse {
+	return router.Serve(manage.Request{ManagementRequest: pluginapi.ManagementRequest{Method: method, Path: path}})
+}
 
 func TestRegistrationDeclaresTheScheduler(t *testing.T) {
 	raw, errMarshal := json.Marshal(pluginRegistration())
@@ -43,25 +51,30 @@ func TestRegistrationDeclaresTheScheduler(t *testing.T) {
 func TestManagementRoutes(t *testing.T) {
 	current = newState()
 	t.Cleanup(func() { current = newState() })
-	now := time.Now()
 	codexAccount(current, "a", 48*time.Hour, 0)
-	current.pick(pickRequest("gpt-5", "a"), now)
+	current.pick(pickRequest("gpt-5", "a"), time.Now())
 
-	page := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: resourcePagePath}, now)
+	page := serve(http.MethodGet, router.PagePath())
 	csp := page.Headers.Get("Content-Security-Policy")
 	if page.StatusCode != http.StatusOK || !bytes.Contains(page.Body, []byte("<title>Reset First</title>")) {
 		t.Fatalf("page status %d", page.StatusCode)
 	}
-	if strings.Count(csp, "'sha256-") != 3 || strings.Contains(csp, "unsafe-inline") {
-		t.Errorf("CSP %q, want one hash per inline script and style", csp)
+	if strings.Contains(csp, "unsafe-inline") {
+		t.Errorf("CSP %q admits any inline code", csp)
+	}
+	for _, block := range regexp.MustCompile(`(?s)<(?:script|style)>(.*?)</(?:script|style)>`).FindAllSubmatch(managementPage, -1) {
+		sum := sha256.Sum256(block[1])
+		if hash := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"; !strings.Contains(csp, hash) {
+			t.Errorf("CSP %q does not admit the page block %s", csp, hash)
+		}
 	}
 
-	logo := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: logoPath}, now)
+	logo := serve(http.MethodGet, router.LogoPath())
 	if logo.StatusCode != http.StatusOK || !bytes.Contains(logo.Body, []byte("<svg")) {
 		t.Fatalf("logo status %d", logo.StatusCode)
 	}
 
-	decisions := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: decisionsPath}, now)
+	decisions := serve(http.MethodGet, decisionsPath)
 	var view decisionsView
 	if decisions.StatusCode != http.StatusOK || json.Unmarshal(decisions.Body, &view) != nil || len(view.Cards) != 1 {
 		t.Fatalf("decisions %d: %s", decisions.StatusCode, decisions.Body)
@@ -70,10 +83,10 @@ func TestManagementRoutes(t *testing.T) {
 		t.Errorf("card = %+v", card)
 	}
 
-	if missing := routeManagement(pluginapi.ManagementRequest{Method: http.MethodGet, Path: decisionsPath + "/x"}, now); missing.StatusCode != http.StatusNotFound {
+	if missing := serve(http.MethodGet, decisionsPath+"/x"); missing.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown route status %d", missing.StatusCode)
 	}
-	if post := routeManagement(pluginapi.ManagementRequest{Method: http.MethodPost, Path: decisionsPath}, now); post.StatusCode != http.StatusMethodNotAllowed {
+	if post := serve(http.MethodPost, decisionsPath); post.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST status %d", post.StatusCode)
 	}
 }
