@@ -13,6 +13,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
 )
 
 // The catalog is models.dev's with the workspace config applied: the config
@@ -789,9 +790,9 @@ func TestModelsForAuthThroughHost(t *testing.T) {
 	useSettings(t, defaultSettings())
 	useCatalogStore(t)
 	useModelsDev(t)
-	fake := installFakeHost(t)
+	fake := hosttest.Install(t)
 	config := readFixture(t, "config.json")
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+	fake.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
 		var req hostHTTPRequest
 		_ = json.Unmarshal(payload, &req)
 		if req.HostCallbackID != "cb-m" || req.Headers.Get("Authorization") != "Bearer "+testKeyB {
@@ -975,11 +976,10 @@ func TestModelsForAuthReparsesAuthsOfAnEarlierVersion(t *testing.T) {
 func TestModelsForAuthFallsBackAndLogs(t *testing.T) {
 	useSettings(t, defaultSettings())
 	useCatalogStore(t)
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPDo, func(json.RawMessage) (any, error) {
+	fake := hosttest.Install(t)
+	fake.Handle(pluginabi.MethodHostHTTPDo, func(json.RawMessage) (any, error) {
 		return pluginapi.HTTPResponse{StatusCode: 503, Body: []byte("upstream down")}, nil
 	})
-	fake.handle(pluginabi.MethodHostLog, func(json.RawMessage) (any, error) { return struct{}{}, nil })
 	req := mustJSON(t, rpcAuthModelRequest{AuthModelRequest: pluginapi.AuthModelRequest{
 		StorageJSON: []byte(`{"type":"opencode-go","api_key":"` + testKeyA + `"}`),
 	}})
@@ -987,8 +987,8 @@ func TestModelsForAuthFallsBackAndLogs(t *testing.T) {
 	if resp := decodeResult[pluginapi.ModelResponse](t, raw); len(resp.Models) < 20 {
 		t.Fatalf("snapshot fallback served %d models", len(resp.Models))
 	}
-	logs := fake.callsTo(pluginabi.MethodHostLog)
-	if len(logs) != 1 || !strings.Contains(string(logs[0]), "snapshot") {
+	logs := fake.Logs()
+	if len(logs) != 1 || !strings.Contains(logs[0].Message, "snapshot") {
 		t.Fatalf("logs = %s", logs)
 	}
 }
@@ -997,10 +997,10 @@ func TestModelsForAuthWithLoginKeysCacheByWorkspace(t *testing.T) {
 	useSettings(t, defaultSettings())
 	store := useCatalogStore(t)
 	useModelsDev(t)
-	fake := installFakeHost(t)
+	fake := hosttest.Install(t)
 	config := readFixture(t, "config.json")
 	var bearers []string
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+	fake.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
 		var req hostHTTPRequest
 		_ = json.Unmarshal(payload, &req)
 		bearers = append(bearers, req.Headers.Get("Authorization"))

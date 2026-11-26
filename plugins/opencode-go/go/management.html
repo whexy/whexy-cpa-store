@@ -7,100 +7,15 @@
     <title>OpenCode Go</title>
     <style>
       :root {
-        --bg-page: #faf9f5;
-        --bg-card: #f0eee8;
-        --bg-subtle: #e9e6df;
-        --bg-input: #faf9f5;
-        --text-primary: #2d2a26;
-        --text-secondary: #6d6760;
-        --text-tertiary: #a29c95;
-        --text-quaternary: #c0bab3;
-        --border: #e3e1db;
-        --border-hover: #cecac4;
-        --primary: #8b8680;
-        --primary-hover: #7f7a74;
-        --primary-contrast: #ffffff;
-        --error: #c65746;
-        --error-text: #b04a3b;
-        --ok-text: #065f46;
-        --ok-badge-bg: #d1fae5;
-        --ok-badge-border: #6ee7b7;
-        --bad-badge-bg: rgba(198, 87, 70, 0.14);
-        --bad-badge-text: #8a3a30;
-        --bad-badge-border: rgba(198, 87, 70, 0.35);
-        --warn-badge-bg: color-mix(in srgb, #d97706 10%, transparent);
-        --warn-badge-text: #92400e;
-        --warn-badge-border: color-mix(in srgb, #d97706 30%, transparent);
         --meter-high: #10b981;
         --meter-medium: #e0aa14;
         --meter-low: #c65746;
-        --shadow: 0 1px 2px 0 rgb(0 0 0 / 0.08);
-        --font-sans:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-          "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-          sans-serif;
-        --font-mono:
-          ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
-          "Fira Code", Menlo, Consolas, "Liberation Mono", monospace;
-        color-scheme: light;
-      }
-
-      [data-theme="white"] {
-        --bg-page: #ffffff;
-        --bg-card: #ffffff;
-        --bg-subtle: #f6f6f6;
-        --bg-input: #ffffff;
-        --border: #e5e5e5;
-        --border-hover: #cccccc;
       }
 
       [data-theme="dark"] {
-        --bg-page: #151412;
-        --bg-card: #1d1b18;
-        --bg-subtle: #262320;
-        --bg-input: #151412;
-        --text-primary: #f6f4f1;
-        --text-secondary: #c9c3bb;
-        --text-tertiary: #9c958d;
-        --text-quaternary: #6f6962;
-        --border: #3a3530;
-        --border-hover: #5a544d;
-        --primary-hover: #9a948e;
-        --error-text: #f1b0a6;
-        --ok-text: #6ee7b7;
-        --ok-badge-bg: rgba(6, 78, 59, 0.3);
-        --ok-badge-border: #059669;
-        --bad-badge-bg: rgba(198, 87, 70, 0.24);
-        --bad-badge-text: #f1b0a6;
-        --bad-badge-border: rgba(198, 87, 70, 0.5);
-        --warn-badge-bg: color-mix(in srgb, #f59e0b 14%, transparent);
-        --warn-badge-text: #fcd34d;
-        --warn-badge-border: color-mix(in srgb, #f59e0b 38%, transparent);
         --meter-high: #0fae78;
         --meter-medium: #ffd862;
         --meter-low: #cf4b3a;
-        --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3);
-        color-scheme: dark;
-      }
-
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-      }
-
-      html,
-      body {
-        margin: 0;
-        background: var(--bg-page);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: 14px;
-        line-height: 1.45;
-      }
-
-      [hidden] {
-        display: none !important;
       }
 
       /* Tabs differ in height, so the page keeps the scrollbar's room even
@@ -109,41 +24,9 @@
         scrollbar-gutter: stable;
       }
 
-      /* Management Center floats its toolbar (and, when narrow, its menu
-         button) over the top 76px of the frame. */
-      main {
-        max-width: 980px;
-        margin: 0 auto;
-        padding: 84px clamp(16px, 3vw, 32px) 48px;
-      }
-
       a {
         color: inherit;
         text-underline-offset: 2px;
-      }
-
-      code {
-        font-family: var(--font-mono);
-        font-size: 12.5px;
-      }
-
-      h1 {
-        margin: 0;
-        font-size: 20px;
-        font-weight: 700;
-      }
-
-      .bar {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-
-      .bar-actions {
-        display: flex;
-        gap: 8px;
-        margin-left: auto;
       }
 
       /* The baseline is an inset shadow rather than a border, so the
@@ -164,7 +47,6 @@
         padding: 8px 12px;
         background: transparent;
         color: var(--text-secondary);
-        font: inherit;
         font-weight: 600;
         white-space: nowrap;
         cursor: pointer;
@@ -183,155 +65,22 @@
       }
 
       .tab:focus-visible {
-        outline: 2px solid var(--primary);
         outline-offset: -2px;
-        border-radius: 6px 6px 0 0;
+        border-radius: var(--radius-sm) var(--radius-sm) 0 0;
       }
 
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        border: 1px solid transparent;
-        border-radius: 8px;
-        padding: 8px 12px;
-        background: var(--bg-subtle);
-        color: var(--text-primary);
-        font: inherit;
-        font-size: 13px;
-        font-weight: 600;
-        white-space: nowrap;
-        cursor: pointer;
-        transition:
-          background-color 150ms ease,
-          border-color 150ms ease,
-          color 150ms ease;
-      }
-
-      .btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-
-      .btn-sm {
-        padding: 5px 9px;
-      }
-
-      .btn-primary {
-        background: var(--primary);
-        border-color: var(--primary);
-        color: var(--primary-contrast);
-      }
-
-      .btn-primary:not(:disabled):hover {
-        background: var(--primary-hover);
-        border-color: var(--primary-hover);
-      }
-
-      .btn-ghost {
-        background: transparent;
-        color: var(--text-secondary);
-      }
-
-      .btn-ghost:not(:disabled):hover {
-        background: var(--bg-subtle);
-        color: var(--text-primary);
-      }
-
-      .btn-danger {
-        color: var(--error-text);
-      }
-
-      .btn-danger-solid {
+      .btn.danger.solid {
         background: var(--error);
         border-color: var(--error);
         color: #ffffff;
-      }
-
-      [data-theme="dark"] .btn-ghost:not(.btn-danger) {
-        color: var(--text-primary);
-      }
-
-      .btn:focus-visible,
-      a:focus-visible {
-        outline: 2px solid var(--primary);
-        outline-offset: 2px;
-      }
-
-      .input {
-        width: 100%;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 8px 10px;
-        background: var(--bg-input);
-        color: var(--text-primary);
-        font: inherit;
-        transition:
-          border-color 150ms ease,
-          box-shadow 150ms ease;
-      }
-
-      .input::placeholder {
-        color: var(--text-tertiary);
-      }
-
-      .input:focus {
-        outline: none;
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(139, 134, 128, 0.18);
-      }
-
-      .input-mono {
-        font-family: var(--font-mono);
-        font-size: 13px;
-      }
-
-      .card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        box-shadow: var(--shadow);
-        padding: 16px 18px;
-      }
-
-      .field {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 0;
-        color: var(--text-secondary);
-        font-size: 13px;
-        font-weight: 600;
-      }
-
-      .hint {
-        margin: 0;
-        color: var(--text-tertiary);
-        font-size: 13px;
-      }
-
-      .error {
-        margin: 0;
-        color: var(--error-text);
-        font-size: 13px;
-        overflow-wrap: anywhere;
       }
 
       .ok-text {
         color: var(--ok-text);
       }
 
-      .auth {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        max-width: 420px;
-      }
-
-      .auth .row {
-        display: flex;
-        gap: 8px;
+      .warn-text {
+        color: var(--warn-text);
       }
 
       .add {
@@ -342,18 +91,12 @@
         margin-bottom: 16px;
       }
 
-      .add .row {
-        display: flex;
-        gap: 8px;
-      }
-
       .add .error {
         grid-column: 1 / -1;
       }
 
-      .empty {
+      #empty {
         margin: 8px 0 16px;
-        color: var(--text-secondary);
       }
 
       .logins:not(:empty) {
@@ -382,21 +125,20 @@
         gap: 8px 10px;
       }
 
-      .key-head .input {
+      .key-head input {
         flex: 1 1 220px;
         width: auto;
       }
 
       .name {
         min-width: 0;
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 650;
         overflow-wrap: anywhere;
       }
 
-      .name-masked {
-        font-family: var(--font-mono);
-        font-size: 14px;
+      .name.mono {
+        font-size: 13px;
       }
 
       .is-disabled .name,
@@ -411,53 +153,21 @@
         margin-left: auto;
       }
 
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        padding: 1px 8px;
-        color: var(--text-secondary);
-        font-size: 12px;
-        font-weight: 600;
-        white-space: nowrap;
-      }
-
-      .badge-ok {
-        background: var(--ok-badge-bg);
-        border-color: var(--ok-badge-border);
-        color: var(--ok-text);
-      }
-
-      .badge-bad {
-        background: var(--bad-badge-bg);
-        border-color: var(--bad-badge-border);
-        color: var(--bad-badge-text);
-      }
-
-      .badge-warn {
-        background: var(--warn-badge-bg);
-        border-color: var(--warn-badge-border);
-        color: var(--warn-badge-text);
-      }
-
       .meta {
         display: flex;
         flex-wrap: wrap;
         gap: 2px 14px;
         color: var(--text-secondary);
-        font-size: 13px;
       }
 
-      .notice {
+      .key-note {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 8px;
-        font-size: 13px;
       }
 
-      .notice:empty,
+      .key-note:empty,
       .runtime-message:empty {
         display: none;
       }
@@ -477,7 +187,6 @@
         align-items: baseline;
         justify-content: space-between;
         gap: 8px;
-        font-size: 13px;
       }
 
       .meter-name {
@@ -572,7 +281,6 @@
 
       .section-meta {
         color: var(--text-tertiary);
-        font-size: 13px;
       }
 
       .stack {
@@ -588,57 +296,25 @@
 
       .stack p {
         margin: 0;
-        font-size: 13px;
         overflow-wrap: anywhere;
       }
 
-      .warn-text {
-        color: var(--warn-badge-text);
-      }
-
       .table-card {
-        padding: 0;
+        padding: 4px 10px;
         overflow-x: auto;
       }
 
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 13px;
-      }
-
-      th {
-        padding: 10px 14px;
-        border-bottom: 1px solid var(--border);
-        color: var(--text-secondary);
-        font-weight: 600;
-        text-align: left;
-        white-space: nowrap;
-      }
-
-      th[title] {
+      .table th[title] {
         cursor: help;
         text-decoration: underline dotted var(--text-quaternary);
         text-underline-offset: 3px;
       }
 
-      td {
-        padding: 8px 14px;
-        border-bottom: 1px solid var(--border);
-        vertical-align: middle;
-      }
-
-      tbody tr:last-child td {
-        border-bottom: none;
-      }
-
-      .num {
-        text-align: right;
-        font-variant-numeric: tabular-nums;
+      .table .num {
         white-space: nowrap;
       }
 
-      .toggle {
+      .table .toggle {
         width: 1%;
         text-align: center;
       }
@@ -674,7 +350,6 @@
         width: 16px;
         height: 16px;
         margin: 0;
-        accent-color: var(--primary);
         cursor: pointer;
       }
 
@@ -715,7 +390,6 @@
         flex-wrap: wrap;
         gap: 4px 16px;
         color: var(--text-secondary);
-        font-size: 13px;
       }
 
       .families label {
@@ -740,7 +414,6 @@
 
       .routing-label {
         color: var(--text-secondary);
-        font-size: 13px;
         font-weight: 600;
       }
 
@@ -792,48 +465,11 @@
 
       td.time {
         color: var(--text-secondary);
-        font-variant-numeric: tabular-nums;
         white-space: nowrap;
       }
 
       .workspace .section-head {
         margin-bottom: 0;
-      }
-
-      .segmented {
-        display: inline-flex;
-        gap: 2px;
-        padding: 2px;
-        border-radius: 8px;
-        background: var(--bg-subtle);
-      }
-
-      .segmented button {
-        border: 0;
-        border-radius: 6px;
-        padding: 4px 10px;
-        background: transparent;
-        color: var(--text-secondary);
-        font: inherit;
-        font-size: 12.5px;
-        font-weight: 600;
-        white-space: nowrap;
-        cursor: pointer;
-      }
-
-      .segmented button[aria-pressed="true"] {
-        background: var(--bg-card);
-        color: var(--text-primary);
-        box-shadow: var(--shadow);
-      }
-
-      [data-theme="dark"] .segmented button[aria-pressed="true"] {
-        background: var(--border);
-      }
-
-      .segmented button:focus-visible {
-        outline: 2px solid var(--primary);
-        outline-offset: 1px;
       }
 
       .tiles {
@@ -846,12 +482,10 @@
         display: flex;
         flex-direction: column;
         gap: 2px;
-        padding: 12px 16px;
       }
 
       .tile-label {
         color: var(--text-secondary);
-        font-size: 13px;
         font-weight: 600;
       }
 
@@ -861,10 +495,6 @@
         overflow-wrap: anywhere;
       }
 
-      .chart-card {
-        padding: 12px 16px 10px;
-      }
-
       .chart-head {
         display: flex;
         align-items: center;
@@ -872,7 +502,7 @@
         margin-bottom: 6px;
       }
 
-      .chart-head .segmented {
+      .chart-head .seg {
         margin-left: auto;
       }
 
@@ -940,10 +570,10 @@
         top: 0;
         z-index: 1;
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--radius);
         padding: 6px 10px;
         background: var(--bg-card);
-        box-shadow: var(--shadow);
+        box-shadow: var(--shadow-pop);
         color: var(--text-secondary);
         font-size: 12px;
         white-space: nowrap;
@@ -957,30 +587,10 @@
         font-weight: 650;
       }
 
-      .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
-      }
-
-      @media (max-width: 640px) {
-        .tiles {
-          grid-template-columns: minmax(0, 1fr);
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .workspace-body {
-          transition: none;
-        }
-      }
-
       @media (max-width: 640px) {
         .add,
-        .usage {
+        .usage,
+        .tiles {
           grid-template-columns: minmax(0, 1fr);
         }
 
@@ -999,44 +609,34 @@
 
       @media (prefers-reduced-motion: reduce) {
         .fill,
-        .btn,
         .tab,
-        .input {
+        .workspace-body {
           transition: none;
         }
       }
     </style>
   </head>
   <body>
-    <main>
-      <div class="bar">
+    <main class="page">
+      <div class="head">
         <h1>OpenCode Go</h1>
-        <div class="bar-actions" id="bar-actions" hidden>
-          <button class="btn btn-ghost" id="reload" type="button">
-            Reload
-          </button>
-        </div>
+        <span class="spacer"></span>
+        <button class="btn ghost" id="reload" type="button" hidden>
+          Reload
+        </button>
       </div>
 
-      <form class="card auth" id="auth" hidden>
-        <label class="field">
-          Management key
-          <input
-            class="input"
-            id="auth-key"
-            type="password"
-            autocomplete="off"
-            spellcheck="false"
-            required
-          />
-        </label>
-        <p class="hint">Kept in this tab only.</p>
-        <p class="error" id="auth-error" hidden></p>
-        <div class="row">
-          <button class="btn btn-primary" id="auth-submit" type="submit">
-            Continue
-          </button>
-        </div>
+      <form class="auth" id="auth" hidden>
+        <label for="auth-key">Management key</label
+        ><input
+          id="auth-key"
+          type="password"
+          autocomplete="current-password"
+          spellcheck="false"
+          title="Kept in this tab only."
+          required
+        /><button class="btn primary" type="submit">Continue</button>
+        <p class="error" id="auth-error" role="alert" hidden></p>
       </form>
 
       <div id="content" hidden>
@@ -1088,7 +688,7 @@
         >
           <div class="section-head">
             <p class="hint" id="login-hint" hidden></p>
-            <button class="btn btn-primary" id="add-open" type="button">
+            <button class="btn primary" id="add-open" type="button">
               Add key
             </button>
           </div>
@@ -1107,20 +707,19 @@
           </p>
 
           <form class="card add" id="add" hidden>
-            <label class="field">
-              Label
-              <input
-                class="input"
+            <div class="field">
+              <label for="add-label">Label</label
+              ><input
                 id="add-label"
                 maxlength="64"
                 placeholder="Optional"
                 autocomplete="off"
               />
-            </label>
-            <label class="field">
-              Key
-              <input
-                class="input input-mono"
+            </div>
+            <div class="field">
+              <label for="add-key">Key</label
+              ><input
+                class="mono"
                 id="add-key"
                 type="password"
                 placeholder="oc_sk_…"
@@ -1128,12 +727,12 @@
                 spellcheck="false"
                 required
               />
-            </label>
+            </div>
             <div class="row">
-              <button class="btn btn-primary" id="add-submit" type="submit">
+              <button class="btn primary" id="add-submit" type="submit">
                 Add
               </button>
-              <button class="btn btn-ghost" id="add-cancel" type="button">
+              <button class="btn ghost" id="add-cancel" type="button">
                 Cancel
               </button>
             </div>
@@ -1166,7 +765,7 @@
             <div class="section-head">
               <span class="section-meta" id="models-meta"></span>
               <div class="section-actions">
-                <button class="btn btn-ghost" id="models-refresh" type="button">
+                <button class="btn ghost" id="models-refresh" type="button">
                   Refresh models
                 </button>
               </div>
@@ -1179,33 +778,22 @@
                 <h3>OpenCode Zen models</h3>
                 <span class="section-meta" id="zen-meta"></span>
                 <div class="section-actions">
-                  <button
-                    class="btn btn-ghost"
-                    id="zen-enable-all"
-                    type="button"
-                  >
+                  <button class="btn ghost" id="zen-enable-all" type="button">
                     Enable all
                   </button>
-                  <button
-                    class="btn btn-ghost"
-                    id="zen-disable-all"
-                    type="button"
-                  >
+                  <button class="btn ghost" id="zen-disable-all" type="button">
                     Disable all
                   </button>
                 </div>
               </div>
               <p class="hint">
-                Off by default. Enabling a model adds
+                Enabling a model adds
                 <span id="zen-id-note"><code>opencode/…</code></span> to
                 CLIProxyAPI for every login and key with OpenCode Zen on, and
                 sends its requests to OpenCode Zen, which bills Console credits.
-                Models priced at zero are free: the plugin presents those
-                requests as the OpenCode client, which is the only caller the
-                free tier answers.
               </p>
               <div class="card table-card">
-                <table>
+                <table class="table">
                   <thead>
                     <tr>
                       <th>Model</th>
@@ -1230,7 +818,7 @@
                 <span class="section-meta" id="go-meta"></span>
                 <div class="section-actions">
                   <button
-                    class="btn btn-ghost"
+                    class="btn ghost"
                     id="models-disable-all"
                     type="button"
                   >
@@ -1239,7 +827,7 @@
                 </div>
               </div>
               <div class="card table-card">
-                <table>
+                <table class="table">
                   <thead>
                     <tr>
                       <th>Model</th>
@@ -1265,14 +853,14 @@
               <span class="section-meta" id="free-meta"></span>
               <div class="section-actions">
                 <button
-                  class="btn btn-ghost"
+                  class="btn ghost"
                   id="free-refresh"
                   type="button"
                   hidden
                 >
                   Refresh models
                 </button>
-                <button class="btn btn-primary" id="free-toggle" type="button">
+                <button class="btn primary" id="free-toggle" type="button">
                   Turn on
                 </button>
               </div>
@@ -1286,7 +874,7 @@
             </p>
             <div class="stack" id="free-notices"></div>
             <div class="card table-card" id="free-table" hidden>
-              <table>
+              <table class="table">
                 <thead>
                   <tr>
                     <th>Model</th>
@@ -1328,7 +916,7 @@
               </span>
               <span class="routing-label routing-go">OpenCode Go</span>
               <input
-                class="input routing-go"
+                class="routing-go"
                 id="routing-go-priority"
                 type="number"
                 step="1"
@@ -1336,7 +924,7 @@
                 aria-label="OpenCode Go priority"
               />
               <input
-                class="input routing-go"
+                class="routing-go"
                 id="routing-go-weight"
                 type="number"
                 step="1"
@@ -1347,7 +935,7 @@
               />
               <span class="routing-label routing-zen">OpenCode Zen</span>
               <input
-                class="input routing-zen"
+                class="routing-zen"
                 id="routing-zen-priority"
                 type="number"
                 step="1"
@@ -1355,7 +943,7 @@
                 aria-label="OpenCode Zen priority"
               />
               <input
-                class="input routing-zen"
+                class="routing-zen"
                 id="routing-zen-weight"
                 type="number"
                 step="1"
@@ -1368,7 +956,7 @@
                 >OpenCode Free</span
               >
               <input
-                class="input routing-free"
+                class="routing-free"
                 id="routing-free-priority"
                 type="number"
                 step="1"
@@ -1377,7 +965,7 @@
                 hidden
               />
               <input
-                class="input routing-free"
+                class="routing-free"
                 id="routing-free-weight"
                 type="number"
                 step="1"
@@ -1389,7 +977,7 @@
               />
             </div>
             <div class="row">
-              <button class="btn btn-primary" id="routing-save" type="submit">
+              <button class="btn primary" id="routing-save" type="submit">
                 Save
               </button>
             </div>
@@ -1768,225 +1356,15 @@
     </script>
     <script>
       "use strict";
+      const { $, h, AuthError, api, cpa, auth, storage } = kit;
 
-      // The page is served at <base>/v0/resource/plugins/opencode-go/index.html,
-      // where <base> is empty unless a reverse proxy adds a path prefix.
-      const BASE = location.pathname.replace(
-        /\/v0\/resource\/plugins\/[^/]+\/[^/]*$/,
-        "",
-      );
-      const API = BASE + "/v0/management/opencode-go";
-      // CLIProxyAPI's own Management API, for config the plugin cannot reach.
-      const CPA = BASE + "/v8/management";
+      // CLIProxyAPI's own config, for what the plugin cannot reach.
       const ALIAS_MAP = "/config/oauth/model-alias";
       const EXCLUDED_MAP = "/config/oauth/excluded-models";
       const PLUGIN_CONFIG = "/config/plugins/configs/" + PROVIDER;
-      const SESSION_KEY = "opencode-go.management-key";
-      const REJECTED_KEY = "opencode-go.rejected-mc-auth";
-      const MC_AUTH_KEY = "cli-proxy-auth";
-      const MC_THEME_KEY = "cli-proxy-theme";
       const USAGE_CONCURRENCY = 3;
       const SOURCE_FILE = "opencode-go.json";
       const WINDOW_NAMES = ["5-hour", "Weekly", "Monthly"];
-
-      const $ = (id) => document.getElementById(id);
-
-      function storageGet(storage, key) {
-        try {
-          return storage.getItem(key);
-        } catch (_) {
-          return null;
-        }
-      }
-
-      function storageSet(storage, key, value) {
-        try {
-          storage.setItem(key, value);
-        } catch (_) {}
-      }
-
-      function storageRemove(storage, key) {
-        try {
-          storage.removeItem(key);
-        } catch (_) {}
-      }
-
-      // Theme: follow Management Center's own setting. Its document carries
-      // data-theme ("dark", "white", or none for its light theme); when the
-      // page cannot reach it, read the persisted setting instead.
-      function managementCenterTheme() {
-        try {
-          if (window.parent !== window) {
-            return (
-              window.parent.document.documentElement.getAttribute(
-                "data-theme",
-              ) || "light"
-            );
-          }
-        } catch (_) {}
-        let saved = "auto";
-        try {
-          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
-          if (persisted && persisted.state && persisted.state.theme) {
-            saved = persisted.state.theme;
-          }
-        } catch (_) {}
-        if (saved === "auto") {
-          return matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "white";
-        }
-        return saved;
-      }
-
-      function applyTheme() {
-        document.documentElement.setAttribute(
-          "data-theme",
-          managementCenterTheme(),
-        );
-      }
-
-      applyTheme();
-      matchMedia("(prefers-color-scheme: dark)").addEventListener(
-        "change",
-        applyTheme,
-      );
-      window.addEventListener("storage", (event) => {
-        if (event.key === MC_THEME_KEY) applyTheme();
-      });
-      try {
-        if (window.parent !== window) {
-          new MutationObserver(applyTheme).observe(
-            window.parent.document.documentElement,
-            { attributes: true, attributeFilter: ["data-theme"] },
-          );
-        }
-      } catch (_) {}
-
-      // Management key: Management Center persists it, when "remember" is on,
-      // as zustand state {"state":{"managementKey":...}} obfuscated by
-      // src/utils/encryption.ts. A key typed here lives in sessionStorage.
-      function deobfuscate(payload) {
-        const prefix = "enc::v1::";
-        if (!payload.startsWith(prefix)) return payload;
-        const binary = atob(payload.slice(prefix.length));
-        const secret = new TextEncoder().encode(
-          "cli-proxy-api-webui::secure-storage|" +
-            location.host +
-            "|" +
-            navigator.userAgent,
-        );
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
-        }
-        return new TextDecoder().decode(bytes);
-      }
-
-      function managementCenterKey() {
-        const raw = storageGet(localStorage, MC_AUTH_KEY);
-        if (!raw || storageGet(sessionStorage, REJECTED_KEY) === raw) return "";
-        try {
-          const persisted = JSON.parse(deobfuscate(raw));
-          const key =
-            persisted && persisted.state && persisted.state.managementKey;
-          return typeof key === "string" ? key.trim() : "";
-        } catch (_) {
-          return "";
-        }
-      }
-
-      const auth = { key: "", source: "" };
-
-      function resolveKey() {
-        const typed = storageGet(sessionStorage, SESSION_KEY);
-        if (typed) return { key: typed, source: "session" };
-        const shared = managementCenterKey();
-        if (shared) return { key: shared, source: "mc" };
-        return { key: "", source: "" };
-      }
-
-      // A rejected key is never retried: five failures ban the address for
-      // 30 minutes.
-      function forgetKey() {
-        if (auth.source === "session")
-          storageRemove(sessionStorage, SESSION_KEY);
-        if (auth.source === "mc") {
-          storageSet(
-            sessionStorage,
-            REJECTED_KEY,
-            storageGet(localStorage, MC_AUTH_KEY) || "",
-          );
-        }
-        auth.key = "";
-        auth.source = "";
-      }
-
-      class AuthError extends Error {}
-
-      // request calls a Management API route. A 404 answers missing when
-      // the caller passes one: config reads answer 404 for an absent key.
-      async function request(base, method, path, body, missing) {
-        if (!auth.key) throw new AuthError("No management key.");
-        const headers = { Authorization: "Bearer " + auth.key };
-        if (body !== undefined) headers["Content-Type"] = "application/json";
-        let response;
-        try {
-          response = await fetch(base + path, {
-            method,
-            headers,
-            body: body === undefined ? undefined : JSON.stringify(body),
-            cache: "no-store",
-            credentials: "omit",
-          });
-        } catch (err) {
-          throw new Error("CLIProxyAPI did not answer: " + err.message);
-        }
-        let data = null;
-        try {
-          data = await response.json();
-        } catch (_) {}
-        const message =
-          data && typeof data.error === "string" ? data.error : "";
-        if (response.status === 401) {
-          forgetKey();
-          usageQueue.length = 0;
-          showAuth(
-            "Management key rejected. Five wrong keys block this address for 30 minutes.",
-          );
-          throw new AuthError(message);
-        }
-        if (response.status === 404 && missing !== undefined) return missing;
-        if (!response.ok) {
-          throw new Error(
-            message || "CLIProxyAPI answered HTTP " + response.status + ".",
-          );
-        }
-        return data || {};
-      }
-
-      const api = (method, path, body) => request(API, method, path, body);
-      const cpa = (method, path, body, missing) =>
-        request(CPA, method, path, body, missing);
-
-      // DOM helper: strings become text nodes, never markup.
-      function h(tag, props, ...children) {
-        const el = document.createElement(tag);
-        for (const [name, value] of Object.entries(props || {})) {
-          if (value === null || value === undefined || value === false)
-            continue;
-          if (name === "class") el.className = value;
-          else if (name.startsWith("on"))
-            el.addEventListener(name.slice(2), value);
-          else el.setAttribute(name, value === true ? "" : String(value));
-        }
-        for (const child of children.flat()) {
-          if (child === null || child === undefined || child === false)
-            continue;
-          el.append(child instanceof Node ? child : String(child));
-        }
-        return el;
-      }
 
       const pad = (n) => String(n).padStart(2, "0");
 
@@ -2050,7 +1428,7 @@
       function badge(text, tone, title) {
         return h(
           "span",
-          { class: "badge" + (tone ? " badge-" + tone : ""), title },
+          { class: tone ? "badge " + tone : "badge", title },
           text,
         );
       }
@@ -2118,7 +1496,7 @@
         if (runtime.unavailable)
           return badge(prefix + "Unavailable", "warn", runtime.message);
         if (runtime.state === "error")
-          return badge(prefix + "Error", "bad", runtime.message);
+          return badge(prefix + "Error", "error", runtime.message);
         if (runtime.state === "active") return badge(prefix + "Active", "ok");
         return badge(prefix + (runtime.state || "Unknown"));
       }
@@ -2152,12 +1530,11 @@
             h(
               "label",
               {},
-              checkbox(
+              switchButton(
                 Boolean(key[family]),
                 FAMILY_NAMES[family] + " for " + (key.label || key.id),
                 (on) => setFamily(key, family, on),
                 working,
-                null,
               ),
               FAMILY_NAMES[family],
             ),
@@ -2169,7 +1546,7 @@
         return h(
           "button",
           {
-            class: "btn btn-ghost btn-sm" + (extra ? " " + extra : ""),
+            class: "btn ghost small" + (extra ? " " + extra : ""),
             type: "button",
             onclick,
             disabled,
@@ -2182,7 +1559,6 @@
         const working = busy.has(key.id);
         if (ui.renaming === key.id) {
           const input = h("input", {
-            class: "input",
             maxlength: 64,
             placeholder: key.masked_key,
             "aria-label": "Label",
@@ -2206,7 +1582,7 @@
             h(
               "button",
               {
-                class: "btn btn-primary btn-sm",
+                class: "btn primary small",
                 type: "button",
                 onclick: () => saveRename(key),
                 disabled: working,
@@ -2221,7 +1597,7 @@
           { class: "key-head" },
           h(
             "span",
-            { class: "name" + (key.label ? "" : " name-masked") },
+            { class: key.label ? "name" : "name mono" },
             displayName(key),
           ),
           statusBadges(key),
@@ -2235,12 +1611,7 @@
               () => setDisabled(key, !key.disabled),
               working,
             ),
-            actionButton(
-              "Delete",
-              () => confirmDelete(key),
-              working,
-              "btn-danger",
-            ),
+            actionButton("Delete", () => confirmDelete(key), working, "danger"),
           ),
         );
       }
@@ -2362,7 +1733,7 @@
             h(
               "button",
               {
-                class: "btn btn-danger-solid btn-sm",
+                class: "btn danger solid small",
                 type: "button",
                 onclick: () => deleteKey(key),
                 disabled: working,
@@ -2383,7 +1754,7 @@
 
       function buildCard(key) {
         const usageEl = h("div", { class: "usage" });
-        const noticeEl = h("div", { class: "notice" });
+        const noticeEl = h("div", { class: "key-note" });
         fillUsage(usageEl, key.id);
         fillNotice(noticeEl, key);
         const card = h(
@@ -2410,7 +1781,7 @@
         if (login.expired && !login.disabled) {
           return badge(
             "Login expired",
-            "bad",
+            "error",
             "Log in again from OAuth Login → OpenCode Go.",
           );
         }
@@ -2420,7 +1791,7 @@
       function buildLoginCard(login) {
         const working = busy.has(login.id);
         const usageEl = h("div", { class: "usage" });
-        const noticeEl = h("div", { class: "notice" });
+        const noticeEl = h("div", { class: "key-note" });
         fillUsage(usageEl, login.id);
         fillNotice(noticeEl, login);
         const items = [];
@@ -2520,7 +1891,7 @@
         ) {
           const id = usageQueue.shift();
           usageActive++;
-          api("GET", usagePath(id))
+          api(usagePath(id))
             .then((data) => usage.set(id, { state: "ok", data: data.usage }))
             .catch((err) => {
               if (err instanceof AuthError) usage.delete(id);
@@ -2536,8 +1907,8 @@
 
       async function loadList() {
         const [keyData, loginData] = await Promise.all([
-          api("GET", "/keys"),
-          api("GET", "/logins"),
+          api("/keys"),
+          api("/logins"),
         ]);
         keys = keyData.keys || [];
         logins = loginData.logins || [];
@@ -2602,7 +1973,10 @@
 
       function testKey(key) {
         return act(key, async () => {
-          const data = await api("POST", "/keys/test", { id: key.id });
+          const data = await api("/keys/test", {
+            method: "POST",
+            body: { id: key.id },
+          });
           if (!data.ok) {
             results.set(key.id, { ok: false, text: data.error });
             return;
@@ -2632,9 +2006,12 @@
       function saveRename(key) {
         if (busy.has(key.id)) return;
         return act(key, async () => {
-          const data = await api("PATCH", "/keys", {
-            id: key.id,
-            label: ui.draft,
+          const data = await api("/keys", {
+            method: "PATCH",
+            body: {
+              id: key.id,
+              label: ui.draft,
+            },
           });
           ui.renaming = null;
           replaceKey(data.key);
@@ -2643,9 +2020,12 @@
 
       function patchLogin(login, patch) {
         return act(login, async () => {
-          const data = await api("PATCH", "/logins", {
-            id: login.id,
-            ...patch,
+          const data = await api("/logins", {
+            method: "PATCH",
+            body: {
+              id: login.id,
+              ...patch,
+            },
           });
           const index = data.login
             ? logins.findIndex((item) => item.id === data.login.id)
@@ -2659,7 +2039,10 @@
 
       function patchKey(key, patch) {
         return act(key, async () => {
-          const data = await api("PATCH", "/keys", { id: key.id, ...patch });
+          const data = await api("/keys", {
+            method: "PATCH",
+            body: { id: key.id, ...patch },
+          });
           replaceKey(data.key);
           loadExtras();
         });
@@ -2690,7 +2073,9 @@
 
       function deleteKey(key) {
         return act(key, async () => {
-          await api("DELETE", "/keys?id=" + encodeURIComponent(key.id));
+          await api("/keys?id=" + encodeURIComponent(key.id), {
+            method: "DELETE",
+          });
           ui.confirming = null;
           usage.delete(key.id);
           results.delete(key.id);
@@ -2734,7 +2119,10 @@
         submit.disabled = true;
         submit.textContent = "Checking key…";
         try {
-          const data = await api("POST", "/keys", { label, api_key: apiKey });
+          const data = await api("/keys", {
+            method: "POST",
+            body: { label, api_key: apiKey },
+          });
           if (data.key)
             usage.set(data.key.id, { state: "ok", data: data.usage });
           await loadList();
@@ -2781,11 +2169,11 @@
       async function loadModels() {
         try {
           const [view, maps] = await Promise.all([
-            api("GET", "/models"),
+            api("/models"),
             Promise.all([
-              cpa("GET", ALIAS_MAP, undefined, {}),
-              cpa("GET", EXCLUDED_MAP, undefined, {}),
-              cpa("GET", PLUGIN_CONFIG, undefined, {}),
+              cpa(ALIAS_MAP, { missing: {} }),
+              cpa(EXCLUDED_MAP, { missing: {} }),
+              cpa(PLUGIN_CONFIG, { missing: {} }),
             ]).then(
               ([aliasMap, excludedMap, own]) => ({
                 aliasMap,
@@ -2846,7 +2234,7 @@
           return;
         await queued(async () => {
           const latest = channelEntries(
-            await cpa("GET", EXCLUDED_MAP, undefined, {}),
+            await cpa(EXCLUDED_MAP, { missing: {} }),
           ).map(String);
           const { moved } = migration(latest, ids, models.prefixes);
           if (moved.length === 0) return;
@@ -2926,13 +2314,10 @@
       async function loadServedBy() {
         const into = new Map();
         try {
-          configServedBy(
-            await cpa("GET", "/config/api-keys", undefined, {}),
-            into,
-          );
+          configServedBy(await cpa("/config/api-keys", { missing: {} }), into);
         } catch (_) {}
         try {
-          const list = await cpa("GET", "/credentials");
+          const list = await cpa("/credentials");
           const picked = new Map();
           for (const file of list.files || []) {
             const provider = String(file.provider || file.type || "")
@@ -2946,7 +2331,6 @@
             [...picked].map(async ([provider, name]) => {
               try {
                 const data = await cpa(
-                  "GET",
                   "/credentials/models?name=" + encodeURIComponent(name),
                 );
                 for (const model of data.models || [])
@@ -2970,6 +2354,18 @@
         return prefixOff() ? bare : h("code", {}, prefix + "/…");
       }
 
+      function switchButton(on, label, onchange, disabled) {
+        return h("button", {
+          class: "switch",
+          type: "button",
+          role: "switch",
+          "aria-checked": String(on),
+          "aria-label": label,
+          disabled,
+          onclick: () => onchange(!on),
+        });
+      }
+
       function checkbox(checked, label, onchange, disabled, title) {
         const box = h("input", {
           type: "checkbox",
@@ -2982,22 +2378,16 @@
         return box;
       }
 
-      function modelRow(model) {
-        const locked = models.busy.has(model.id) || !models.configLoaded;
-        // CPA's own entries still apply to the registered IDs: rules, and an
-        // exact entry only until the migration has moved it.
-        const rule = disabledRule(models.excluded, model);
-        const disabled =
-          Boolean(rule) || hasModel(models.disabled, model.upstream_id);
+      // modelCells are the Model, Protocol and Context cells of a catalog
+      // row; freeTitle explains the Free badge of a model priced at zero.
+      function modelCells(model, freeTitle) {
         const served = servedElsewhere(model);
         const limits = model.context
           ? model.context.toLocaleString() +
             " tokens" +
             (model.output ? ", output " + model.output.toLocaleString() : "")
           : null;
-        return h(
-          "tr",
-          { class: disabled ? "is-off" : null },
+        return [
           h(
             "td",
             {},
@@ -3005,13 +2395,7 @@
               "div",
               { class: "model-head" },
               h("span", { class: "model-name" }, model.name),
-              model.free
-                ? badge(
-                    "Free",
-                    "ok",
-                    "Priced at zero; keeps working after a usage limit.",
-                  )
-                : null,
+              model.free && freeTitle ? badge("Free", "ok", freeTitle) : null,
             ),
             h("div", { class: "model-id" }, model.id),
             served.length > 0
@@ -3024,6 +2408,23 @@
           ),
           h("td", {}, model.protocol),
           h("td", { class: "num", title: limits }, tokens(model.context)),
+        ];
+      }
+
+      function modelRow(model) {
+        const locked = models.busy.has(model.id) || !models.configLoaded;
+        // CPA's own entries still apply to the registered IDs: rules, and an
+        // exact entry only until the migration has moved it.
+        const rule = disabledRule(models.excluded, model);
+        const disabled =
+          Boolean(rule) || hasModel(models.disabled, model.upstream_id);
+        return h(
+          "tr",
+          { class: disabled ? "is-off" : null },
+          modelCells(
+            model,
+            "Priced at zero; keeps working after a usage limit.",
+          ),
           h(
             "td",
             { class: "toggle cross" },
@@ -3048,50 +2449,21 @@
       function zenRow(model) {
         const locked = models.busy.has(model.id) || !models.configLoaded;
         const enabled = hasModel(models.zen, model.upstream_id);
-        const served = servedElsewhere(model);
-        const limits = model.context
-          ? model.context.toLocaleString() +
-            " tokens" +
-            (model.output ? ", output " + model.output.toLocaleString() : "")
-          : null;
         return h(
           "tr",
           { class: enabled ? null : "is-off" },
-          h(
-            "td",
-            {},
-            h(
-              "div",
-              { class: "model-head" },
-              h("span", { class: "model-name" }, model.name),
-              model.free
-                ? badge(
-                    "Free",
-                    "ok",
-                    "Priced at zero; served by presenting the request as the OpenCode client.",
-                  )
-                : null,
-            ),
-            h("div", { class: "model-id" }, model.id),
-            served.length > 0
-              ? h(
-                  "div",
-                  { class: "served" },
-                  model.upstream_id + " is also served by " + served.join(", "),
-                )
-              : null,
+          modelCells(
+            model,
+            "Priced at zero; served by presenting the request as the OpenCode client.",
           ),
-          h("td", {}, model.protocol),
-          h("td", { class: "num", title: limits }, tokens(model.context)),
           h(
             "td",
             { class: "toggle" },
-            checkbox(
+            switchButton(
               enabled,
               "Enable " + model.id,
               (on) => toggleZen(model, on),
               locked,
-              null,
             ),
           ),
         );
@@ -3139,6 +2511,8 @@
         );
       }
 
+      const NOTICE_CLASS = { ok: "ok-text", warn: "warn-text", error: "error" };
+
       function note(tone, ...text) {
         return h("p", { class: tone }, ...text);
       }
@@ -3147,8 +2521,7 @@
         const view = models.view;
         const out = [];
         if (models.notice) {
-          const tone = { ok: "ok-text", warn: "warn-text", error: "error" };
-          out.push(note(tone[models.notice.tone], models.notice.text));
+          out.push(note(NOTICE_CLASS[models.notice.tone], models.notice.text));
         }
         if (view.error) {
           out.push(
@@ -3309,10 +2682,14 @@
       }
 
       async function editChannel(mapPath, edit) {
-        const map = await cpa("GET", mapPath, undefined, {});
+        const map = await cpa(mapPath, { missing: {} });
         const next = edit(channelEntries(map));
         const write = channelWrite(map, next);
-        if (write) await cpa(write.method, mapPath + write.path, write.body);
+        if (write)
+          await cpa(mapPath + write.path, {
+            method: write.method,
+            body: write.body,
+          });
         return next;
       }
 
@@ -3337,11 +2714,14 @@
       // editList rewrites one list setting of the plugin's config node, such
       // as disabled_models or zen_models.
       async function editList(key, edit) {
-        const node = await cpa("GET", PLUGIN_CONFIG, undefined, {});
+        const node = await cpa(PLUGIN_CONFIG, { missing: {} });
         const next = edit(stringList(node && node[key]));
         const write = listWrite(node, key, next);
         if (write)
-          await cpa(write.method, PLUGIN_CONFIG + write.path, write.body);
+          await cpa(PLUGIN_CONFIG + write.path, {
+            method: write.method,
+            body: write.body,
+          });
         return next;
       }
 
@@ -3437,7 +2817,7 @@
         models.notice = null;
         renderModels();
         try {
-          const report = await api("POST", "/models/refresh");
+          const report = await api("/models/refresh", { method: "POST" });
           models.notice = {
             tone: report.registered ? "ok" : "warn",
             text: refreshSummary(report),
@@ -3464,7 +2844,7 @@
 
       async function loadFree() {
         try {
-          free.view = await api("GET", "/free");
+          free.view = await api("/free");
         } catch (err) {
           if (err instanceof AuthError) return;
           free.notice = { tone: "error", text: err.message };
@@ -3476,34 +2856,10 @@
       function freeRow(model) {
         const locked = free.busy.has(model.id) || !models.configLoaded;
         const disabled = hasModel(models.freeDisabled, model.upstream_id);
-        const served = servedElsewhere(model);
-        const limits = model.context
-          ? model.context.toLocaleString() +
-            " tokens" +
-            (model.output ? ", output " + model.output.toLocaleString() : "")
-          : null;
         return h(
           "tr",
           { class: disabled ? "is-off" : null },
-          h(
-            "td",
-            {},
-            h(
-              "div",
-              { class: "model-head" },
-              h("span", { class: "model-name" }, model.name),
-            ),
-            h("div", { class: "model-id" }, model.id),
-            served.length > 0
-              ? h(
-                  "div",
-                  { class: "served" },
-                  model.upstream_id + " is also served by " + served.join(", "),
-                )
-              : null,
-          ),
-          h("td", {}, model.protocol),
-          h("td", { class: "num", title: limits }, tokens(model.context)),
+          modelCells(model, null),
           h(
             "td",
             { class: "toggle cross" },
@@ -3524,7 +2880,7 @@
         const on = present && !view.disabled;
         const toggle = $("free-toggle");
         toggle.textContent = on ? "Turn off" : "Turn on";
-        toggle.className = "btn " + (on ? "btn-ghost" : "btn-primary");
+        toggle.className = on ? "btn ghost" : "btn primary";
         toggle.disabled = free.working || !view;
         $("free-refresh").hidden = !on || modelsListed();
         $("free-refresh").disabled = free.working || models.refreshing;
@@ -3533,8 +2889,7 @@
         );
         const notices = [];
         if (free.notice) {
-          const tone = { ok: "ok-text", warn: "warn-text", error: "error" };
-          notices.push(note(tone[free.notice.tone], free.notice.text));
+          notices.push(note(NOTICE_CLASS[free.notice.tone], free.notice.text));
         }
         if (on && view.error)
           notices.push(
@@ -3599,7 +2954,10 @@
         free.notice = null;
         renderFree();
         try {
-          free.view = await api("PUT", "/free", { enabled: on });
+          free.view = await api("/free", {
+            method: "PUT",
+            body: { enabled: on },
+          });
         } catch (err) {
           if (!(err instanceof AuthError))
             free.notice = { tone: "error", text: err.message };
@@ -3616,12 +2974,12 @@
         free.notice = null;
         renderFree();
         try {
-          const report = await api("POST", "/models/refresh");
+          const report = await api("/models/refresh", { method: "POST" });
           free.notice = {
             tone: report.registered ? "ok" : "warn",
             text: refreshSummary(report),
           };
-          free.view = await api("GET", "/free");
+          free.view = await api("/free");
         } catch (err) {
           if (!(err instanceof AuthError))
             free.notice = { tone: "error", text: err.message };
@@ -3649,8 +3007,8 @@
         let config = null;
         try {
           [view, config] = await Promise.all([
-            api("GET", "/routing"),
-            cpa("GET", "/config/routing", undefined, {}).catch((err) => {
+            api("/routing"),
+            cpa("/config/routing", { missing: {} }).catch((err) => {
               if (err instanceof AuthError) throw err;
               return null;
             }),
@@ -3753,20 +3111,16 @@
               "routing-" + family + "-weight",
             ).value;
           }
-          const view = await api(
-            "PUT",
-            "/routing",
-            routingBody(fields, routingFamilies),
-          );
-          const config = await cpa(
-            "GET",
-            "/config/routing",
-            undefined,
-            {},
-          ).catch((err) => {
-            if (err instanceof AuthError) throw err;
-            return null;
+          const view = await api("/routing", {
+            method: "PUT",
+            body: routingBody(fields, routingFamilies),
           });
+          const config = await cpa("/config/routing", { missing: {} }).catch(
+            (err) => {
+              if (err instanceof AuthError) throw err;
+              return null;
+            },
+          );
           renderRouting(view, config);
         } catch (err) {
           if (!(err instanceof AuthError)) showRoutingError(err.message);
@@ -3795,7 +3149,7 @@
       };
       const OUTCOMES = {
         succeeded: ["Succeeded", "ok"],
-        failed: ["Failed", "bad"],
+        failed: ["Failed", "error"],
         rejected: ["Rejected", "warn"],
         cancelled: ["Cancelled", "warn"],
       };
@@ -3825,7 +3179,7 @@
       async function loadWorkspaces(reload) {
         let data;
         try {
-          data = await api("GET", "/workspaces");
+          data = await api("/workspaces");
         } catch (err) {
           if (err instanceof AuthError) return;
           workspaceUsage.error = err.message;
@@ -3916,7 +3270,7 @@
         let data = null;
         let error = "";
         try {
-          data = await api("GET", "/workspaces/usage?" + params);
+          data = await api("/workspaces/usage?" + params);
         } catch (err) {
           if (err instanceof AuthError) {
             view.loading = false;
@@ -3945,7 +3299,7 @@
       function segmented(options, current, label, onpick) {
         return h(
           "div",
-          { class: "segmented", role: "group", "aria-label": label },
+          { class: "seg", role: "group", "aria-label": label },
           ...options.map(([value, text]) =>
             h(
               "button",
@@ -4371,7 +3725,7 @@
             { class: "card table-card" },
             h(
               "table",
-              {},
+              { class: "table" },
               h(
                 "thead",
                 {},
@@ -4539,7 +3893,7 @@
               { class: "card table-card" },
               h(
                 "table",
-                {},
+                { class: "table" },
                 h(
                   "thead",
                   {},
@@ -4573,7 +3927,7 @@
           other.tabIndex = selected ? 0 : -1;
           $(other.getAttribute("aria-controls")).hidden = !selected;
         }
-        storageSet(sessionStorage, TAB_KEY, tab.id);
+        storage.set(sessionStorage, TAB_KEY, tab.id);
         if (focus) tab.focus();
       }
 
@@ -4593,58 +3947,22 @@
         });
       }
 
-      const savedTab = storageGet(sessionStorage, TAB_KEY);
+      const savedTab = storage.get(sessionStorage, TAB_KEY);
       selectTab(tabs.find((tab) => tab.id === savedTab) || tabs[0]);
 
-      // Authentication
-      function showContent() {
-        $("auth").hidden = true;
-        $("content").hidden = false;
-        $("bar-actions").hidden = false;
+      function showContent(shown) {
+        $("content").hidden = !shown;
+        $("reload").hidden = !shown;
       }
 
-      function showAuth(message) {
-        $("content").hidden = true;
-        $("bar-actions").hidden = true;
-        $("auth").hidden = false;
-        $("auth-error").textContent = message;
-        $("auth-error").hidden = !message;
-        $("auth-key").value = "";
-        $("auth-key").focus();
-      }
-
-      $("auth").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const typed = $("auth-key").value.trim();
-        if (!typed) return;
-        auth.key = typed;
-        auth.source = "typed";
-        const submit = $("auth-submit");
-        submit.disabled = true;
-        try {
-          await loadList();
-          storageSet(sessionStorage, SESSION_KEY, typed);
-          auth.source = "session";
-          showContent();
-          queueUsage(allIds());
-          loadExtras();
-        } catch (err) {
-          if (!(err instanceof AuthError)) {
-            $("auth-error").textContent = err.message;
-            $("auth-error").hidden = false;
-          }
-        } finally {
-          submit.disabled = false;
-        }
+      auth.onRejected(() => {
+        usageQueue.length = 0;
+        showContent(false);
       });
-
-      Object.assign(auth, resolveKey());
-      if (auth.key) {
-        showContent();
+      auth.init(() => {
+        showContent(true);
         refresh();
-      } else {
-        showAuth("");
-      }
+      });
     </script>
   </body>
 </html>

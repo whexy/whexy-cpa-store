@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // modelsDevURL is the public catalog OpenCode's client builds its OpenCode
@@ -72,7 +73,7 @@ func parseModelsDev(raw []byte) (*modelsDevCatalog, error) {
 	return &doc, nil
 }
 
-func fetchModelsDev(ctx context.Context, doer httpDoer, cfg settings) (*modelsDevCatalog, error) {
+func fetchModelsDev(ctx context.Context, doer host.Doer, cfg settings) (*modelsDevCatalog, error) {
 	resp, errDo := doer.Do(ctx, pluginapi.HTTPRequest{
 		Method:  http.MethodGet,
 		URL:     modelsDevURL,
@@ -110,7 +111,7 @@ var modelsDev = newModelsDevStore()
 
 // get returns models.dev's catalog, refreshing it once it is older than
 // catalogTTL. errFetch is the refresh failure when a fallback was served.
-func (s *modelsDevStore) get(ctx context.Context, doer httpDoer, cfg settings) (*modelsDevCatalog, catalogSource, error) {
+func (s *modelsDevStore) get(ctx context.Context, doer host.Doer, cfg settings) (*modelsDevCatalog, catalogSource, error) {
 	s.mu.Lock()
 	entry := s.entry
 	now := s.now()
@@ -131,7 +132,7 @@ func (s *modelsDevStore) get(ctx context.Context, doer httpDoer, cfg settings) (
 
 // refresh reads models.dev regardless of the cached catalog's age; a failure
 // leaves the cache as it was.
-func (s *modelsDevStore) refresh(ctx context.Context, doer httpDoer, cfg settings) (*modelsDevCatalog, error) {
+func (s *modelsDevStore) refresh(ctx context.Context, doer host.Doer, cfg settings) (*modelsDevCatalog, error) {
 	fetched, errFetch := fetchModelsDev(ctx, doer, cfg)
 	if errFetch != nil {
 		return nil, errFetch

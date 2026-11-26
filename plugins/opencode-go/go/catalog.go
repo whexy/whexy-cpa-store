@@ -17,6 +17,9 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 const catalogTTL = 10 * time.Minute
@@ -464,7 +467,7 @@ func configURL(cfg settings) string {
 
 // fetchWorkspaceConfig reads the workspace's Console config with a key or
 // login token; any key permission level may read it.
-func fetchWorkspaceConfig(ctx context.Context, doer httpDoer, cfg settings, bearer string) (workspaceConfig, error) {
+func fetchWorkspaceConfig(ctx context.Context, doer host.Doer, cfg settings, bearer string) (workspaceConfig, error) {
 	resp, errDo := doer.Do(ctx, pluginapi.HTTPRequest{
 		Method:  http.MethodGet,
 		URL:     configURL(cfg),
@@ -553,7 +556,7 @@ var catalogs = newCatalogStore()
 // forKey returns the credential's catalog of base, reading its workspace
 // config again once that is older than catalogTTL. errFetch is the read
 // failure when a fallback config was applied.
-func (s *catalogStore) forKey(ctx context.Context, doer httpDoer, cfg settings, cred credential, base *modelsDevCatalog) (catalog, catalogSource, error) {
+func (s *catalogStore) forKey(ctx context.Context, doer host.Doer, cfg settings, cred credential, base *modelsDevCatalog) (catalog, catalogSource, error) {
 	s.mu.Lock()
 	entry, cached := s.byKey[cred.ID]
 	fresh := cached && s.now().Sub(entry.fetchedAt) < catalogTTL
@@ -575,7 +578,7 @@ func (s *catalogStore) forKey(ctx context.Context, doer httpDoer, cfg settings, 
 
 // refresh reads the credential's workspace config regardless of its age and
 // returns the catalog it makes of base; a failure leaves the cache as it was.
-func (s *catalogStore) refresh(ctx context.Context, doer httpDoer, cfg settings, cred credential, base *modelsDevCatalog) (catalog, error) {
+func (s *catalogStore) refresh(ctx context.Context, doer host.Doer, cfg settings, cred credential, base *modelsDevCatalog) (catalog, error) {
 	config, errFetch := fetchWorkspaceConfig(ctx, doer, cfg, cred.Bearer)
 	if errFetch != nil {
 		return catalog{}, errFetch
@@ -645,7 +648,7 @@ func (c catalog) exposedIDs(cfg settings, family modelFamily) []string {
 // from: models.dev's with the workspace's config applied for Go and Zen, the
 // public free one for Free. While models.dev cannot be read, the source is
 // that of the models.dev catalog used instead.
-func catalogFor(ctx context.Context, doer httpDoer, cfg settings, cred credential, family modelFamily) (catalog, catalogSource, error) {
+func catalogFor(ctx context.Context, doer host.Doer, cfg settings, cred credential, family modelFamily) (catalog, catalogSource, error) {
 	if family == familyFree {
 		return freeCatalogs.get(ctx, doer, cfg)
 	}
@@ -662,6 +665,29 @@ func cachedCatalog(credID string, family modelFamily) (catalog, catalogSource) {
 		return freeCatalogs.cached()
 	}
 	return catalogs.cached(credID)
+}
+
+// ownCatalog returns the catalog of the workspace config read with key keyID
+// itself, never another key's config or none.
+func (s *catalogStore) ownCatalog(keyID string) (catalog, bool) {
+	base, _ := modelsDev.cached()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, ok := s.byKey[keyID]
+	if !ok {
+		return catalog{}, false
+	}
+	return entry.catalogOf(base), true
+}
+
+// remember caches a workspace config a key read, so the model refresh that
+// saving a checked key triggers does not read it again.
+func (s *catalogStore) remember(keyID string, config workspaceConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry := &configEntry{config: config, fetchedAt: s.now()}
+	s.byKey[keyID] = entry
+	s.lastGood = entry
 }
 
 // cached returns the best catalog for keyID without network access.
@@ -744,7 +770,7 @@ var staleReparsed atomic.Bool
 // reparseLater runs reparseAuthFiles off the host's model call; tests
 // replace it.
 var reparseLater = func() {
-	startBackground(func(ctx context.Context) { reparseAuthFiles(ctx, newHost("")) })
+	background.Go(func(ctx context.Context) { reparseAuthFiles(ctx, host.Detached()) })
 }
 
 func staleAuth(attributes map[string]string) bool {
@@ -769,12 +795,12 @@ func handleModelsForAuth(raw []byte) ([]byte, error) {
 		// the 401 it gets makes the host refresh the login.
 		cat, _ := cachedCatalog(cred.ID, family)
 		catalogs.markRegistered(cred.ID, family, cfg, cat)
-		return okEnvelope(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg, family)})
+		return rpc.OK(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg, family)})
 	}
 	if errCred != nil {
-		return okEnvelope(pluginapi.ModelResponse{Provider: providerKey})
+		return rpc.OK(pluginapi.ModelResponse{Provider: providerKey})
 	}
-	h := newHost(req.HostCallbackID)
+	h := host.New(req.HostCallbackID)
 	cat, source, errFetch := catalogFor(context.Background(), h, cfg, cred, family)
 	if errFetch != nil {
 		h.Log("warn", "OpenCode "+string(family)+" catalog refresh failed; serving "+string(source)+" catalog", map[string]any{
@@ -783,5 +809,5 @@ func handleModelsForAuth(raw []byte) ([]byte, error) {
 		})
 	}
 	catalogs.markRegistered(cred.ID, family, cfg, cat)
-	return okEnvelope(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg, family)})
+	return rpc.OK(pluginapi.ModelResponse{Provider: providerKey, Models: cat.modelInfos(cfg, family)})
 }

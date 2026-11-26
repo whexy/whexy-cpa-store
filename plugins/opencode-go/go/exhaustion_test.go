@@ -9,6 +9,9 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 func TestUpstreamErrorMapping(t *testing.T) {
@@ -52,10 +55,10 @@ func TestUpstreamErrorMapping(t *testing.T) {
 			if !strings.Contains(env.Error.Message, tc.wantText) || !strings.Contains(env.Error.Message, "log id log-err-1") || strings.Contains(env.Error.Message, testKeyA) {
 				t.Errorf("%s stream=%v message = %q", tc.name, stream, env.Error.Message)
 			}
-			if len(gateway.fake.callsTo(pluginabi.MethodHostStreamEmit)) != 0 || len(gateway.fake.callsTo(pluginabi.MethodHostStreamClose)) != 0 {
+			if len(gateway.fake.Calls(pluginabi.MethodHostStreamEmit)) != 0 || len(gateway.fake.Calls(pluginabi.MethodHostStreamClose)) != 0 {
 				t.Errorf("%s: error was streamed instead of returned", tc.name)
 			}
-			if tc.name == "protocol" && len(gateway.fake.callsTo(pluginabi.MethodHostLog)) == 0 {
+			if tc.name == "protocol" && len(gateway.fake.Calls(pluginabi.MethodHostLog)) == 0 {
 				t.Error("protocol rejection was not logged")
 			}
 		}
@@ -66,8 +69,8 @@ func TestTransportFailure(t *testing.T) {
 	useSettings(t, defaultSettings())
 	useTestCatalog(t)
 	gateway := installFakeGateway(t, fixtureGateway(t))
-	gateway.fake.handle(pluginabi.MethodHostHTTPDo, func(json.RawMessage) (any, error) {
-		return nil, &hostCallError{Message: "dial tcp: connection refused"}
+	gateway.fake.Handle(pluginabi.MethodHostHTTPDo, func(json.RawMessage) (any, error) {
+		return nil, &host.CallError{Message: "dial tcp: connection refused"}
 	})
 	raw, _ := executorExecute(testCall{Source: "openai", Model: "opencode-go/kimi-k3", Payload: clientPayload("openai", "m", false)}.raw(t))
 	if env := decodeEnvelope(t, raw); env.OK || env.Error.HTTPStatus != http.StatusBadGateway || !strings.Contains(env.Error.Message, "connection refused") {
@@ -101,7 +104,7 @@ func TestUsageLimitBlocksPaidModelsUntilReset(t *testing.T) {
 	tracker, scheduled, resets := useExhaustion(t, now)
 	exhausted := true
 	gateway := installFakeGateway(t, usageLimitGateway(t, resetsAt, &exhausted))
-	paid := func(apiKey string, stream bool) envelope {
+	paid := func(apiKey string, stream bool) rpc.Envelope {
 		call := testCall{Source: "openai", Model: "opencode-go/kimi-k3", Stream: stream, APIKey: apiKey, Payload: clientPayload("openai", "opencode-go/kimi-k3", stream)}
 		if stream {
 			raw, _ := executorExecuteStream(call.raw(t))
@@ -213,20 +216,17 @@ func TestExhaustionTrackerExpiry(t *testing.T) {
 }
 
 func TestResetAuthCooldownsLooksUpAuthIndex(t *testing.T) {
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostLog, func(json.RawMessage) (any, error) { return struct{}{}, nil })
-	fake.handle(pluginabi.MethodHostAuthList, func(json.RawMessage) (any, error) {
-		return hostAuthListResponse{Files: []pluginapi.HostAuthFileEntry{
-			{ID: "opencode-go.json#aaa", AuthIndex: "idx-a"},
-			{ID: "opencode-go.json#bbb", AuthIndex: "idx-b"},
-			{ID: "other.json", AuthIndex: "idx-c"},
-		}}, nil
-	})
-	fake.handle(pluginabi.MethodHostRoutingResetCooldown, func(json.RawMessage) (any, error) {
+	fake := hosttest.Install(t)
+	fake.HandleAuths(
+		pluginapi.HostAuthFileEntry{ID: "opencode-go.json#aaa", AuthIndex: "idx-a"},
+		pluginapi.HostAuthFileEntry{ID: "opencode-go.json#bbb", AuthIndex: "idx-b"},
+		pluginapi.HostAuthFileEntry{ID: "other.json", AuthIndex: "idx-c"},
+	)
+	fake.Handle(pluginabi.MethodHostRoutingResetCooldown, func(json.RawMessage) (any, error) {
 		return pluginapi.HostRoutingResetCooldownResponse{}, nil
 	})
 	resetAuthCooldowns([]string{"opencode-go.json#bbb", "opencode-go.json#gone"})
-	calls := fake.callsTo(pluginabi.MethodHostRoutingResetCooldown)
+	calls := fake.Calls(pluginabi.MethodHostRoutingResetCooldown)
 	if len(calls) != 1 || !strings.Contains(string(calls[0]), `"auth_index":"idx-b"`) {
 		t.Fatalf("reset calls = %s", calls)
 	}

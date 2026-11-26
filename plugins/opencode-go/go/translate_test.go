@@ -10,6 +10,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 func TestPlanRoute(t *testing.T) {
@@ -278,18 +279,18 @@ func TestStreamStopsWhenClientLeaves(t *testing.T) {
 	useTestCatalog(t)
 	gateway := installFakeGateway(t, fixtureGateway(t))
 	gateway.readSize = 1 << 20
-	gateway.fake.handle(pluginabi.MethodHostStreamEmit, func(json.RawMessage) (any, error) {
-		return nil, &hostCallError{Message: "stream exec-1 is not open"}
+	gateway.fake.Handle(pluginabi.MethodHostStreamEmit, func(json.RawMessage) (any, error) {
+		return nil, &host.CallError{Message: "stream exec-1 is not open"}
 	})
 	upstreamClosed := make(chan struct{}, 1)
-	gateway.fake.handle(pluginabi.MethodHostHTTPStreamClose, func(json.RawMessage) (any, error) {
+	gateway.fake.Handle(pluginabi.MethodHostHTTPStreamClose, func(json.RawMessage) (any, error) {
 		upstreamClosed <- struct{}{}
 		return struct{}{}, nil
 	})
 	executorExecuteStream(testCall{Source: "openai", Model: "opencode-go/kimi-k3", Stream: true, Payload: clientPayload("openai", "opencode-go/kimi-k3", true)}.raw(t))
 	gateway.waitClosed("exec-1")
 	<-upstreamClosed
-	if reads := len(gateway.fake.callsTo(pluginabi.MethodHostHTTPStreamRead)); reads != 1 {
+	if reads := len(gateway.fake.Calls(pluginabi.MethodHostHTTPStreamRead)); reads != 1 {
 		t.Fatalf("kept reading after the client left: %d reads", reads)
 	}
 }
@@ -298,7 +299,7 @@ func TestStreamReadErrorEndsStream(t *testing.T) {
 	useSettings(t, defaultSettings())
 	useTestCatalog(t)
 	gateway := installFakeGateway(t, fixtureGateway(t))
-	gateway.fake.handle(pluginabi.MethodHostHTTPStreamRead, func(json.RawMessage) (any, error) {
+	gateway.fake.Handle(pluginabi.MethodHostHTTPStreamRead, func(json.RawMessage) (any, error) {
 		return hostStreamReadResponse{Payload: []byte("data: {\"choices\":[]}\n\n"), Error: "connection reset", Done: true}, nil
 	})
 	executorExecuteStream(testCall{Source: "openai", Model: "opencode-go/kimi-k3", Stream: true, Payload: clientPayload("openai", "opencode-go/kimi-k3", true)}.raw(t))

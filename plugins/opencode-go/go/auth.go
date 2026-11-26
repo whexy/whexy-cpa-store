@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // keyFileName is the source file the plugin page maintains.
@@ -287,7 +288,7 @@ func handleAuthParse(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode auth parse request: %w", errUnmarshal)
 	}
-	return okEnvelope(parseAuths(req))
+	return rpc.OK(parseAuths(req))
 }
 
 // parseAuths expands one auth file into its runtime auths: one per family

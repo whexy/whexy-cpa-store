@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // usageWindow is one quota window of GET {base}/v1/usage.
@@ -35,7 +36,7 @@ func usageURL(cfg settings) string {
 
 // fetchUsage reads the key's subscription usage. The call is free and needs
 // no session header.
-func fetchUsage(ctx context.Context, doer httpDoer, cfg settings, apiKey string) (usageReport, error) {
+func fetchUsage(ctx context.Context, doer host.Doer, cfg settings, apiKey string) (usageReport, error) {
 	resp, errDo := doer.Do(ctx, pluginapi.HTTPRequest{
 		Method:  http.MethodGet,
 		URL:     usageURL(cfg),

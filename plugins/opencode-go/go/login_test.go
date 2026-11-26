@@ -14,6 +14,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 const (
@@ -465,7 +466,7 @@ func TestRefreshDueLogins(t *testing.T) {
 	}
 	fx.serveConsole(console)
 
-	refreshDueLogins(context.Background(), newHost(""))
+	refreshDueLogins(context.Background(), host.Detached())
 	calls := console.tokenCalls()
 	if len(calls) != 1 || calls[0].Get("refresh_token") != "rt_"+dueOrg+"_refresh_0000000001" {
 		t.Fatalf("token calls = %v", calls)
@@ -474,7 +475,7 @@ func TestRefreshDueLogins(t *testing.T) {
 	if due.RefreshToken != "rt_"+dueOrg+"_refresh_0000000002" || !due.ExpiresAt.Equal(now.Add(2591999*time.Second)) || fx.saves() != 1 {
 		t.Fatalf("due login = %+v after %d saves", due, fx.saves())
 	}
-	refreshDueLogins(context.Background(), newHost(""))
+	refreshDueLogins(context.Background(), host.Detached())
 	if len(console.tokenCalls()) != 1 || fx.saves() != 1 {
 		t.Fatalf("a fresh login was refreshed again: %d calls, %d saves", len(console.tokenCalls()), fx.saves())
 	}
@@ -485,7 +486,7 @@ func TestRefreshDueLogins(t *testing.T) {
 	next := later
 	next.RefreshToken = "rt_" + laterOrg + "_refresh_0000000002"
 	store.rotated(later, next)
-	refreshDueLogins(context.Background(), newHost(""))
+	refreshDueLogins(context.Background(), host.Detached())
 	if saved, _ := parseLoginFile([]byte(fx.files["opencode-go-oauth-"+laterOrg+".json"])); saved.RefreshToken != next.RefreshToken || len(console.tokenCalls()) != 1 {
 		t.Fatalf("later login = %+v after %d calls", saved, len(console.tokenCalls()))
 	}

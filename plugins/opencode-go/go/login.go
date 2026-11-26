@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 const (
@@ -319,7 +322,7 @@ const consoleRequestTimeout = 30 * time.Second
 
 // postConsoleForm posts a form to a Console endpoint the way OpenCode's own
 // client does.
-func postConsoleForm(ctx context.Context, doer httpDoer, cfg settings, path string, form url.Values) (pluginapi.HTTPResponse, error) {
+func postConsoleForm(ctx context.Context, doer host.Doer, cfg settings, path string, form url.Values) (pluginapi.HTTPResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, consoleRequestTimeout)
 	defer cancel()
 	return doer.Do(ctx, pluginapi.HTTPRequest{
@@ -336,7 +339,7 @@ func postConsoleForm(ctx context.Context, doer httpDoer, cfg settings, path stri
 
 // requestToken calls the token endpoint. A non-2xx answer becomes an
 // *oauthError; a 2xx answer must carry both tokens.
-func requestToken(ctx context.Context, doer httpDoer, cfg settings, form url.Values) (tokenResponse, error) {
+func requestToken(ctx context.Context, doer host.Doer, cfg settings, form url.Values) (tokenResponse, error) {
 	resp, errDo := postConsoleForm(ctx, doer, cfg, "/auth/device/token", form)
 	if errDo != nil {
 		return tokenResponse{}, fmt.Errorf("reach OpenCode Console: %w", errDo)
@@ -477,7 +480,7 @@ func (s *loginStore) reject(refreshToken, message string) {
 // refresh exchanges the login's refresh token once. A token this process
 // already spent yields the tokens it was exchanged for, and a token
 // OpenCode rejected yields the same rejection, both without a request.
-func (s *loginStore) refresh(ctx context.Context, doer httpDoer, cfg settings, login loginCredential) (loginCredential, error) {
+func (s *loginStore) refresh(ctx context.Context, doer host.Doer, cfg settings, login loginCredential) (loginCredential, error) {
 	unlock := s.lock(login.OrgID)
 	defer unlock()
 	if advanced := s.current(login); advanced.RefreshToken != login.RefreshToken {
@@ -538,26 +541,26 @@ func handleAuthRefresh(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode auth refresh request: %w", errUnmarshal)
 	}
 	if !isLoginFile(req.StorageJSON) {
-		return okEnvelope(pluginapi.AuthRefreshResponse{})
+		return rpc.OK(pluginapi.AuthRefreshResponse{})
 	}
 	login, errParse := parseLoginFile(req.StorageJSON)
 	if errParse != nil {
-		return errorEnvelope("invalid_auth", "OpenCode Go auth "+req.AuthID+": "+errParse.Error(), http.StatusBadRequest), nil
+		return rpc.Fail("invalid_auth", "OpenCode Go auth "+req.AuthID+": "+errParse.Error(), rpc.WithStatus(http.StatusBadRequest)), nil
 	}
-	h := newHost(req.HostCallbackID)
-	refreshed, errRefresh := logins.refresh(backgroundCtx, h, currentSettings(), login)
+	h := host.New(req.HostCallbackID)
+	refreshed, errRefresh := logins.refresh(background.Context(), h, currentSettings(), login)
 	if errRefresh != nil {
 		var rejected *refreshRejectedError
 		if errors.As(errRefresh, &rejected) {
 			h.Log("warn", "OpenCode login signed out; it needs a new login", map[string]any{"auth_id": req.AuthID, "workspace": login.OrgID})
-			return errorEnvelope("invalid_grant", errRefresh.Error(), http.StatusUnauthorized), nil
+			return rpc.Fail("invalid_grant", errRefresh.Error(), rpc.WithStatus(http.StatusUnauthorized)), nil
 		}
-		return errorEnvelope("refresh_failed", "refresh OpenCode login: "+errRefresh.Error(), refreshErrorStatus(errRefresh)), nil
+		return rpc.Fail("refresh_failed", "refresh OpenCode login: "+errRefresh.Error(), rpc.WithStatus(refreshErrorStatus(errRefresh))), nil
 	}
 	if errSave := saveRotatedLogins(refreshed.OrgID); errSave != nil {
 		h.Log("warn", "OpenCode login refreshed but its file was not saved; the plugin tries again", map[string]any{"auth_id": req.AuthID, "error": errSave.Error()})
 	}
-	return okEnvelope(pluginapi.AuthRefreshResponse{
+	return rpc.OK(pluginapi.AuthRefreshResponse{
 		Auth: refreshed.refreshedAuthData(req.Metadata, authFamily(req.Attributes)),
 	})
 }
@@ -593,7 +596,7 @@ var loginRefreshOnce sync.Once
 // startLoginRefresh refreshes due logins for the plugin's lifetime.
 func startLoginRefresh() {
 	loginRefreshOnce.Do(func() {
-		startBackground(func(ctx context.Context) {
+		background.Go(func(ctx context.Context) {
 			timer := time.NewTimer(loginCheckDelay)
 			defer timer.Stop()
 			for {
@@ -601,7 +604,7 @@ func startLoginRefresh() {
 				case <-ctx.Done():
 					return
 				case <-timer.C:
-					refreshDueLogins(ctx, newHost(""))
+					refreshDueLogins(ctx, host.Detached())
 					timer.Reset(loginCheckInterval)
 				}
 			}
@@ -612,7 +615,7 @@ func startLoginRefresh() {
 // refreshDueLogins refreshes each enabled login that is due, once per
 // workspace, and saves every login file holding a spent refresh token. A
 // token OpenCode rejected is left alone: the login needs a new one.
-func refreshDueLogins(ctx context.Context, h host) {
+func refreshDueLogins(ctx context.Context, h host.Client) {
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
 		h.Log("warn", "OpenCode login check could not read the auth files", map[string]any{"error": errLoad.Error()})

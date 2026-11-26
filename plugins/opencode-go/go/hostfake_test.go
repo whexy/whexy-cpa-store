@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,66 +11,41 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
-// fakeHost stands in for CPA's host callbacks. Tests that install it must
-// not run in parallel, because callHost is package state.
-type fakeHost struct {
-	mu       sync.Mutex
-	calls    []fakeCall
-	handlers map[string]func(payload json.RawMessage) (any, error)
-}
-
-type fakeCall struct {
-	Method  string
-	Payload json.RawMessage
-}
-
-func installFakeHost(t *testing.T) *fakeHost {
-	t.Helper()
-	fake := &fakeHost{handlers: make(map[string]func(json.RawMessage) (any, error))}
-	previous := callHost
-	callHost = fake.call
-	t.Cleanup(func() { callHost = previous })
-	return fake
-}
-
-func (f *fakeHost) handle(method string, fn func(payload json.RawMessage) (any, error)) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.handlers[method] = fn
-}
-
-func (f *fakeHost) call(method string, payload []byte) ([]byte, error) {
-	f.mu.Lock()
-	f.calls = append(f.calls, fakeCall{Method: method, Payload: append(json.RawMessage(nil), payload...)})
-	fn := f.handlers[method]
-	f.mu.Unlock()
-	if fn == nil {
-		return errorEnvelope("host_call_failed", "unsupported host callback "+method), nil
+// The wire shapes of the host callbacks the fakes answer.
+type (
+	hostHTTPRequest struct {
+		HostCallbackID string      `json:"host_callback_id,omitempty"`
+		OperationID    string      `json:"operation_id,omitempty"`
+		Method         string      `json:"method,omitempty"`
+		URL            string      `json:"url,omitempty"`
+		Headers        http.Header `json:"headers,omitempty"`
+		Body           []byte      `json:"body,omitempty"`
 	}
-	result, errCall := fn(payload)
-	if errCall != nil {
-		var hostErr *hostCallError
-		if errors.As(errCall, &hostErr) {
-			return errorEnvelope(hostErr.Code, hostErr.Message, hostErr.Status), nil
-		}
-		return errorEnvelope("host_call_failed", errCall.Error()), nil
+	hostHTTPStreamStart struct {
+		StatusCode int         `json:"status_code"`
+		Headers    http.Header `json:"headers,omitempty"`
+		StreamID   string      `json:"stream_id,omitempty"`
 	}
-	return okEnvelope(result)
-}
-
-func (f *fakeHost) callsTo(method string) []json.RawMessage {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []json.RawMessage
-	for _, call := range f.calls {
-		if call.Method == method {
-			out = append(out, call.Payload)
-		}
+	hostStreamIDRequest struct {
+		StreamID string `json:"stream_id"`
 	}
-	return out
-}
+	hostStreamReadResponse struct {
+		Payload []byte `json:"payload,omitempty"`
+		Error   string `json:"error,omitempty"`
+		Done    bool   `json:"done,omitempty"`
+	}
+	hostStreamEmitRequest struct {
+		StreamID string `json:"stream_id"`
+		Payload  []byte `json:"payload,omitempty"`
+		Error    string `json:"error,omitempty"`
+	}
+	hostAuthListResponse struct {
+		Files []pluginapi.HostAuthFileEntry `json:"files"`
+	}
+)
 
 // fakeDoer answers HTTP requests in process.
 type fakeDoer struct {
@@ -129,9 +103,9 @@ func useModelsDev(t *testing.T) *modelsDevStore {
 	return modelsDev
 }
 
-func decodeEnvelope(t *testing.T, raw []byte) envelope {
+func decodeEnvelope(t *testing.T, raw []byte) rpc.Envelope {
 	t.Helper()
-	var env envelope
+	var env rpc.Envelope
 	if errUnmarshal := json.Unmarshal(raw, &env); errUnmarshal != nil {
 		t.Fatalf("envelope %s: %v", raw, errUnmarshal)
 	}

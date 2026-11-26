@@ -9,15 +9,19 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
+	"github.com/whexy/whexy-cpa-store/pluginkit/plugin"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 func TestRegistrationDeclaresProviderCapabilities(t *testing.T) {
 	useSettings(t, defaultSettings())
-	raw, errHandle := handleMethod(pluginabi.MethodPluginRegister, mustJSON(t, lifecycleRequest{}))
+	raw, errHandle := handleMethod(pluginabi.MethodPluginRegister, mustJSON(t, rpc.LifecycleRequest{}))
 	if errHandle != nil {
 		t.Fatal(errHandle)
 	}
-	reg := decodeResult[registration](t, raw)
+	reg := decodeResult[rpc.Registration](t, raw)
 	if reg.SchemaVersion != 6 {
 		t.Fatalf("schema = %d, want 6", reg.SchemaVersion)
 	}
@@ -55,6 +59,11 @@ func TestRegistrationWireNamesMatchHost(t *testing.T) {
 	}
 }
 
+func lifecycle(t *testing.T, configYAML string) []byte {
+	t.Helper()
+	return mustJSON(t, rpc.LifecycleRequest{ConfigYAML: []byte(configYAML)})
+}
+
 func TestParseSettings(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -85,7 +94,7 @@ func TestParseSettings(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, errParse := parseSettings([]byte(tt.yaml))
+			got, errParse := parseSettings(lifecycle(t, tt.yaml))
 			if tt.wantErr != "" {
 				if errParse == nil || !strings.Contains(errParse.Error(), tt.wantErr) {
 					t.Fatalf("err = %v, want %q", errParse, tt.wantErr)
@@ -104,7 +113,7 @@ func TestParseSettings(t *testing.T) {
 
 func TestReconfigureStoresSettings(t *testing.T) {
 	useSettings(t, defaultSettings())
-	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("model_prefix: go\nuser_agent: ua/2\n")})); errHandle != nil {
+	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, lifecycle(t, "model_prefix: go\nuser_agent: ua/2\n")); errHandle != nil {
 		t.Fatal(errHandle)
 	}
 	cfg := currentSettings()
@@ -123,7 +132,7 @@ func TestReconfigureStoresSettings(t *testing.T) {
 	if got := exposedModelID(cfg, familyFree, "big-pickle"); got != "opencode-free/big-pickle" {
 		t.Fatalf("prefixed Free ID = %q", got)
 	}
-	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("model_prefix: go\nzen_model_prefix: zen\ndisable_prefix: true\n")})); errHandle != nil {
+	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, lifecycle(t, "model_prefix: go\nzen_model_prefix: zen\ndisable_prefix: true\n")); errHandle != nil {
 		t.Fatal(errHandle)
 	}
 	cfg = currentSettings()
@@ -132,7 +141,7 @@ func TestReconfigureStoresSettings(t *testing.T) {
 			t.Fatalf("disable_prefix left the %s prefix %q: %s", family, prefix, id)
 		}
 	}
-	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, mustJSON(t, lifecycleRequest{ConfigYAML: []byte("base_url: ftp://x\n")})); errHandle == nil {
+	if _, errHandle := handleMethod(pluginabi.MethodPluginReconfigure, lifecycle(t, "base_url: ftp://x\n")); errHandle == nil {
 		t.Fatal("invalid base_url accepted")
 	}
 }
@@ -143,7 +152,7 @@ func TestIdentifiers(t *testing.T) {
 		if errHandle != nil {
 			t.Fatal(errHandle)
 		}
-		if got := decodeResult[identifierResponse](t, raw); got.Identifier != "opencode-go" {
+		if got := decodeResult[rpc.IdentifierResponse](t, raw); got.Identifier != "opencode-go" {
 			t.Fatalf("%s = %q", method, got.Identifier)
 		}
 	}
@@ -210,25 +219,28 @@ func TestExecutorMethodsAreDispatched(t *testing.T) {
 	}
 }
 
-func TestErrorEnvelopeRedactsKeys(t *testing.T) {
-	raw := errorEnvelope("upstream_error", "bad key "+testKeyA+" rejected", 401)
+// The plugin's redactor reaches every message pluginkit returns or logs.
+func TestFailuresAndLogsRedactSecrets(t *testing.T) {
+	raw := rpc.Fail("upstream_error", "bad key "+testKeyA+" rejected", rpc.WithStatus(http.StatusUnauthorized))
 	if strings.Contains(string(raw), testKeyA) || !strings.Contains(string(raw), "oc_sk_[redacted]") {
 		t.Fatalf("envelope leaks key: %s", raw)
 	}
-	var env pluginabi.Envelope
-	if errUnmarshal := json.Unmarshal(raw, &env); errUnmarshal != nil || env.Error.HTTPStatus != 401 {
-		t.Fatalf("envelope = %s", raw)
+	fake := hosttest.Install(t)
+	host.New("cb-3").Log("warn", "key "+testKeyA+" failed", map[string]any{"error": "echo " + testKeyB})
+	logs := fake.Logs()
+	if len(logs) != 1 || strings.Contains(logs[0].Message, testKeyA) || strings.Contains(logs[0].Fields["error"].(string), testKeyB) || logs[0].Fields["plugin"] != providerKey {
+		t.Fatalf("logs = %+v", logs)
 	}
 }
 
-func TestSafeHandleMethodContainsPanics(t *testing.T) {
+func TestDispatchContainsPanics(t *testing.T) {
 	useCatalogStore(t)
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPDo, func(json.RawMessage) (any, error) { panic("boom") })
+	fake := hosttest.Install(t)
+	fake.Handle(pluginabi.MethodHostHTTPDo, func(json.RawMessage) (any, error) { panic("boom") })
 	req := mustJSON(t, rpcAuthModelRequest{AuthModelRequest: pluginapi.AuthModelRequest{
 		StorageJSON: []byte(`{"type":"opencode-go","api_key":"` + testKeyA + `"}`),
 	}})
-	_, errHandle := safeHandleMethod(pluginabi.MethodModelForAuth, req)
+	_, errHandle := plugin.Dispatch(pluginabi.MethodModelForAuth, req)
 	if errHandle == nil || !strings.Contains(errHandle.Error(), "panicked") {
 		t.Fatalf("err = %v", errHandle)
 	}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 var (
@@ -140,7 +141,7 @@ func loadKeyFiles() ([]storedKeyFile, error) {
 // that fail to read are skipped; the error reports them only when nothing
 // could be read.
 func loadAuthFiles() (storedAuthFiles, error) {
-	entries, errList := hostAuthList()
+	entries, errList := host.AuthList()
 	if errList != nil {
 		return storedAuthFiles{}, errList
 	}
@@ -171,7 +172,7 @@ func readAuthFiles(entries []pluginapi.HostAuthFileEntry) (storedAuthFiles, erro
 	var failures []string
 	for _, file := range order {
 		auths := byFile[file]
-		got, errGet := hostAuthGet(auths[0].AuthIndex)
+		got, errGet := host.AuthGet(auths[0].AuthIndex)
 		if errGet != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", auths[0].Name, errGet))
 			continue
@@ -243,7 +244,7 @@ func saveKeyFile(name string, file keyFile) error {
 	if errMarshal != nil {
 		return errMarshal
 	}
-	_, errSave := hostAuthSave(name, raw)
+	_, errSave := host.AuthSave(name, raw)
 	return errSave
 }
 
@@ -310,7 +311,7 @@ func editLoginFile(name string, edit func(*loginCredential)) error {
 	if errMarshal != nil {
 		return errMarshal
 	}
-	_, errSave := hostAuthSave(stored.Name, raw)
+	_, errSave := host.AuthSave(stored.Name, raw)
 	return errSave
 }
 

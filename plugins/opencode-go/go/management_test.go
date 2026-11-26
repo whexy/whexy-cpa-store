@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -14,13 +12,15 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
 // managementFixture runs key routes against an in-memory auth directory
 // and a fake OpenCode behind host.http.do.
 type managementFixture struct {
 	t     *testing.T
-	fake  *fakeHost
+	fake  *hosttest.Fake
 	files map[string]string
 	// runtime overrides the host's runtime record per auth ID; other
 	// opencode-go auths report "active".
@@ -41,15 +41,8 @@ func newManagementFixture(t *testing.T, files map[string]string) *managementFixt
 	useModelsDev(t)
 	fx := &managementFixture{t: t, files: files, runtime: map[string]pluginapi.HostAuthFileEntry{}}
 	fx.fake = keyStoreHost(t, files)
-	fx.fake.mu.Lock()
-	list := fx.fake.handlers[pluginabi.MethodHostAuthList]
-	fx.fake.mu.Unlock()
-	fx.fake.handle(pluginabi.MethodHostAuthList, func(payload json.RawMessage) (any, error) {
-		result, errList := list(payload)
-		if errList != nil {
-			return nil, errList
-		}
-		resp := result.(hostAuthListResponse)
+	fx.fake.Handle(pluginabi.MethodHostAuthList, func(json.RawMessage) (any, error) {
+		resp := hostAuthListResponse{Files: keyStoreAuths(files)}
 		for index, entry := range resp.Files {
 			if entry.Provider != providerKey {
 				continue
@@ -80,7 +73,7 @@ func newManagementFixture(t *testing.T, files map[string]string) *managementFixt
 		t.Errorf("unexpected upstream request %s", req.URL)
 		return pluginapi.HTTPResponse{StatusCode: http.StatusNotFound}, nil
 	}
-	fx.fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+	fx.fake.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
 		var req hostHTTPRequest
 		if errUnmarshal := json.Unmarshal(payload, &req); errUnmarshal != nil {
 			return nil, errUnmarshal
@@ -100,7 +93,7 @@ func (fx *managementFixture) call(method, path string, query url.Values, body an
 	default:
 		raw = mustJSON(fx.t, value)
 	}
-	req := mustJSON(fx.t, rpcManagementRequest{
+	req := mustJSON(fx.t, manage.Request{
 		ManagementRequest: pluginapi.ManagementRequest{Method: method, Path: path, Query: query, Body: raw},
 		HostCallbackID:    "cb-mgmt",
 	})
@@ -119,15 +112,8 @@ func (fx *managementFixture) call(method, path string, query url.Values, body an
 	return result
 }
 
-// serveConsole answers OpenCode Console requests from console. Token
-// requests run under a timeout, so they open a cancellable host operation.
+// serveConsole answers OpenCode Console requests from console.
 func (fx *managementFixture) serveConsole(console *fakeConsole) {
-	ok := func(json.RawMessage) (any, error) { return struct{}{}, nil }
-	fx.fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return hostOperationResponse{OperationID: "op-1"}, nil
-	})
-	fx.fake.handle(pluginabi.MethodHostHTTPCancel, ok)
-	fx.fake.handle(pluginabi.MethodHostLog, ok)
 	reply := console.reply(fx.t, nil)
 	fx.upstream = func(req hostHTTPRequest) (any, error) {
 		got := reply(req)
@@ -137,7 +123,7 @@ func (fx *managementFixture) serveConsole(console *fakeConsole) {
 
 func (fx *managementFixture) httpCalls() []hostHTTPRequest {
 	var out []hostHTTPRequest
-	for _, payload := range fx.fake.callsTo(pluginabi.MethodHostHTTPDo) {
+	for _, payload := range fx.fake.Calls(pluginabi.MethodHostHTTPDo) {
 		var req hostHTTPRequest
 		_ = json.Unmarshal(payload, &req)
 		out = append(out, req)
@@ -146,7 +132,7 @@ func (fx *managementFixture) httpCalls() []hostHTTPRequest {
 }
 
 func (fx *managementFixture) saves() int {
-	return len(fx.fake.callsTo(pluginabi.MethodHostAuthSave))
+	return len(fx.fake.Calls(pluginabi.MethodHostAuthSave))
 }
 
 func (fx *managementFixture) storedFile(name string) keyFile {
@@ -245,48 +231,25 @@ func TestManagementRegistrationWireShape(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("routes =\n%s", strings.Join(got, "\n"))
 	}
-	if len(reg.Resources) != 2 || reg.Resources[0].Path != resourcePagePath || reg.Resources[0].Menu != displayName || reg.Resources[1].Path != logoPath || reg.Resources[1].Menu != "" {
+	if len(reg.Resources) != 2 || reg.Resources[0].Path != router.PagePath() || reg.Resources[0].Menu != displayName || reg.Resources[1].Path != router.LogoPath() || reg.Resources[1].Menu != "" {
 		t.Fatalf("resources = %+v", reg.Resources)
 	}
 }
 
 func TestManagementPageServed(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{})
-	resp := fx.call(http.MethodGet, resourcePagePath, nil, nil)
-	if resp.Status != http.StatusOK || string(resp.Body) != string(managementPage) {
+	resp := fx.call(http.MethodGet, router.PagePath(), nil, nil)
+	if resp.Status != http.StatusOK || string(resp.Body) != string(router.PageHTML()) {
 		t.Fatalf("status %d, %d bytes", resp.Status, len(resp.Body))
 	}
-	if resp.Headers.Get("Content-Type") != "text/html; charset=utf-8" || resp.Headers.Get("X-Content-Type-Options") != "nosniff" {
+	if resp.Headers.Get("Content-Type") != "text/html; charset=utf-8" || resp.Headers.Get("Content-Security-Policy") != manage.PageCSP(router.PageHTML()) {
 		t.Fatalf("headers = %v", resp.Headers)
 	}
-	if len(fx.fake.calls) != 0 {
-		t.Fatalf("serving the page called the host: %+v", fx.fake.calls)
+	if len(fx.fake.AllCalls()) != 0 {
+		t.Fatalf("serving the page called the host: %+v", fx.fake.AllCalls())
 	}
 
 	page := string(managementPage)
-	csp := resp.Headers.Get("Content-Security-Policy")
-	// One style, and two scripts: the config-editing logic, then the UI.
-	for tag, count := range map[string]int{"script": 2, "style": 1} {
-		if strings.Count(page, "<"+tag) != count {
-			t.Fatalf("page must hold %d inline <%s>", count, tag)
-		}
-		rest := page
-		var hashes []string
-		for range count {
-			start := strings.Index(rest, "<"+tag+">") + len(tag) + 2
-			stop := strings.Index(rest, "</"+tag+">")
-			sum := sha256.Sum256([]byte(rest[start:stop]))
-			hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'")
-			rest = rest[stop+len(tag)+3:]
-		}
-		if want := tag + "-src " + strings.Join(hashes, " ") + ";"; !strings.Contains(csp, want) {
-			t.Fatalf("CSP %q does not allow exactly the inline %ss", csp, tag)
-		}
-	}
-	if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "connect-src 'self'") {
-		t.Fatalf("CSP = %q", csp)
-	}
-
 	// The CSP blocks inline handlers and style attributes, so the markup
 	// must not use them; the script sets styles through the CSSOM only.
 	markup := page[:strings.Index(page, "<style>")] + page[strings.Index(page, "</style>"):strings.Index(page, "<script>")]
@@ -826,12 +789,14 @@ func TestManagementExpiredLoginUsage(t *testing.T) {
 func TestManagementUnknownRoutes(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{})
 	for _, call := range [][2]string{
-		{http.MethodGet, managementBasePath + "/nope"},
-		{http.MethodPut, keysPath},
-		{http.MethodPost, resourcePagePath},
+		{http.MethodGet, manage.APIPath(providerKey, "nope")},
+		{http.MethodPost, router.PagePath()},
 	} {
 		if resp := fx.call(call[0], call[1], nil, nil); resp.Status != http.StatusNotFound {
 			t.Fatalf("%s %s: status %d: %s", call[0], call[1], resp.Status, resp.Body)
 		}
+	}
+	if resp := fx.call(http.MethodPut, keysPath, nil, nil); resp.Status != http.StatusMethodNotAllowed || resp.Headers.Get("Allow") != "GET, POST, PATCH, DELETE" {
+		t.Fatalf("PUT keys: status %d, headers %v", resp.Status, resp.Headers)
 	}
 }

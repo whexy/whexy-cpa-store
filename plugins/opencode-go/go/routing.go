@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
 // Each login and key file keeps a priority and a weight per family, which
@@ -171,10 +171,10 @@ func sharedRouting(files []routingFileView, family func(routingFileView) routing
 	return familyRoutingView{routingValues: routingValues{Priority: priority, Weight: weight}, Mixed: !samePriority || !sameWeight}
 }
 
-func handleGetRouting(host, pluginapi.ManagementRequest) (int, any, error) {
+func handleGetRouting(manage.Request) (int, any, error) {
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
-		return 0, nil, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
+		return 0, nil, manage.Errorf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
 	}
 	return http.StatusOK, readRouting(files), nil
 }
@@ -193,7 +193,7 @@ type routingChange struct {
 // into the OpenCode Free file. A field sent as null is removed; a field
 // left out keeps the value CPA applies now, which moves a top-level field
 // of a login or key file into the family fields.
-func handleSetRouting(_ host, req pluginapi.ManagementRequest) (int, any, error) {
+func handleSetRouting(req manage.Request) (int, any, error) {
 	var body map[string]json.RawMessage
 	if errDecode := decodeBody(req.Body, &body); errDecode != nil {
 		return 0, nil, errDecode
@@ -206,7 +206,7 @@ func handleSetRouting(_ host, req pluginapi.ManagementRequest) (int, any, error)
 		}
 		var fields map[string]json.RawMessage
 		if json.Unmarshal(raw, &fields) != nil || fields == nil {
-			return 0, nil, failf(http.StatusBadRequest, "%s must be an object of priority and weight.", family)
+			return 0, nil, manage.Errorf(http.StatusBadRequest, "%s must be an object of priority and weight.", family)
 		}
 		names := familyRoutingFields[family]
 		for _, name := range []string{priorityField, weightField} {
@@ -226,14 +226,14 @@ func handleSetRouting(_ host, req pluginapi.ManagementRequest) (int, any, error)
 		}
 	}
 	if len(changes) == 0 {
-		return 0, nil, failf(http.StatusBadRequest, "Nothing to change: send go, zen or free with priority or weight.")
+		return 0, nil, manage.Errorf(http.StatusBadRequest, "Nothing to change: send go, zen or free with priority or weight.")
 	}
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
-		return 0, nil, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
+		return 0, nil, manage.Errorf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
 	}
 	if len(files.Keys) == 0 && len(files.Logins) == 0 && files.Free == nil {
-		return 0, nil, failf(http.StatusConflict, "No OpenCode Go login or key is stored yet, and OpenCode Free is off.")
+		return 0, nil, manage.Errorf(http.StatusConflict, "No OpenCode Go login or key is stored yet, and OpenCode Free is off.")
 	}
 	credentialEdit := func(extra map[string]json.RawMessage) map[string]json.RawMessage {
 		return applyRouting(extra, credentialFamilies, changes)
@@ -258,9 +258,9 @@ func handleSetRouting(_ host, req pluginapi.ManagementRequest) (int, any, error)
 		})
 	}
 	if len(failures) > 0 {
-		return 0, nil, failf(http.StatusInternalServerError, "Could not save %s", strings.Join(failures, "; "))
+		return 0, nil, manage.Errorf(http.StatusInternalServerError, "Could not save %s", strings.Join(failures, "; "))
 	}
-	return handleGetRouting(host{}, req)
+	return handleGetRouting(req)
 }
 
 func changesFor(changes []routingChange, families []modelFamily) bool {
@@ -308,13 +308,13 @@ func routingValue(name string, raw json.RawMessage) (json.RawMessage, error) {
 	}
 	var number float64
 	if json.Unmarshal(raw, &number) != nil || number != math.Trunc(number) {
-		return nil, failf(http.StatusBadRequest, "%s must be a whole number.", name)
+		return nil, manage.Errorf(http.StatusBadRequest, "%s must be a whole number.", name)
 	}
 	switch {
 	case name == weightField && (number < 0 || number > maxWeight):
-		return nil, failf(http.StatusBadRequest, "weight must be between 0 and %d.", maxWeight)
+		return nil, manage.Errorf(http.StatusBadRequest, "weight must be between 0 and %d.", maxWeight)
 	case name == priorityField && (number < math.MinInt32 || number > math.MaxInt32):
-		return nil, failf(http.StatusBadRequest, "priority must fit in 32 bits.")
+		return nil, manage.Errorf(http.StatusBadRequest, "priority must fit in 32 bits.")
 	}
 	return json.RawMessage(strconv.FormatInt(int64(number), 10)), nil
 }

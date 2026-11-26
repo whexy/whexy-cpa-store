@@ -13,6 +13,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // useFreeCatalog gives the test a free catalog store holding the fixture.
@@ -279,7 +280,7 @@ func TestRefreshCatalogsCoversFree(t *testing.T) {
 		return upstreamJSON(404, `{}`)
 	}
 	asked := fx.registerOnSave()
-	report, errRefresh := refreshCatalogs(context.Background(), newHost(""), refreshOptions{wait: time.Second})
+	report, errRefresh := refreshCatalogs(context.Background(), host.Detached(), refreshOptions{wait: time.Second})
 	if errRefresh != nil || strings.Join(report.Files, ",") != freeFileName || !report.Registered || strings.Join(*asked, ",") != freeFileName {
 		t.Fatalf("report = %+v, %v, asked %v", report, errRefresh, *asked)
 	}
@@ -287,11 +288,11 @@ func TestRefreshCatalogsCoversFree(t *testing.T) {
 		t.Fatalf("registered %v", reg.ids)
 	}
 	*asked = nil
-	if report, _ := refreshCatalogs(context.Background(), newHost(""), refreshOptions{}); len(report.Files) != 0 || len(*asked) != 0 {
+	if report, _ := refreshCatalogs(context.Background(), host.Detached(), refreshOptions{}); len(report.Files) != 0 || len(*asked) != 0 {
 		t.Fatalf("unchanged refresh = %+v", report)
 	}
 	fx.files[freeFileName] = `{"type":"opencode-go","free":true,"disabled":true}`
-	if report, _ := refreshCatalogs(context.Background(), newHost(""), refreshOptions{force: true}); len(report.Files) != 0 {
+	if report, _ := refreshCatalogs(context.Background(), host.Detached(), refreshOptions{force: true}); len(report.Files) != 0 {
 		t.Fatalf("disabled refresh = %+v", report)
 	}
 }

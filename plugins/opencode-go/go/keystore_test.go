@@ -9,6 +9,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
 )
 
 func TestKeyFileEdits(t *testing.T) {
@@ -87,46 +88,53 @@ func TestKeyFileMarshalRoundTrip(t *testing.T) {
 
 // keyStoreHost serves host.auth.list/get/save over an in-memory auth
 // directory, re-parsing saved files the way the host does.
-func keyStoreHost(t *testing.T, files map[string]string) *fakeHost {
+func keyStoreHost(t *testing.T, files map[string]string) *hosttest.Fake {
 	t.Helper()
-	fake := installFakeHost(t)
-	list := func() []pluginapi.HostAuthFileEntry {
-		var out []pluginapi.HostAuthFileEntry
-		for name, content := range files {
-			resp := parseAuths(pluginapi.AuthParseRequest{Path: "/auths/" + name, RawJSON: []byte(content)})
-			auths := resp.Auths
-			if len(auths) == 0 && resp.Handled {
-				auths = []pluginapi.AuthData{resp.Auth}
-			}
-			if !resp.Handled {
-				out = append(out, pluginapi.HostAuthFileEntry{ID: name, AuthIndex: "idx-" + name, Name: name, Provider: "claude", Path: "/auths/" + name})
-			}
-			for _, auth := range auths {
-				out = append(out, pluginapi.HostAuthFileEntry{ID: auth.ID, AuthIndex: "idx-" + auth.ID, Name: name, Provider: "opencode-go", Type: "opencode-go", Path: "/auths/" + name})
-			}
-		}
-		return out
-	}
-	fake.handle(pluginabi.MethodHostAuthList, func(json.RawMessage) (any, error) {
-		return hostAuthListResponse{Files: list()}, nil
+	fake := hosttest.Install(t)
+	fake.Handle(pluginabi.MethodHostAuthList, func(json.RawMessage) (any, error) {
+		return hostAuthListResponse{Files: keyStoreAuths(files)}, nil
 	})
-	fake.handle(pluginabi.MethodHostAuthGet, func(payload json.RawMessage) (any, error) {
+	fake.Handle(pluginabi.MethodHostAuthGet, func(payload json.RawMessage) (any, error) {
 		var req pluginapi.HostAuthGetRequest
 		_ = json.Unmarshal(payload, &req)
-		for _, entry := range list() {
+		for _, entry := range keyStoreAuths(files) {
 			if entry.AuthIndex == req.AuthIndex {
 				return pluginapi.HostAuthGetResponse{AuthIndex: req.AuthIndex, Name: entry.Name, Path: entry.Path, JSON: json.RawMessage(files[entry.Name])}, nil
 			}
 		}
 		return nil, errors.New("auth not found for auth_index " + req.AuthIndex)
 	})
-	fake.handle(pluginabi.MethodHostAuthSave, func(payload json.RawMessage) (any, error) {
+	fake.Handle(pluginabi.MethodHostAuthSave, keyStoreSave(files))
+	return fake
+}
+
+// keyStoreAuths lists the auths the host registers for files.
+func keyStoreAuths(files map[string]string) []pluginapi.HostAuthFileEntry {
+	var out []pluginapi.HostAuthFileEntry
+	for name, content := range files {
+		resp := parseAuths(pluginapi.AuthParseRequest{Path: "/auths/" + name, RawJSON: []byte(content)})
+		auths := resp.Auths
+		if len(auths) == 0 && resp.Handled {
+			auths = []pluginapi.AuthData{resp.Auth}
+		}
+		if !resp.Handled {
+			out = append(out, pluginapi.HostAuthFileEntry{ID: name, AuthIndex: "idx-" + name, Name: name, Provider: "claude", Path: "/auths/" + name})
+		}
+		for _, auth := range auths {
+			out = append(out, pluginapi.HostAuthFileEntry{ID: auth.ID, AuthIndex: "idx-" + auth.ID, Name: name, Provider: "opencode-go", Type: "opencode-go", Path: "/auths/" + name})
+		}
+	}
+	return out
+}
+
+// keyStoreSave answers host.auth.save by writing into files.
+func keyStoreSave(files map[string]string) hosttest.HandlerFunc {
+	return func(payload json.RawMessage) (any, error) {
 		var req pluginapi.HostAuthSaveRequest
 		_ = json.Unmarshal(payload, &req)
 		files[req.Name] = string(req.JSON)
 		return pluginapi.HostAuthSaveResponse{Name: req.Name, Path: "/auths/" + req.Name}, nil
-	})
-	return fake
+	}
 }
 
 func TestLoadKeyFilesGroupsAuthsByFile(t *testing.T) {

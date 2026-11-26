@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
 // OpenCode serves its free models without an account: its own client sends
@@ -197,7 +199,7 @@ func zeroCost(raw json.RawMessage) bool {
 // fetchFreeCatalog reads the gateway's live model list, which is public, and
 // lists the free models of doc it serves. A failed live list leaves the
 // models.dev list unfiltered.
-func fetchFreeCatalog(ctx context.Context, doer httpDoer, cfg settings, doc *modelsDevCatalog) (catalog, error) {
+func fetchFreeCatalog(ctx context.Context, doer host.Doer, cfg settings, doc *modelsDevCatalog) (catalog, error) {
 	live, _ := fetchLiveModelIDs(ctx, doer, cfg)
 	return doc.freeCatalog(live)
 }
@@ -208,7 +210,7 @@ func liveModelsURL(cfg settings) string {
 	return cfg.zenBaseURL() + "/v1/models"
 }
 
-func fetchLiveModelIDs(ctx context.Context, doer httpDoer, cfg settings) (map[string]bool, error) {
+func fetchLiveModelIDs(ctx context.Context, doer host.Doer, cfg settings) (map[string]bool, error) {
 	resp, errDo := doer.Do(ctx, pluginapi.HTTPRequest{
 		Method:  http.MethodGet,
 		URL:     liveModelsURL(cfg),
@@ -256,7 +258,7 @@ var freeCatalogs = newFreeCatalogStore()
 
 // get returns the free catalog, refreshing it once it is older than
 // catalogTTL. errFetch is the refresh failure when a fallback was served.
-func (s *freeCatalogStore) get(ctx context.Context, doer httpDoer, cfg settings) (catalog, catalogSource, error) {
+func (s *freeCatalogStore) get(ctx context.Context, doer host.Doer, cfg settings) (catalog, catalogSource, error) {
 	s.mu.Lock()
 	entry := s.entry
 	now := s.now()
@@ -279,7 +281,7 @@ func (s *freeCatalogStore) get(ctx context.Context, doer httpDoer, cfg settings)
 	return cat, source, errFetch
 }
 
-func (s *freeCatalogStore) refresh(ctx context.Context, doer httpDoer, cfg settings, doc *modelsDevCatalog) (catalog, error) {
+func (s *freeCatalogStore) refresh(ctx context.Context, doer host.Doer, cfg settings, doc *modelsDevCatalog) (catalog, error) {
 	fetched, errFetch := fetchFreeCatalog(ctx, doer, cfg, doc)
 	if errFetch != nil {
 		return catalog{}, errFetch
@@ -342,7 +344,7 @@ func editFreeFile(create bool, edit func(*freeFile)) error {
 	if errMarshal != nil {
 		return errMarshal
 	}
-	_, errSave := hostAuthSave(name, raw)
+	_, errSave := host.AuthSave(name, raw)
 	return errSave
 }
 
@@ -361,15 +363,15 @@ type freeView struct {
 	Unlisted     []string    `json:"unlisted"`
 }
 
-func handleGetFree(h host, _ pluginapi.ManagementRequest) (int, any, error) {
+func handleGetFree(req manage.Request) (int, any, error) {
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
-		return 0, nil, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
+		return 0, nil, manage.Errorf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
 	}
-	return http.StatusOK, newFreeView(h, files.Free), nil
+	return http.StatusOK, newFreeView(req.Host(), files.Free), nil
 }
 
-func newFreeView(h host, stored *storedFree) freeView {
+func newFreeView(h host.Client, stored *storedFree) freeView {
 	view := freeView{Models: []modelView{}, Unregistered: []string{}, Unlisted: []string{}}
 	if stored == nil {
 		return view
@@ -411,7 +413,7 @@ func newFreeView(h host, stored *storedFree) freeView {
 // handlePutFree turns OpenCode Free on, creating its auth file the first
 // time, or off: {"enabled": true}. Turning it off disables the auth; the
 // file stays, with its routing, until it is deleted on the Auth Files page.
-func handlePutFree(h host, req pluginapi.ManagementRequest) (int, any, error) {
+func handlePutFree(req manage.Request) (int, any, error) {
 	var body struct {
 		Enabled *bool `json:"enabled"`
 	}
@@ -419,16 +421,13 @@ func handlePutFree(h host, req pluginapi.ManagementRequest) (int, any, error) {
 		return 0, nil, errDecode
 	}
 	if body.Enabled == nil {
-		return 0, nil, failf(http.StatusBadRequest, "Nothing to change: send enabled.")
+		return 0, nil, manage.Errorf(http.StatusBadRequest, "Nothing to change: send enabled.")
 	}
 	errSave := editFreeFile(*body.Enabled, func(file *freeFile) {
 		file.Disabled = !*body.Enabled
 	})
-	if errors.Is(errSave, errFileGone) {
-		return handleGetFree(h, req)
+	if errSave != nil && !errors.Is(errSave, errFileGone) {
+		return 0, nil, manage.Errorf(http.StatusInternalServerError, "Could not save %s: %v", freeFileName, errSave)
 	}
-	if errSave != nil {
-		return 0, nil, failf(http.StatusInternalServerError, "Could not save %s: %v", freeFileName, errSave)
-	}
-	return handleGetFree(h, req)
+	return handleGetFree(req)
 }

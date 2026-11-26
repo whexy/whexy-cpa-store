@@ -10,6 +10,10 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
+
 	// Registers CPA's protocol translators with sdk/translator for in-process
 	// conversion between client formats and each model's native protocol.
 	_ "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator/builtin"
@@ -30,7 +34,7 @@ type rpcExecutorHTTPRequest struct {
 
 // rpcExecutorStreamResponse answers execute_stream. Returning headers
 // without chunks keeps the stream open; chunks then go through
-// hostStreamEmit and the stream ends with hostStreamClose.
+// host.EmitStream and the stream ends with host.CloseStream.
 type rpcExecutorStreamResponse struct {
 	Headers http.Header `json:"headers,omitempty"`
 }
@@ -38,7 +42,7 @@ type rpcExecutorStreamResponse struct {
 // executorCall is one inference request, resolved and ready to send.
 type executorCall struct {
 	req   rpcExecutorRequest
-	host  host
+	host  host.Client
 	cfg   settings
 	cred  credential
 	route modelRoute
@@ -57,22 +61,24 @@ type executorCall struct {
 }
 
 func executorExecute(raw []byte) ([]byte, error) {
-	call, failure := prepareExecutorCall(backgroundCtx, raw, false)
+	ctx := background.Context()
+	call, failure := prepareExecutorCall(ctx, raw, false)
 	if failure != nil {
 		return failure, nil
 	}
-	return call.execute(backgroundCtx), nil
+	return call.execute(ctx), nil
 }
 
 func executorExecuteStream(raw []byte) ([]byte, error) {
-	call, failure := prepareExecutorCall(backgroundCtx, raw, true)
+	ctx := background.Context()
+	call, failure := prepareExecutorCall(ctx, raw, true)
 	if failure != nil {
 		return failure, nil
 	}
 	if call.req.StreamID == "" {
-		return errorEnvelope("invalid_request", "executor.execute_stream request has no stream_id", http.StatusBadRequest), nil
+		return rpc.Fail("invalid_request", "executor.execute_stream request has no stream_id", rpc.WithStatus(http.StatusBadRequest)), nil
 	}
-	return call.executeStream(backgroundCtx), nil
+	return call.executeStream(ctx), nil
 }
 
 // executorCountTokens declines token counting: the Go gateway has no
@@ -80,13 +86,13 @@ func executorExecuteStream(raw []byte) ([]byte, error) {
 // model as availability-neutral; any other error status would also cool the
 // model down for real requests.
 func executorCountTokens(raw []byte) ([]byte, error) {
-	return errorEnvelope("unsupported", "OpenCode Go has no token counting endpoint", http.StatusNotFound), nil
+	return rpc.Fail("unsupported", "OpenCode Go has no token counting endpoint", rpc.WithStatus(http.StatusNotFound)), nil
 }
 
 // executorHTTPRequest declines raw requests: CPA uses it only for Codex
 // auths, and signing arbitrary URLs with the key would leak it.
 func executorHTTPRequest(raw []byte) ([]byte, error) {
-	return errorEnvelope("unsupported", "OpenCode Go does not proxy raw HTTP requests", http.StatusNotImplemented), nil
+	return rpc.Fail("unsupported", "OpenCode Go does not proxy raw HTTP requests", rpc.WithStatus(http.StatusNotImplemented)), nil
 }
 
 // prepareExecutorCall resolves the key, model and route and builds the
@@ -94,23 +100,23 @@ func executorHTTPRequest(raw []byte) ([]byte, error) {
 func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executorCall, []byte) {
 	var req rpcExecutorRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-		return nil, errorEnvelope("invalid_request", "decode executor request: "+errUnmarshal.Error(), http.StatusBadRequest)
+		return nil, rpc.Fail("invalid_request", "decode executor request: "+errUnmarshal.Error(), rpc.WithStatus(http.StatusBadRequest))
 	}
-	h := newHost(req.HostCallbackID)
+	h := host.New(req.HostCallbackID)
 	cfg := currentSettings()
 	cred, errCred := resolveCredential(req.StorageJSON, req.AuthAttributes, req.AuthMetadata)
 	if errCred != nil {
-		return nil, errorEnvelope("invalid_auth", "OpenCode Go auth "+req.AuthID+": "+errCred.Error(), http.StatusUnauthorized)
+		return nil, rpc.Fail("invalid_auth", "OpenCode Go auth "+req.AuthID+": "+errCred.Error(), rpc.WithStatus(http.StatusUnauthorized))
 	}
 	route, found := resolveRoute(ctx, h, cfg, req.Model, cred, authFamily(req.AuthAttributes))
 	if !found {
-		return nil, errorEnvelope("model_not_found", fmt.Sprintf("model %s is not in the OpenCode catalog", req.Model), http.StatusNotFound)
+		return nil, rpc.Fail("model_not_found", fmt.Sprintf("model %s is not in the OpenCode catalog", req.Model), rpc.WithStatus(http.StatusNotFound))
 	}
 	// Only Go models draw on the subscription quota, so only they are held
 	// back while that quota is exhausted; Zen models bill Console credits.
 	if route.Family == familyGo && !route.Free {
 		if block, blocked := exhaustion.active(cred.ID, req.AuthID); blocked {
-			return nil, errorEnvelopeWithRetryAfter("usage_limit", block.message(), http.StatusTooManyRequests, block.retryAfter(exhaustion.now()))
+			return nil, rpc.Fail("usage_limit", block.message(), rpc.WithStatus(http.StatusTooManyRequests), rpc.WithRetryAfter(block.retryAfter(exhaustion.now())))
 		}
 	}
 	source := normalizeFormat(req.SourceFormat)
@@ -120,7 +126,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	}
 	plan, errPlan := planRoute(source, response, route.Protocol)
 	if errPlan != nil {
-		return nil, errorEnvelope("unsupported_format", errPlan.Error(), http.StatusBadRequest)
+		return nil, rpc.Fail("unsupported_format", errPlan.Error(), rpc.WithStatus(http.StatusBadRequest))
 	}
 	payload := req.Payload
 	if len(payload) == 0 {
@@ -128,7 +134,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 	}
 	body, errBody := buildUpstreamBody(ctx, plan, payload, route.UpstreamID, stream)
 	if errBody != nil {
-		return nil, errorEnvelope("invalid_request", fmt.Sprintf("build %s request for %s: %v", route.Protocol, route.UpstreamID, errBody), http.StatusBadRequest)
+		return nil, rpc.Fail("invalid_request", fmt.Sprintf("build %s request for %s: %v", route.Protocol, route.UpstreamID, errBody), rpc.WithStatus(http.StatusBadRequest))
 	}
 	session := sessionID(req.Metadata, req.Headers, source, payload)
 	// A free pay-as-you-go model is served only to the OpenCode client: the
@@ -142,7 +148,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 		var tools cloakTools
 		body, tools, errBody = cloakBody(route.Protocol, body)
 		if errBody != nil {
-			return nil, errorEnvelope("invalid_request", fmt.Sprintf("prepare the free %s request for %s: %v", route.Protocol, route.UpstreamID, errBody), http.StatusBadRequest)
+			return nil, rpc.Fail("invalid_request", fmt.Sprintf("prepare the free %s request for %s: %v", route.Protocol, route.UpstreamID, errBody), rpc.WithStatus(http.StatusBadRequest))
 		}
 		filter = newCloakFilter(route.Protocol, tools)
 		if nativeSession, native := nativeOpenCodeSession(req.Headers); native {
@@ -172,7 +178,7 @@ func prepareExecutorCall(ctx context.Context, raw []byte, stream bool) (*executo
 // a miss so a newly added Go model works before the host next asks for the
 // model list. A refresh that fails in part still counts: models.dev and the
 // workspace config are read separately, and either may have changed.
-func resolveRoute(ctx context.Context, h host, cfg settings, model string, cred credential, family modelFamily) (modelRoute, bool) {
+func resolveRoute(ctx context.Context, h host.Client, cfg settings, model string, cred credential, family modelFamily) (modelRoute, bool) {
 	if route, ok := lookupModel(model, cred.ID, family); ok {
 		return route, true
 	}
@@ -200,7 +206,7 @@ func (c *executorCall) execute(ctx context.Context) []byte {
 	if c.cloaked && isStreamBody(body) {
 		assembled, errAssemble := assembleStream(c.route.Protocol, body)
 		if errAssemble != nil {
-			return errorEnvelope("translation_failed", errAssemble.Error(), http.StatusBadGateway)
+			return rpc.Fail("translation_failed", errAssemble.Error(), rpc.WithStatus(http.StatusBadGateway))
 		}
 		body = assembled
 	}
@@ -209,11 +215,11 @@ func (c *executorCall) execute(ctx context.Context) []byte {
 	}
 	out, errConvert := convertResponse(ctx, c.plan, c.req.Model, c.payload, c.body, body)
 	if errConvert != nil {
-		return errorEnvelope("translation_failed", errConvert.Error(), http.StatusBadGateway)
+		return rpc.Fail("translation_failed", errConvert.Error(), rpc.WithStatus(http.StatusBadGateway))
 	}
-	raw, errEnvelope := okEnvelope(pluginapi.ExecutorResponse{Payload: out, Headers: diagnosticHeaders(resp.Headers)})
+	raw, errEnvelope := rpc.OK(pluginapi.ExecutorResponse{Payload: out, Headers: diagnosticHeaders(resp.Headers)})
 	if errEnvelope != nil {
-		return errorEnvelope("plugin_error", errEnvelope.Error(), http.StatusInternalServerError)
+		return rpc.Fail("plugin_error", errEnvelope.Error(), rpc.WithStatus(http.StatusInternalServerError))
 	}
 	return raw
 }
@@ -236,10 +242,10 @@ func (c *executorCall) executeStream(ctx context.Context) []byte {
 	// own protocol, before the converter translates anything out of it.
 	converter.filter = c.filter
 	streamID := c.req.StreamID
-	startBackground(func(context.Context) { pumpStream(upstream, converter, streamID) })
-	raw, errEnvelope := okEnvelope(rpcExecutorStreamResponse{Headers: diagnosticHeaders(upstream.Headers)})
+	background.Go(func(context.Context) { pumpStream(upstream, converter, streamID) })
+	raw, errEnvelope := rpc.OK(rpcExecutorStreamResponse{Headers: diagnosticHeaders(upstream.Headers)})
 	if errEnvelope != nil {
-		return errorEnvelope("plugin_error", errEnvelope.Error(), http.StatusInternalServerError)
+		return rpc.Fail("plugin_error", errEnvelope.Error(), rpc.WithStatus(http.StatusInternalServerError))
 	}
 	return raw
 }
@@ -248,13 +254,13 @@ func (c *executorCall) executeStream(ctx context.Context) []byte {
 // ends. It has no deadline of its own: the host cancels the upstream read
 // when the client disconnects, and plugin shutdown cancels the context the
 // upstream stream was opened with.
-func pumpStream(upstream *hostHTTPStream, converter *streamConverter, streamID string) {
+func pumpStream(upstream *host.Stream, converter *streamConverter, streamID string) {
 	closed := false
 	closeStream := func(message string) {
 		if !closed {
 			closed = true
 			upstream.Close()
-			hostStreamClose(streamID, message)
+			host.CloseStream(streamID, message)
 		}
 	}
 	defer closeStream("OpenCode Go stream ended unexpectedly")
@@ -266,7 +272,7 @@ func pumpStream(upstream *hostHTTPStream, converter *streamConverter, streamID s
 			if len(chunk) == 0 {
 				continue
 			}
-			if hostStreamEmit(streamID, chunk) != nil {
+			if host.EmitStream(streamID, chunk) != nil {
 				closeStream("")
 				return false
 			}
@@ -311,9 +317,9 @@ func pumpStream(upstream *hostHTTPStream, converter *streamConverter, streamID s
 
 func transportFailure(err error) []byte {
 	if errors.Is(err, context.Canceled) {
-		return errorEnvelope("canceled", "OpenCode Go request canceled", http.StatusRequestTimeout)
+		return rpc.Fail("canceled", "OpenCode Go request canceled", rpc.WithStatus(http.StatusRequestTimeout))
 	}
-	return errorEnvelope("upstream_unreachable", "OpenCode Go request failed: "+err.Error(), http.StatusBadGateway)
+	return rpc.Fail("upstream_unreachable", "OpenCode Go request failed: "+err.Error(), rpc.WithStatus(http.StatusBadGateway))
 }
 
 // upstreamFailure maps a gateway error to the status CPA acts on: 401, 402
@@ -325,22 +331,22 @@ func (c *executorCall) upstreamFailure(ctx context.Context, status int, headers 
 	switch {
 	case upstream.Type == upstreamUsageLimit:
 		block := c.blockForUsageLimit(ctx)
-		return errorEnvelopeWithRetryAfter("usage_limit", block.message()+": "+message, http.StatusTooManyRequests, block.retryAfter(exhaustion.now()))
+		return rpc.Fail("usage_limit", block.message()+": "+message, rpc.WithStatus(http.StatusTooManyRequests), rpc.WithRetryAfter(block.retryAfter(exhaustion.now())))
 	case upstream.Type == upstreamProtocolUnsupported:
 		c.host.Log("error", "OpenCode Go rejected the endpoint the catalog names for a model", map[string]any{
 			"model":    c.route.UpstreamID,
 			"protocol": string(c.route.Protocol),
 			"error":    message,
 		})
-		return errorEnvelope("protocol_unsupported", message, http.StatusBadRequest)
+		return rpc.Fail("protocol_unsupported", message, rpc.WithStatus(http.StatusBadRequest))
 	case strings.Contains(strings.ToLower(upstream.Message), "model is unavailable"):
-		return errorEnvelope("model_unavailable", message, http.StatusNotFound)
+		return rpc.Fail("model_unavailable", message, rpc.WithStatus(http.StatusNotFound))
 	case status >= 500:
-		return errorEnvelope("upstream_error", message, http.StatusBadGateway)
+		return rpc.Fail("upstream_error", message, rpc.WithStatus(http.StatusBadGateway))
 	case status >= 400:
-		return errorEnvelope("upstream_error", message, status)
+		return rpc.Fail("upstream_error", message, rpc.WithStatus(status))
 	default:
-		return errorEnvelope("upstream_error", message, http.StatusBadGateway)
+		return rpc.Fail("upstream_error", message, rpc.WithStatus(http.StatusBadGateway))
 	}
 }
 

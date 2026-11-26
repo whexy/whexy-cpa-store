@@ -15,6 +15,9 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 const (
@@ -83,11 +86,11 @@ func handleLoginStart(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode login start request: %w", errUnmarshal)
 	}
-	resp, errStart := devices.start(backgroundCtx, newHost(req.HostCallbackID), currentSettings())
+	resp, errStart := devices.start(background.Context(), host.New(req.HostCallbackID), currentSettings())
 	if errStart != nil {
-		return errorEnvelope("login_start_failed", "start OpenCode login: "+errStart.Error(), http.StatusBadGateway), nil
+		return rpc.Fail("login_start_failed", "start OpenCode login: "+errStart.Error(), rpc.WithStatus(http.StatusBadGateway)), nil
 	}
-	return okEnvelope(resp)
+	return rpc.OK(resp)
 }
 
 func handleLoginPoll(raw []byte) ([]byte, error) {
@@ -95,13 +98,13 @@ func handleLoginPoll(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode login poll request: %w", errUnmarshal)
 	}
-	h := newHost(req.HostCallbackID)
-	return okEnvelope(devices.poll(backgroundCtx, h, currentSettings(), strings.TrimSpace(req.State), req.Metadata))
+	h := host.New(req.HostCallbackID)
+	return rpc.OK(devices.poll(background.Context(), h, currentSettings(), strings.TrimSpace(req.State), req.Metadata))
 }
 
 // start asks the Console for a device code. The URL it returns carries the
 // user code, so the approval page needs no typing.
-func (d *deviceFlows) start(ctx context.Context, doer httpDoer, cfg settings) (pluginapi.AuthLoginStartResponse, error) {
+func (d *deviceFlows) start(ctx context.Context, doer host.Doer, cfg settings) (pluginapi.AuthLoginStartResponse, error) {
 	resp, errDo := postConsoleForm(ctx, doer, cfg, "/auth/device/code", url.Values{
 		"client_id":          {loginClientID},
 		"supports_org_scope": {"true"},
@@ -238,7 +241,7 @@ func pollFailed(message string) pluginapi.AuthLoginPollResponse {
 // poll makes at most one token request per call, and none while the
 // Console's interval has not passed: Management Center polls every three
 // seconds, and the Console asks for five or more.
-func (d *deviceFlows) poll(ctx context.Context, h host, cfg settings, state string, metadata map[string]any) pluginapi.AuthLoginPollResponse {
+func (d *deviceFlows) poll(ctx context.Context, h host.Client, cfg settings, state string, metadata map[string]any) pluginapi.AuthLoginPollResponse {
 	flow := d.flow(state, metadata)
 	flow.mu.Lock()
 	defer flow.mu.Unlock()
@@ -304,7 +307,7 @@ func (d *deviceFlows) poll(ctx context.Context, h host, cfg settings, state stri
 
 // completeLogin turns a device token into a login, naming it after the
 // workspace and account when the Console says who they are.
-func completeLogin(ctx context.Context, h host, cfg settings, token tokenResponse, now time.Time) (loginCredential, error) {
+func completeLogin(ctx context.Context, h host.Client, cfg settings, token tokenResponse, now time.Time) (loginCredential, error) {
 	login := loginCredential{
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
@@ -367,7 +370,7 @@ func (a consoleAccount) defaultOrg() string {
 
 // lookupAccount reads the signed-in user and their workspaces. Either may
 // fail; the login works without them.
-func lookupAccount(ctx context.Context, doer httpDoer, cfg settings, accessToken string) (consoleAccount, error) {
+func lookupAccount(ctx context.Context, doer host.Doer, cfg settings, accessToken string) (consoleAccount, error) {
 	var account consoleAccount
 	var user struct {
 		Email string `json:"email"`
@@ -378,7 +381,7 @@ func lookupAccount(ctx context.Context, doer httpDoer, cfg settings, accessToken
 	return account, errors.Join(errUser, errOrgs)
 }
 
-func getConsoleJSON(ctx context.Context, doer httpDoer, cfg settings, path, accessToken string, out any) error {
+func getConsoleJSON(ctx context.Context, doer host.Doer, cfg settings, path, accessToken string, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, consoleRequestTimeout)
 	defer cancel()
 	resp, errDo := doer.Do(ctx, pluginapi.HTTPRequest{

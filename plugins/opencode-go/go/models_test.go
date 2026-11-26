@@ -20,6 +20,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // configWith is the workspace config fixture with the Go models it names
@@ -104,10 +105,8 @@ func (fx *managementFixture) registerOnSave() *[]string {
 			previous[auth.ID] = auth
 		}
 	}
-	fx.fake.mu.Lock()
-	save := fx.fake.handlers[pluginabi.MethodHostAuthSave]
-	fx.fake.mu.Unlock()
-	fx.fake.handle(pluginabi.MethodHostAuthSave, func(payload json.RawMessage) (any, error) {
+	save := keyStoreSave(fx.files)
+	fx.fake.Handle(pluginabi.MethodHostAuthSave, func(payload json.RawMessage) (any, error) {
 		result, errSave := save(payload)
 		if errSave != nil {
 			return nil, errSave
@@ -370,7 +369,7 @@ func TestBackgroundRecheckRewritesOnlyChangedFiles(t *testing.T) {
 	fx.registerAll()
 	asked := fx.registerOnSave()
 
-	recheckCatalogs(context.Background(), newHost(""))
+	recheckCatalogs(context.Background(), host.Detached())
 	if fx.saves() != 0 || len(*asked) != 0 {
 		t.Fatalf("unchanged catalogs rewrote files: %d saves", fx.saves())
 	}
@@ -378,7 +377,7 @@ func TestBackgroundRecheckRewritesOnlyChangedFiles(t *testing.T) {
 	// Only the key's workspace changed, and a token limit is a change.
 	limited := configWith(t, map[string]any{"kimi-k3": map[string]any{"limit": map[string]any{"context": 1, "output": 1}}})
 	fx.serveCatalogs(map[string][]byte{testAccessToken: original, testKeyA: limited, testKeyB: original})
-	recheckCatalogs(context.Background(), newHost(""))
+	recheckCatalogs(context.Background(), host.Detached())
 	if fx.saves() != 1 || strings.Join(*asked, ",") != authIDFor(keyFileName, keyIDFor(testKeyA)) {
 		t.Fatalf("saves %d, asked %v", fx.saves(), *asked)
 	}
@@ -386,7 +385,7 @@ func TestBackgroundRecheckRewritesOnlyChangedFiles(t *testing.T) {
 		t.Fatal("the unchanged login was rewritten")
 	}
 	logged := false
-	for _, payload := range fx.fake.callsTo(pluginabi.MethodHostLog) {
+	for _, payload := range fx.fake.Calls(pluginabi.MethodHostLog) {
 		logged = logged || strings.Contains(string(payload), "catalog changed")
 	}
 	if !logged {
@@ -416,7 +415,7 @@ func TestReparseAuthFilesReplacesStaleAuths(t *testing.T) {
 	asked := fx.registerOnSave()
 	fetched := len(fx.httpCalls())
 
-	reparseAuthFiles(context.Background(), newHost(""))
+	reparseAuthFiles(context.Background(), host.Detached())
 	keyA := authIDFor(keyFileName, keyIDFor(testKeyA))
 	want := []string{testLoginName, testLoginName + zenAuthSuffix, keyA, keyA + zenAuthSuffix}
 	slices.Sort(*asked)
@@ -437,7 +436,7 @@ func TestRefreshStopsWithContext(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{"opencode-go.json": `{"type":"opencode-go","api_key":"` + testKeyA + `"}`})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	report, errRefresh := refreshCatalogs(ctx, newHost(""), refreshOptions{})
+	report, errRefresh := refreshCatalogs(ctx, host.Detached(), refreshOptions{})
 	if errRefresh != nil || len(report.Failures) != 2 || fx.saves() != 0 || len(fx.httpCalls()) != 0 {
 		t.Fatalf("report = %+v, %v", report, errRefresh)
 	}
@@ -516,7 +515,7 @@ func TestManagementRouting(t *testing.T) {
 	if resp := fx.call(http.MethodPatch, loginsPath, nil, map[string]any{"id": testLoginName, "disabled": true}); resp.Status != http.StatusOK {
 		t.Fatalf("disable login: %d %s", resp.Status, resp.Body)
 	}
-	if _, errRefresh := refreshCatalogs(context.Background(), newHost(""), refreshOptions{force: true}); errRefresh != nil {
+	if _, errRefresh := refreshCatalogs(context.Background(), host.Detached(), refreshOptions{force: true}); errRefresh != nil {
 		t.Fatal(errRefresh)
 	}
 	for _, name := range []string{testLoginName, "opencode-go.json", "single.json"} {
@@ -586,13 +585,13 @@ func TestAuthRefreshKeepsRoutingFieldsAndMark(t *testing.T) {
 
 func TestLogoResource(t *testing.T) {
 	fx := newManagementFixture(t, map[string]string{})
-	resp := fx.call(http.MethodGet, logoPath, nil, nil)
+	resp := fx.call(http.MethodGet, router.LogoPath(), nil, nil)
 	if resp.Status != http.StatusOK || !bytes.Equal(resp.Body, logoSVG) || resp.Headers.Get("Content-Type") != "image/svg+xml" ||
 		resp.Headers.Get("X-Content-Type-Options") != "nosniff" || resp.Headers.Get("Content-Security-Policy") != "default-src 'none'" {
 		t.Fatalf("status %d, headers %v", resp.Status, resp.Headers)
 	}
-	if len(fx.fake.calls) != 0 {
-		t.Fatalf("serving the logo called the host: %+v", fx.fake.calls)
+	if len(fx.fake.AllCalls()) != 0 {
+		t.Fatalf("serving the logo called the host: %+v", fx.fake.AllCalls())
 	}
 	var svg struct {
 		XMLName xml.Name
@@ -606,13 +605,13 @@ func TestLogoResource(t *testing.T) {
 	}
 
 	meta := pluginRegistration().Metadata
-	if meta.Logo != logoPath || html.EscapeString(meta.Logo) != meta.Logo {
+	if meta.Logo != router.LogoPath() || html.EscapeString(meta.Logo) != meta.Logo {
 		t.Fatalf("Metadata.Logo = %q", meta.Logo)
 	}
 	reg := decodeResult[pluginapi.ManagementRegistrationResponse](t, mustManagementRegister(t))
 	found := false
 	for _, resource := range reg.Resources {
-		found = found || (resource.Path == logoPath && resource.Menu == "")
+		found = found || (resource.Path == router.LogoPath() && resource.Menu == "")
 	}
 	if !found {
 		t.Fatalf("resources = %+v", reg.Resources)

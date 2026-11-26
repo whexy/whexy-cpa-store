@@ -14,14 +14,14 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
 // The usage routes read the endpoints behind the Console's workspace usage
 // page. The Console bundle labels them internal, so their shapes are the ones
 // observed in October 2026 and may change without notice.
 const (
-	workspacesPath = managementBasePath + "/workspaces"
-
 	// usageTTL and requestLogTTL are how long the Console's own page reuses
 	// these answers; asking more often only spends OpenCode's rate limit.
 	usageTTL      = 30 * time.Second
@@ -100,7 +100,7 @@ func (w usageWorkspace) view() workspaceView {
 
 // listWorkspaces groups every login and key by workspace. failures name the
 // keys whose workspace could not be learned.
-func listWorkspaces(ctx context.Context, h host) ([]usageWorkspace, []string, error) {
+func listWorkspaces(ctx context.Context, h host.Client) ([]usageWorkspace, []string, error) {
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
 		return nil, nil, errLoad
@@ -155,7 +155,7 @@ func listWorkspaces(ctx context.Context, h host) ([]usageWorkspace, []string, er
 // model lists and the usage share one read every catalogTTL; a fallback to
 // another credential's config would name the wrong workspace, so only the
 // key's own config counts.
-func keyWorkspace(ctx context.Context, doer httpDoer, cfg settings, entry keyEntry) (string, error) {
+func keyWorkspace(ctx context.Context, doer host.Doer, cfg settings, entry keyEntry) (string, error) {
 	base, _ := modelsDev.cached()
 	cat, source, errFetch := catalogs.forKey(ctx, doer, cfg, keyCredential(entry), base)
 	if errFetch != nil && source != catalogStale {
@@ -172,10 +172,11 @@ type workspaceList struct {
 	Failures   []string        `json:"failures,omitempty"`
 }
 
-func handleListWorkspaces(h host, _ pluginapi.ManagementRequest) (int, any, error) {
+func handleListWorkspaces(req manage.Request) (int, any, error) {
+	h := req.Host()
 	found, failures, errList := listWorkspaces(context.Background(), h)
 	if errList != nil {
-		return 0, nil, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errList)
+		return 0, nil, manage.Errorf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errList)
 	}
 	list := workspaceList{Workspaces: []workspaceView{}, Failures: failures}
 	for _, workspace := range found {
@@ -201,11 +202,11 @@ func parseUsageQuery(query url.Values, now time.Time) (usageQuery, error) {
 		out.Range = rangeToday
 	case rangeToday, range7d, range30d, rangeAll:
 	default:
-		return usageQuery{}, failf(http.StatusBadRequest, "Unknown range %q: use today, 7d, 30d or all.", out.Range)
+		return usageQuery{}, manage.Errorf(http.StatusBadRequest, "Unknown range %q: use today, 7d, 30d or all.", out.Range)
 	}
 	if out.Range != rangeToday {
 		if rawSince != "" {
-			return usageQuery{}, failf(http.StatusBadRequest, "since applies only to the today range.")
+			return usageQuery{}, manage.Errorf(http.StatusBadRequest, "since applies only to the today range.")
 		}
 		return out, nil
 	}
@@ -217,7 +218,7 @@ func parseUsageQuery(query url.Values, now time.Time) (usageQuery, error) {
 	// The start of anyone's day lies within the last 26 hours; the margins
 	// allow for a browser clock that is off.
 	if errParse != nil || since.Before(now.Add(-36*time.Hour)) || since.After(now.Add(time.Hour)) {
-		return usageQuery{}, failf(http.StatusBadRequest, "since must be the start of today as an ISO time, such as 2026-10-21T04:00:00.000Z.")
+		return usageQuery{}, manage.Errorf(http.StatusBadRequest, "since must be the start of today as an ISO time, such as 2026-10-21T04:00:00.000Z.")
 	}
 	out.Since = since.UTC()
 	return out, nil
@@ -547,7 +548,7 @@ var consoleUsage = newUsageStore()
 // get answers a Console GET from the cache while it is fresh. It keeps 200
 // and 403 answers only: a refusal lasts as long as the credential's rights,
 // and anything else is worth asking again.
-func (s *usageStore) get(ctx context.Context, doer httpDoer, cfg settings, reader workspaceReader, path string, query url.Values, ttl time.Duration) (pluginapi.HTTPResponse, error) {
+func (s *usageStore) get(ctx context.Context, doer host.Doer, cfg settings, reader workspaceReader, path string, query url.Values, ttl time.Duration) (pluginapi.HTTPResponse, error) {
 	target := cfg.consoleURL() + path + "?" + query.Encode()
 	key := reader.cred.ID + " " + target
 	s.mu.Lock()
@@ -578,7 +579,7 @@ func (s *usageStore) get(ctx context.Context, doer httpDoer, cfg settings, reade
 	return resp, nil
 }
 
-func (s *usageStore) getJSON(ctx context.Context, doer httpDoer, cfg settings, reader workspaceReader, path string, query url.Values, ttl time.Duration, out any) error {
+func (s *usageStore) getJSON(ctx context.Context, doer host.Doer, cfg settings, reader workspaceReader, path string, query url.Values, ttl time.Duration, out any) error {
 	resp, errGet := s.get(ctx, doer, cfg, reader, path, query, ttl)
 	if errGet != nil {
 		return errGet
@@ -627,7 +628,7 @@ func describeUsageFailure(err error, reader workspaceReader) string {
 		}
 		return "OpenCode refused the request: " + upstream.Error()
 	}
-	var hostErr *hostCallError
+	var hostErr *host.CallError
 	if errors.As(err, &hostErr) {
 		return "Could not reach OpenCode: " + hostErr.Message
 	}
@@ -636,7 +637,7 @@ func describeUsageFailure(err error, reader workspaceReader) string {
 
 // read collects one workspace's usage; the four parts are read at once and
 // each reports its own failure.
-func (s *usageStore) read(ctx context.Context, doer httpDoer, cfg settings, workspace usageWorkspace, q usageQuery) workspaceUsageView {
+func (s *usageStore) read(ctx context.Context, doer host.Doer, cfg settings, workspace usageWorkspace, q usageQuery) workspaceUsageView {
 	reader := workspace.readers[0]
 	view := workspaceUsageView{Workspace: workspace.view(), Range: q.Range}
 	var wg sync.WaitGroup
@@ -648,7 +649,7 @@ func (s *usageStore) read(ctx context.Context, doer httpDoer, cfg settings, work
 	return view
 }
 
-func (s *usageStore) summary(ctx context.Context, doer httpDoer, cfg settings, reader workspaceReader, q usageQuery) usageSummaryView {
+func (s *usageStore) summary(ctx context.Context, doer host.Doer, cfg settings, reader workspaceReader, q usageQuery) usageSummaryView {
 	var doc consoleSummary
 	if errRead := s.getJSON(ctx, doer, cfg, reader, "/api/usage/summary", q.consoleParams(), usageTTL, &doc); errRead != nil {
 		return usageSummaryView{Error: describeUsageFailure(errRead, reader)}
@@ -656,7 +657,7 @@ func (s *usageStore) summary(ctx context.Context, doer httpDoer, cfg settings, r
 	return newUsageSummaryView(doc)
 }
 
-func (s *usageStore) chart(ctx context.Context, doer httpDoer, cfg settings, reader workspaceReader, q usageQuery) usageChartView {
+func (s *usageStore) chart(ctx context.Context, doer host.Doer, cfg settings, reader workspaceReader, q usageQuery) usageChartView {
 	params := q.consoleParams()
 	params.Set("bucket", q.bucket())
 	view := usageChartView{Bucket: q.bucket(), Buckets: []usageBucketView{}}
@@ -669,7 +670,7 @@ func (s *usageStore) chart(ctx context.Context, doer httpDoer, cfg settings, rea
 	return view
 }
 
-func (s *usageStore) models(ctx context.Context, doer httpDoer, cfg settings, reader workspaceReader, q usageQuery) modelUsageList {
+func (s *usageStore) models(ctx context.Context, doer host.Doer, cfg settings, reader workspaceReader, q usageQuery) modelUsageList {
 	out := modelUsageList{Rows: []modelUsageView{}}
 	for page := 1; ; page++ {
 		params := q.consoleParams()
@@ -704,7 +705,7 @@ func (s *usageStore) models(ctx context.Context, doer httpDoer, cfg settings, re
 
 // requestLog reads the latest requests, whatever the range, as the
 // Console's overview does.
-func (s *usageStore) requestLog(ctx context.Context, doer httpDoer, cfg settings, reader workspaceReader) requestLogView {
+func (s *usageStore) requestLog(ctx context.Context, doer host.Doer, cfg settings, reader workspaceReader) requestLogView {
 	params := url.Values{"category": {"inference"}, "limit": {strconv.Itoa(requestLogLimit)}}
 	var doc consoleRequestLog
 	errRead := s.getJSON(ctx, doer, cfg, reader, "/api/request-logs", params, requestLogTTL, &doc)
@@ -741,10 +742,11 @@ func (s *usageStore) requestLog(ctx context.Context, doer httpDoer, cfg settings
 	return out
 }
 
-func handleWorkspaceUsage(h host, req pluginapi.ManagementRequest) (int, any, error) {
+func handleWorkspaceUsage(req manage.Request) (int, any, error) {
+	h := req.Host()
 	id := strings.TrimSpace(req.Query.Get("id"))
 	if id == "" {
-		return 0, nil, failf(http.StatusBadRequest, "Missing workspace id.")
+		return 0, nil, manage.Errorf(http.StatusBadRequest, "Missing workspace id.")
 	}
 	q, errQuery := parseUsageQuery(req.Query, consoleUsage.now())
 	if errQuery != nil {
@@ -752,16 +754,16 @@ func handleWorkspaceUsage(h host, req pluginapi.ManagementRequest) (int, any, er
 	}
 	found, _, errList := listWorkspaces(context.Background(), h)
 	if errList != nil {
-		return 0, nil, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errList)
+		return 0, nil, manage.Errorf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errList)
 	}
 	for _, workspace := range found {
 		if workspace.ID != id {
 			continue
 		}
 		if workspace.readers[0].expired {
-			return 0, nil, failf(http.StatusUnprocessableEntity, "The login's token expired; %s.", logInAgain)
+			return 0, nil, manage.Errorf(http.StatusUnprocessableEntity, "The login's token expired; %s.", logInAgain)
 		}
 		return http.StatusOK, consoleUsage.read(context.Background(), h, currentSettings(), workspace, q), nil
 	}
-	return 0, nil, failf(http.StatusNotFound, "No login or key reaches that workspace now. Reload the list.")
+	return 0, nil, manage.Errorf(http.StatusNotFound, "No login or key reaches that workspace now. Reload the list.")
 }

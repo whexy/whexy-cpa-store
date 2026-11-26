@@ -11,6 +11,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
 )
 
 // gatewayReply is one fake upstream response.
@@ -24,7 +25,7 @@ type gatewayReply struct {
 // records the executor stream it writes.
 type fakeGateway struct {
 	t     *testing.T
-	fake  *fakeHost
+	fake  *hosttest.Fake
 	reply func(req hostHTTPRequest) gatewayReply
 	// readSize splits streamed bodies into reads of this many bytes so the
 	// SSE splitter sees lines cut at arbitrary points.
@@ -42,25 +43,19 @@ func installFakeGateway(t *testing.T, reply func(req hostHTTPRequest) gatewayRep
 	t.Helper()
 	gateway := &fakeGateway{
 		t:        t,
-		fake:     installFakeHost(t),
+		fake:     hosttest.Install(t),
 		reply:    reply,
 		readSize: 37,
 		bodies:   make(map[string][]byte),
 		emitted:  make(map[string][][]byte),
 		closes:   make(map[string]chan string),
 	}
-	ok := func(json.RawMessage) (any, error) { return struct{}{}, nil }
-	gateway.fake.handle(pluginabi.MethodHostHTTPOperationOpen, func(json.RawMessage) (any, error) {
-		return hostOperationResponse{OperationID: "op-1"}, nil
-	})
-	gateway.fake.handle(pluginabi.MethodHostHTTPCancel, ok)
-	gateway.fake.handle(pluginabi.MethodHostLog, ok)
-	gateway.fake.handle(pluginabi.MethodHostHTTPStreamClose, ok)
-	gateway.fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+	gateway.fake.Handle(pluginabi.MethodHostHTTPStreamClose, func(json.RawMessage) (any, error) { return struct{}{}, nil })
+	gateway.fake.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
 		reply := gateway.record(payload)
 		return pluginapi.HTTPResponse{StatusCode: reply.Status, Headers: reply.Headers, Body: reply.Body}, nil
 	})
-	gateway.fake.handle(pluginabi.MethodHostHTTPDoStream, func(payload json.RawMessage) (any, error) {
+	gateway.fake.Handle(pluginabi.MethodHostHTTPDoStream, func(payload json.RawMessage) (any, error) {
 		reply := gateway.record(payload)
 		gateway.mu.Lock()
 		gateway.nextID++
@@ -69,7 +64,7 @@ func installFakeGateway(t *testing.T, reply func(req hostHTTPRequest) gatewayRep
 		gateway.mu.Unlock()
 		return hostHTTPStreamStart{StatusCode: reply.Status, Headers: reply.Headers, StreamID: id}, nil
 	})
-	gateway.fake.handle(pluginabi.MethodHostHTTPStreamRead, func(payload json.RawMessage) (any, error) {
+	gateway.fake.Handle(pluginabi.MethodHostHTTPStreamRead, func(payload json.RawMessage) (any, error) {
 		var req hostStreamIDRequest
 		_ = json.Unmarshal(payload, &req)
 		gateway.mu.Lock()
@@ -82,7 +77,7 @@ func installFakeGateway(t *testing.T, reply func(req hostHTTPRequest) gatewayRep
 		gateway.bodies[req.StreamID] = rest[size:]
 		return hostStreamReadResponse{Payload: rest[:size]}, nil
 	})
-	gateway.fake.handle(pluginabi.MethodHostStreamEmit, func(payload json.RawMessage) (any, error) {
+	gateway.fake.Handle(pluginabi.MethodHostStreamEmit, func(payload json.RawMessage) (any, error) {
 		var req hostStreamEmitRequest
 		_ = json.Unmarshal(payload, &req)
 		gateway.mu.Lock()
@@ -90,7 +85,7 @@ func installFakeGateway(t *testing.T, reply func(req hostHTTPRequest) gatewayRep
 		gateway.mu.Unlock()
 		return struct{}{}, nil
 	})
-	gateway.fake.handle(pluginabi.MethodHostStreamClose, func(payload json.RawMessage) (any, error) {
+	gateway.fake.Handle(pluginabi.MethodHostStreamClose, func(payload json.RawMessage) (any, error) {
 		var req hostStreamEmitRequest
 		_ = json.Unmarshal(payload, &req)
 		gateway.closeChannel(req.StreamID) <- req.Error

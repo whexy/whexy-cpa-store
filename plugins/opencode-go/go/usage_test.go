@@ -10,6 +10,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host/hosttest"
 )
 
 func TestParseUsageFixture(t *testing.T) {
@@ -104,8 +105,8 @@ func TestQuotaResponse(t *testing.T) {
 
 func TestQuotaFetchUsesPhysicalFileAndKeyID(t *testing.T) {
 	useSettings(t, defaultSettings())
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+	fake := hosttest.Install(t)
+	fake.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
 		var req hostHTTPRequest
 		_ = json.Unmarshal(payload, &req)
 		if req.HostCallbackID != "cb-q" || req.URL != "https://opencode.ai/inference/go/v1/usage" || req.Headers.Get("Authorization") != "Bearer "+testKeyB {
@@ -138,8 +139,8 @@ func TestQuotaFetchUsesPhysicalFileAndKeyID(t *testing.T) {
 
 func TestQuotaFetchWithLogin(t *testing.T) {
 	useSettings(t, defaultSettings())
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
+	fake := hosttest.Install(t)
+	fake.Handle(pluginabi.MethodHostHTTPDo, func(payload json.RawMessage) (any, error) {
 		var req hostHTTPRequest
 		_ = json.Unmarshal(payload, &req)
 		if req.URL != "https://opencode.ai/inference/go/v1/usage" || req.Headers.Get("Authorization") != "Bearer "+testAccessToken {
@@ -175,15 +176,15 @@ func TestQuotaFetchWithLogin(t *testing.T) {
 	if env := decodeEnvelope(t, raw); env.OK || env.Error.HTTPStatus != 401 || !strings.Contains(env.Error.Message, "log in again") {
 		t.Fatalf("expired = %s", raw)
 	}
-	if len(fake.callsTo(pluginabi.MethodHostHTTPDo)) != 1 {
+	if len(fake.Calls(pluginabi.MethodHostHTTPDo)) != 1 {
 		t.Fatal("expired login fetched usage")
 	}
 }
 
 func TestQuotaFetchErrors(t *testing.T) {
 	useSettings(t, defaultSettings())
-	fake := installFakeHost(t)
-	fake.handle(pluginabi.MethodHostHTTPDo, func(json.RawMessage) (any, error) {
+	fake := hosttest.Install(t)
+	fake.Handle(pluginabi.MethodHostHTTPDo, func(json.RawMessage) (any, error) {
 		return pluginapi.HTTPResponse{StatusCode: 500, Body: []byte("boom")}, nil
 	})
 	missing := mustJSON(t, rpcQuotaFetchRequest{QuotaFetchRequest: pluginapi.QuotaFetchRequest{StorageJSON: multiKeyFile(t)}})

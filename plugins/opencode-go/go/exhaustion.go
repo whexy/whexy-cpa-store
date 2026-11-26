@@ -7,6 +7,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
 )
 
 // unknownResetBlock is how long a credential stays blocked when the gateway reports
@@ -149,7 +152,7 @@ func windowLabel(name string) string {
 // scheduleAt runs fn at the given time under the plugin lifetime, so a
 // pending reset never outlives the library.
 func scheduleAt(at time.Time, fn func()) {
-	startBackground(func(ctx context.Context) {
+	background.Go(func(ctx context.Context) {
 		timer := time.NewTimer(time.Until(at))
 		defer timer.Stop()
 		select {
@@ -163,8 +166,8 @@ func scheduleAt(at time.Time, fn func()) {
 // resetAuthCooldowns clears CPA's cooldowns for auth IDs. The executor sees
 // auth IDs while the host addresses auths by auth_index, so it is looked up.
 func resetAuthCooldowns(authIDs []string) {
-	h := newHost("")
-	files, errList := hostAuthList()
+	h := host.Detached()
+	files, errList := host.AuthList()
 	if errList != nil {
 		h.Log("warn", "OpenCode Go usage block ended but the auth list is unavailable; CPA cooldowns stay", map[string]any{"error": errList.Error()})
 		return
@@ -177,7 +180,7 @@ func resetAuthCooldowns(authIDs []string) {
 		if _, ok := wanted[file.ID]; !ok || file.AuthIndex == "" {
 			continue
 		}
-		if _, errReset := hostResetCooldown(file.AuthIndex); errReset != nil {
+		if _, errReset := host.ResetCooldown(file.AuthIndex); errReset != nil {
 			h.Log("warn", "OpenCode Go usage block ended but clearing the CPA cooldown failed", map[string]any{"auth_id": file.ID, "error": errReset.Error()})
 			continue
 		}

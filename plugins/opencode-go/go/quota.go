@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 type rpcQuotaFetchRequest struct {
@@ -33,23 +35,23 @@ func handleQuotaFetch(raw []byte) ([]byte, error) {
 	// models bill Console credits and Free models nothing, so neither has any.
 	switch authFamily(req.Attributes) {
 	case familyZen:
-		return okEnvelope(pluginapi.QuotaFetchResponse{Subscription: &pluginapi.QuotaSubscription{Plan: zenDisplayName}})
+		return rpc.OK(pluginapi.QuotaFetchResponse{Subscription: &pluginapi.QuotaSubscription{Plan: zenDisplayName}})
 	case familyFree:
-		return okEnvelope(pluginapi.QuotaFetchResponse{Subscription: &pluginapi.QuotaSubscription{Plan: freeDisplayName}})
+		return rpc.OK(pluginapi.QuotaFetchResponse{Subscription: &pluginapi.QuotaSubscription{Plan: freeDisplayName}})
 	}
 	cred, errCred := resolveCredential(req.StorageJSON, req.Attributes, req.Metadata)
 	var expired *loginExpiredError
 	if errors.As(errCred, &expired) {
-		return errorEnvelope("login_expired", errCred.Error(), http.StatusUnauthorized), nil
+		return rpc.Fail("login_expired", errCred.Error(), rpc.WithStatus(http.StatusUnauthorized)), nil
 	}
 	if errCred != nil {
-		return errorEnvelope("invalid_auth", errCred.Error(), http.StatusBadRequest), nil
+		return rpc.Fail("invalid_auth", errCred.Error(), rpc.WithStatus(http.StatusBadRequest)), nil
 	}
-	report, errFetch := fetchUsage(context.Background(), newHost(req.HostCallbackID), currentSettings(), cred.Bearer)
+	report, errFetch := fetchUsage(context.Background(), host.New(req.HostCallbackID), currentSettings(), cred.Bearer)
 	if errFetch != nil {
-		return errorEnvelope("upstream_error", errFetch.Error(), quotaErrorStatus(errFetch)), nil
+		return rpc.Fail("upstream_error", errFetch.Error(), rpc.WithStatus(quotaErrorStatus(errFetch))), nil
 	}
-	return okEnvelope(quotaResponse(report, cred.Name))
+	return rpc.OK(quotaResponse(report, cred.Name))
 }
 
 func quotaErrorStatus(err error) int {

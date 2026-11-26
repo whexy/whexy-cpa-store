@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
+	"github.com/whexy/whexy-cpa-store/pluginkit/background"
+	"github.com/whexy/whexy-cpa-store/pluginkit/host"
+	"github.com/whexy/whexy-cpa-store/pluginkit/manage"
 )
 
 // catalogRecheckInterval is how often the plugin re-reads every catalog on
@@ -83,7 +85,7 @@ type refreshOptions struct {
 // call model.for_auth for them; that answers from the catalogs just cached.
 // While models.dev cannot be read, the workspace lists are built from the
 // models.dev catalog read last, and the free catalog keeps its last list.
-func refreshCatalogs(ctx context.Context, doer httpDoer, opts refreshOptions) (refreshReport, error) {
+func refreshCatalogs(ctx context.Context, doer host.Doer, opts refreshOptions) (refreshReport, error) {
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
 		return refreshReport{}, errLoad
@@ -200,7 +202,7 @@ func stampFile(name string, kind fileKind, at time.Time) error {
 
 // reparseAuthFiles makes CPA parse every OpenCode Go auth file again,
 // replacing the auths an earlier plugin version parsed.
-func reparseAuthFiles(ctx context.Context, h host) {
+func reparseAuthFiles(ctx context.Context, h host.Client) {
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
 		h.Log("warn", "OpenCode Go could not read its auth files, so CPA keeps the auths an earlier plugin version parsed until the files next change", map[string]any{"error": errLoad.Error()})
@@ -267,7 +269,7 @@ var catalogWatchOnce sync.Once
 // the plugin's lifetime.
 func startCatalogWatch() {
 	catalogWatchOnce.Do(func() {
-		startBackground(func(ctx context.Context) {
+		background.Go(func(ctx context.Context) {
 			ticker := time.NewTicker(catalogRecheckInterval)
 			defer ticker.Stop()
 			for {
@@ -275,14 +277,14 @@ func startCatalogWatch() {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					recheckCatalogs(ctx, newHost(""))
+					recheckCatalogs(ctx, host.Detached())
 				}
 			}
 		})
 	})
 }
 
-func recheckCatalogs(ctx context.Context, h host) {
+func recheckCatalogs(ctx context.Context, h host.Client) {
 	report, errRefresh := refreshCatalogs(ctx, h, refreshOptions{})
 	if errRefresh != nil {
 		h.Log("warn", "OpenCode Go catalog check failed", map[string]any{"error": errRefresh.Error()})
@@ -353,10 +355,11 @@ var protocolLabels = map[sdktranslator.Format]string{
 	sdktranslator.FormatClaude:         "Messages",
 }
 
-func handleListModels(h host, _ pluginapi.ManagementRequest) (int, any, error) {
+func handleListModels(req manage.Request) (int, any, error) {
+	h := req.Host()
 	files, errLoad := loadAuthFiles()
 	if errLoad != nil {
-		return 0, nil, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
+		return 0, nil, manage.Errorf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errLoad)
 	}
 	cfg := currentSettings()
 	view := modelsView{DisablePrefix: cfg.DisablePrefix, Models: []modelView{}, Unregistered: []string{}, Unlisted: []string{}}
@@ -412,16 +415,17 @@ func handleListModels(h host, _ pluginapi.ManagementRequest) (int, any, error) {
 	return http.StatusOK, view, nil
 }
 
-func handleRefreshModels(h host, _ pluginapi.ManagementRequest) (int, any, error) {
+func handleRefreshModels(req manage.Request) (int, any, error) {
+	h := req.Host()
 	report, errRefresh := refreshCatalogs(context.Background(), h, refreshOptions{force: true, wait: registrationWait})
 	if errRefresh != nil {
-		return 0, nil, failf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errRefresh)
+		return 0, nil, manage.Errorf(http.StatusInternalServerError, "Could not read the OpenCode Go auth files: %v", errRefresh)
 	}
 	if len(report.Files) == 0 && len(report.Failures) > 0 {
-		return 0, nil, failf(http.StatusBadGateway, "Could not read the OpenCode catalog: %s", strings.Join(report.Failures, "; "))
+		return 0, nil, manage.Errorf(http.StatusBadGateway, "Could not read the OpenCode catalog: %s", strings.Join(report.Failures, "; "))
 	}
 	if len(report.Files) == 0 {
-		return 0, nil, failf(http.StatusConflict, "Nothing serves models: no enabled login or key has OpenCode Go or Zen on, and OpenCode Free is off.")
+		return 0, nil, manage.Errorf(http.StatusConflict, "Nothing serves models: no enabled login or key has OpenCode Go or Zen on, and OpenCode Free is off.")
 	}
 	return http.StatusOK, report, nil
 }
