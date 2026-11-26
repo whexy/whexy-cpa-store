@@ -8,6 +8,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 // promptSeparator sits between the client's system prompt and each appended
@@ -28,7 +29,7 @@ func interceptRequest(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode request intercept request: %w", errUnmarshal)
 	}
-	return okEnvelope(decide(req))
+	return rpc.OK(decide(req))
 }
 
 // decide matches the model the client asked for and the model it resolved to

@@ -5,160 +5,22 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>System Prompts</title>
     <style>
-      :root {
-        --font-sans:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu,
-          Cantarell, "Helvetica Neue", sans-serif;
-        --font-mono:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-        --radius: 8px;
-        /* Management Center floats its toolbar (and, when narrow, its menu
-           button) over the top 76px of the frame. */
-        --toolbar-clearance: 84px;
-        --bg-page: #faf9f5;
-        --bg-card: #f0eee8;
-        --bg-subtle: #e9e6df;
-        --bg-hover: #e2ded6;
-        --fg: #2d2a26;
-        --fg-2: #6d6760;
-        --fg-3: #a29c95;
-        --fg-4: #c0bab3;
-        --line: #e3e1db;
-        --line-2: #d5d2cb;
-        --accent: #8b8680;
-        --accent-hover: #7f7a74;
-        --accent-contrast: #ffffff;
-        --warn: #c65746;
-        --warn-text: #8a3a30;
-        --amber: #d97706;
-        --amber-text: #92400e;
-        --scrim: rgba(45, 42, 38, 0.28);
-        --hover-bg: rgba(0, 0, 0, 0.03);
-        color-scheme: light;
-      }
-      [data-theme="white"] {
-        --bg-page: #fff;
-        --bg-card: #fff;
-        --bg-subtle: #f6f6f6;
-        --bg-hover: #eee;
-        --line: #e5e5e5;
-        --line-2: #d5d5d5;
-      }
-      [data-theme="dark"] {
-        --bg-page: #151412;
-        --bg-card: #1d1b18;
-        --bg-subtle: #262320;
-        --bg-hover: #2e2a26;
-        --fg: #f6f4f1;
-        --fg-2: #c9c3bb;
-        --fg-3: #9c958d;
-        --fg-4: #6f6962;
-        --line: #3a3530;
-        --line-2: #4a453f;
-        --accent-hover: #9a948e;
-        --warn-text: #f1b0a6;
-        --amber: #f59e0b;
-        --amber-text: #fcd34d;
-        --scrim: rgba(0, 0, 0, 0.45);
-        --hover-bg: rgba(255, 255, 255, 0.04);
-        color-scheme: dark;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        font-family: var(--font-sans);
-        background: var(--bg-page);
-        color: var(--fg);
-        font-size: 13px;
-        line-height: 1.45;
-      }
-      [hidden] {
-        display: none !important;
-      }
-      :focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 3px;
-      }
-      .page {
-        max-width: 1200px;
-        min-height: 100vh;
-        margin: auto;
-        padding: var(--toolbar-clearance) 18px 22px;
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-      }
-      .head {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .head h1 {
-        margin: 0;
-        font-size: 15px;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-      }
-      .spacer {
-        flex: 1;
-        min-width: 0;
-      }
-      .facts {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-      }
       .fact {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        font-size: 11px;
-        color: var(--warn-text);
-        border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
-        background: color-mix(in srgb, var(--warn) 12%, transparent);
+        border: 1px solid var(--error-border);
         border-radius: 999px;
         padding: 2px 9px;
+        background: var(--error-bg);
+        color: var(--error-text);
+        font-size: 11px;
       }
-      .btn {
-        border: 1px solid var(--line-2);
-        background: var(--bg-card);
-        color: var(--fg);
-        font: inherit;
-        font-size: 12px;
-        padding: 5px 11px;
-        border-radius: 6px;
-        cursor: pointer;
-      }
-      .btn:hover {
-        background: var(--bg-hover);
-      }
-      .btn.primary {
-        background: var(--accent);
-        border-color: var(--accent);
-        color: var(--accent-contrast);
-        font-weight: 600;
-      }
-      .btn.primary:hover {
-        background: var(--accent-hover);
-      }
-      .btn.ghost {
-        background: transparent;
-        border-color: transparent;
-        color: var(--fg-2);
-      }
-      .btn.ghost:hover {
-        background: var(--hover-bg);
-        color: var(--fg);
-      }
-      .btn.danger,
-      .btn.danger:hover {
-        color: var(--warn-text);
-      }
-      button:disabled {
-        opacity: 0.5;
-        cursor: default;
+      .facts,
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
       }
       .rule {
         display: flex;
@@ -166,25 +28,23 @@
         gap: 10px;
         width: 100%;
         padding: 11px 12px;
-        border: 1px solid var(--line);
+        border: 1px solid var(--border);
         border-radius: var(--radius);
         background: var(--bg-card);
-        color: inherit;
-        font: inherit;
         text-align: left;
         cursor: pointer;
       }
       .rule:hover {
-        border-color: var(--line-2);
+        border-color: var(--border-strong);
       }
       .rule + .rule {
         margin-top: 10px;
       }
       .rule .order {
-        font-size: 11.5px;
-        color: var(--fg-3);
-        font-variant-numeric: tabular-nums;
         padding-top: 1px;
+        color: var(--text-tertiary);
+        font-size: 11.5px;
+        font-variant-numeric: tabular-nums;
       }
       .rule .main {
         flex: 1;
@@ -195,7 +55,7 @@
       }
       .preview {
         margin: 0;
-        color: var(--fg-2);
+        color: var(--text-secondary);
         font-size: 12px;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
@@ -204,144 +64,20 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
       }
-      .chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-      }
-      .chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        font-family: var(--font-mono);
-        font-size: 11px;
-        border: 1px solid var(--line);
-        border-radius: 5px;
-        padding: 1px 6px;
-        color: var(--fg-2);
-        background: var(--bg-page);
-      }
-      .chip.amber {
-        color: var(--amber-text);
-        border-color: color-mix(in srgb, var(--amber) 35%, transparent);
-        background: color-mix(in srgb, var(--amber) 10%, transparent);
-      }
-      .chip.warn {
+      .chip.error {
         font-family: var(--font-sans);
-        color: var(--warn-text);
-        border-color: color-mix(in srgb, var(--warn) 35%, transparent);
-        background: color-mix(in srgb, var(--warn) 10%, transparent);
       }
-      .chip button {
-        border: 0;
-        padding: 0 1px;
-        background: none;
-        color: var(--fg-3);
-        font: inherit;
-        cursor: pointer;
-      }
-      .chip button:hover {
-        color: var(--fg);
-      }
-      .note {
-        font-size: 11px;
-        color: var(--fg-3);
-      }
-      .empty {
-        padding: 32px;
-        text-align: center;
-        border: 1px dashed var(--line);
-        border-radius: var(--radius);
-      }
-      .error {
-        color: var(--warn-text);
-        font-size: 12px;
-        margin: 0;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-      }
-      .scrim {
-        position: fixed;
-        inset: 0;
-        z-index: 2;
-        background: var(--scrim);
-      }
-      .drawer {
-        position: fixed;
-        z-index: 3;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: min(480px, 100%);
-        margin: 0;
-        background: var(--bg-card);
-        border-left: 1px solid var(--line-2);
-        display: flex;
-        flex-direction: column;
-      }
-      .drawer:focus {
-        outline: none;
-      }
-      .dhead {
-        padding: var(--toolbar-clearance) 14px 10px;
-        border-bottom: 1px solid var(--line);
-      }
-      .dhead h2 {
-        margin: 0;
-        font-size: 14px;
-        font-weight: 600;
-      }
-      .dbody {
-        flex: 1;
-        min-height: 0;
-        padding: 12px 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        overflow: auto;
-      }
-      .dfoot {
-        padding: 10px 14px;
-        border-top: 1px solid var(--line);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .field {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      label.note {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      input[type="text"],
-      input[type="password"],
-      textarea {
-        font: inherit;
-        font-size: 12.5px;
-        color: var(--fg);
-        background: var(--bg-page);
-        border: 1px solid var(--line-2);
-        border-radius: 6px;
-        padding: 6px 8px;
-        width: 100%;
-      }
-      textarea {
+      #prompt {
         min-height: 220px;
-        resize: vertical;
-        line-height: 1.5;
       }
       .pick {
-        border: 1px solid var(--line);
-        border-radius: 6px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
         overflow: hidden;
       }
       .pick .search {
         padding: 8px;
-        border-bottom: 1px solid var(--line);
+        border-bottom: 1px solid var(--border);
       }
       .pick ul {
         list-style: none;
@@ -361,23 +97,23 @@
       }
       .pick li:hover,
       .pick li[aria-selected="true"] {
-        background: var(--hover-bg);
+        background: var(--bg-hover);
       }
       .pick li .box {
         flex: none;
         width: 13px;
         height: 13px;
-        border: 1px solid var(--line-2);
+        border: 1px solid var(--border-strong);
         border-radius: 3px;
         display: flex;
         align-items: center;
         justify-content: center;
+        color: var(--primary-contrast);
         font-size: 10px;
-        color: var(--accent-contrast);
       }
       .pick li[data-on="1"] .box {
-        background: var(--accent);
-        border-color: var(--accent);
+        background: var(--primary);
+        border-color: var(--primary);
       }
       .pick li .m {
         flex: 1;
@@ -389,37 +125,12 @@
         text-overflow: ellipsis;
       }
       .pick li .st {
+        color: var(--text-tertiary);
         font-size: 10.5px;
-        color: var(--fg-3);
         white-space: nowrap;
       }
       .pick .none {
         padding: 6px;
-      }
-      #auth {
-        max-width: 360px;
-        padding: 20px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius);
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
-        border: 0;
-      }
-      @media (max-width: 700px) {
-        .page {
-          padding-inline: 12px;
-        }
       }
     </style>
   </head>
@@ -433,19 +144,20 @@
           New rule
         </button>
       </div>
-      <form id="auth" hidden>
-        <label class="note" for="auth-key">Management key</label
+      <form class="auth" id="auth" hidden>
+        <label for="auth-key">Management key</label
         ><input
           id="auth-key"
           type="password"
           autocomplete="current-password"
           required
         /><button class="btn primary" type="submit">Continue</button>
+        <p class="error" id="auth-error" role="alert" hidden></p>
       </form>
       <p id="error" class="error" role="alert" hidden></p>
       <div id="facts" class="facts"></div>
       <div id="rules" aria-live="polite">
-        <span class="note">Loading…</span>
+        <span class="hint">Loading…</span>
       </div>
     </main>
     <div id="scrim" class="scrim" hidden></div>
@@ -458,10 +170,10 @@
       tabindex="-1"
       hidden
     >
-      <div class="dhead"><h2 id="editor-title"></h2></div>
-      <div class="dbody">
+      <div class="drawer-head"><h2 id="editor-title"></h2></div>
+      <div class="drawer-body">
         <div class="field" role="group" aria-labelledby="models-label">
-          <span class="note" id="models-label">Models</span>
+          <span class="label" id="models-label">Models</span>
           <div id="selected" class="chips"></div>
           <div class="pick">
             <div class="search">
@@ -481,15 +193,13 @@
             <ul id="catalog" role="listbox" aria-multiselectable="true"></ul>
           </div>
         </div>
-        <label class="note" for="prompt"
-          >Appended to the system prompt<textarea
-            id="prompt"
-            spellcheck="false"
-          ></textarea>
-        </label>
+        <div class="field">
+          <label for="prompt">Appended to the system prompt</label
+          ><textarea id="prompt" spellcheck="false"></textarea>
+        </div>
         <p id="editor-error" class="error" role="alert" hidden></p>
       </div>
-      <div class="dfoot">
+      <div class="drawer-foot">
         <button id="delete" type="button" class="btn ghost danger" hidden>
           Delete
         </button>
@@ -499,168 +209,10 @@
       </div>
     </form>
     <script>
-      const $ = (id) => document.getElementById(id);
-      const PLUGIN_ID = "system-prompt";
-      const API = "/v0/management/" + PLUGIN_ID;
-      const CPA = "/v8/management";
-      const CONFIG = CPA + "/config/plugins/configs/" + PLUGIN_ID;
-      const SESSION_KEY = PLUGIN_ID + ".management-key";
-      const REJECTED_KEY = PLUGIN_ID + ".rejected-mc-auth";
-      const MC_AUTH_KEY = "cli-proxy-auth";
-      const MC_THEME_KEY = "cli-proxy-theme";
+      "use strict";
+      const { $, h, AuthError, auth, api, request, paths } = kit;
+      const CONFIG = paths.pluginConfig;
 
-      function storageGet(storage, key) {
-        try {
-          return storage.getItem(key);
-        } catch (_) {
-          return null;
-        }
-      }
-      function storageSet(storage, key, value) {
-        try {
-          storage.setItem(key, value);
-        } catch (_) {}
-      }
-      function storageRemove(storage, key) {
-        try {
-          storage.removeItem(key);
-        } catch (_) {}
-      }
-      function managementCenterTheme() {
-        try {
-          if (window.parent !== window)
-            return (
-              window.parent.document.documentElement.getAttribute(
-                "data-theme",
-              ) || "light"
-            );
-        } catch (_) {}
-        let saved = "auto";
-        try {
-          const persisted = JSON.parse(storageGet(localStorage, MC_THEME_KEY));
-          saved = persisted?.state?.theme || saved;
-        } catch (_) {}
-        return saved === "auto"
-          ? matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "white"
-          : saved;
-      }
-      function applyTheme() {
-        document.documentElement.setAttribute(
-          "data-theme",
-          managementCenterTheme(),
-        );
-      }
-      applyTheme();
-      matchMedia("(prefers-color-scheme: dark)").addEventListener(
-        "change",
-        applyTheme,
-      );
-      window.addEventListener("storage", (event) => {
-        if (event.key === MC_THEME_KEY) applyTheme();
-      });
-      try {
-        if (window.parent !== window)
-          new MutationObserver(applyTheme).observe(
-            window.parent.document.documentElement,
-            { attributes: true, attributeFilter: ["data-theme"] },
-          );
-      } catch (_) {}
-
-      // Management Center keeps its key obfuscated in localStorage.
-      function deobfuscate(payload) {
-        const prefix = "enc::v1::";
-        if (!payload.startsWith(prefix)) return payload;
-        const binary = atob(payload.slice(prefix.length));
-        const secret = new TextEncoder().encode(
-          "cli-proxy-api-webui::secure-storage|" +
-            location.host +
-            "|" +
-            navigator.userAgent,
-        );
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++)
-          bytes[i] = binary.charCodeAt(i) ^ secret[i % secret.length];
-        return new TextDecoder().decode(bytes);
-      }
-      function resolveKey() {
-        const typed = storageGet(sessionStorage, SESSION_KEY);
-        if (typed) return { key: typed, source: "session" };
-        const raw = storageGet(localStorage, MC_AUTH_KEY);
-        if (raw && raw !== storageGet(sessionStorage, REJECTED_KEY)) {
-          try {
-            const key = JSON.parse(deobfuscate(raw))?.state?.managementKey;
-            if (typeof key === "string" && key.trim())
-              return { key: key.trim(), source: "mc" };
-          } catch (_) {}
-        }
-        return { key: "", source: "" };
-      }
-      const auth = resolveKey();
-      class AuthError extends Error {}
-      function forgetKey() {
-        if (auth.source === "mc")
-          storageSet(
-            sessionStorage,
-            REJECTED_KEY,
-            storageGet(localStorage, MC_AUTH_KEY) || "",
-          );
-        storageRemove(sessionStorage, SESSION_KEY);
-        auth.key = "";
-        auth.source = "";
-        closeEditor(true);
-        $("auth").hidden = false;
-        $("auth-key").focus();
-      }
-      async function request(path, method = "GET", body, missing) {
-        if (!auth.key) throw new AuthError("No management key.");
-        const headers = { Authorization: "Bearer " + auth.key };
-        if (body !== undefined) headers["Content-Type"] = "application/json";
-        const response = await fetch(path, {
-          method,
-          headers,
-          body: body === undefined ? undefined : JSON.stringify(body),
-          cache: "no-store",
-          credentials: "omit",
-        });
-        let data;
-        try {
-          data = await response.json();
-        } catch (_) {
-          throw new Error(path + " · HTTP " + response.status);
-        }
-        if (response.status === 401) {
-          forgetKey();
-          throw new AuthError(data.error || "Management key rejected.");
-        }
-        if (
-          response.status === 404 &&
-          missing !== undefined &&
-          data.error === "not_found"
-        )
-          return missing;
-        if (!response.ok)
-          throw new Error(data.error || path + " · HTTP " + response.status);
-        return data;
-      }
-      function h(tag, props = {}, ...children) {
-        const el = document.createElement(tag);
-        for (const [key, value] of Object.entries(props)) {
-          if (value === false || value === undefined || value === null)
-            continue;
-          if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
-          else el.setAttribute(key, value === true ? "" : String(value));
-        }
-        for (const child of children.flat(Infinity))
-          if (child !== null && child !== undefined && child !== false)
-            el.append(
-              child instanceof Node
-                ? child
-                : document.createTextNode(String(child)),
-            );
-        return el;
-      }
       function showError(id, message) {
         $(id).textContent = message;
         $(id).hidden = !message;
@@ -686,7 +238,7 @@
       // key reads it, because a client-keys policy shortens one key's list;
       // with no client keys CPA serves it without one.
       async function listModels(key) {
-        const response = await fetch("/v1/models", {
+        const response = await fetch(paths.base + "/v1/models", {
           headers: key ? { Authorization: "Bearer " + key } : {},
           cache: "no-store",
           credentials: "omit",
@@ -707,12 +259,9 @@
         return data.data;
       }
       async function servedModels() {
-        const saved = await request(
-          CPA + "/config/access/api-keys",
-          "GET",
-          undefined,
-          [],
-        );
+        const saved = await kit.cpa("/config/access/api-keys", {
+          missing: [],
+        });
         const keys = [
           ...new Set(
             (Array.isArray(saved) ? saved : [])
@@ -761,7 +310,7 @@
         return h(
           "span",
           {
-            class: unmatched ? "chip amber" : "chip",
+            class: unmatched ? "chip warn" : "chip",
             title: unmatched ? "Matches no model CPA serves now" : null,
           },
           pattern,
@@ -770,7 +319,7 @@
       function renderRules() {
         const list = $("rules");
         if (!rules.length) {
-          list.replaceChildren(h("div", { class: "empty note" }, "No rules"));
+          list.replaceChildren(h("div", { class: "empty" }, "No rules"));
           return;
         }
         list.replaceChildren(
@@ -793,7 +342,7 @@
                   "span",
                   { class: "chips" },
                   models.map((model) => modelChip(String(model))),
-                  problem && h("span", { class: "chip warn" }, problem),
+                  problem && h("span", { class: "chip error" }, problem),
                 ),
                 h(
                   "span",
@@ -811,8 +360,8 @@
         $("new").disabled = true;
         try {
           const [loaded, applied] = await Promise.all([
-            request(CONFIG, "GET", undefined, null),
-            request(API + "/status"),
+            request(CONFIG, { missing: null }),
+            api("/status"),
           ]);
           config = loaded;
           rules = Array.isArray(config?.rules) ? config.rules : [];
@@ -944,7 +493,7 @@
           list.replaceChildren(
             h(
               "li",
-              { class: "none note", role: "presentation" },
+              { class: "none hint", role: "presentation" },
               catalog ? "No served models" : "Loading models…",
             ),
           );
@@ -1023,7 +572,7 @@
       // PATCH replaces lists, so every write starts from a fresh read and
       // refuses to overwrite a rule someone else changed meanwhile.
       async function writeRules(change) {
-        const latest = await request(CONFIG, "GET", undefined, null);
+        const latest = await request(CONFIG, { missing: null });
         const next = Array.isArray(latest?.rules) ? [...latest.rules] : [];
         if (
           editing.index !== null &&
@@ -1036,7 +585,10 @@
               " changed since this page loaded. Reload.",
           );
         change(next);
-        await request(CONFIG, "PATCH", { ...latest, rules: next });
+        await request(CONFIG, {
+          method: "PATCH",
+          body: { ...latest, rules: next },
+        });
       }
       async function commit(change) {
         saving = true;
@@ -1093,25 +645,11 @@
         openEditor(null, event.currentTarget),
       );
       $("reload").addEventListener("click", () => reload());
-      $("auth").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        auth.key = $("auth-key").value.trim();
-        auth.source = "typed";
-        if (!auth.key) return;
-        $("auth").hidden = true;
-        await reload();
-        if (auth.key && status) {
-          storageSet(sessionStorage, SESSION_KEY, auth.key);
-          auth.source = "session";
-          $("auth-key").value = "";
-        } else $("auth").hidden = false;
-      });
-      if (auth.key) reload();
-      else {
-        $("auth").hidden = false;
+      auth.onRejected(() => {
+        closeEditor(true);
         $("rules").replaceChildren();
-        showError("error", "No management key.");
-      }
+      });
+      auth.init(reload);
     </script>
   </body>
 </html>

@@ -1,12 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/whexy/whexy-cpa-store/pluginkit/config"
 )
 
 // ruleSet is one compiled configuration; it is never modified once stored.
@@ -63,22 +62,12 @@ func configure(raw []byte) {
 	currentRuleSet.Store(rules)
 }
 
+// compileLifecycle reads plugins.configs.system-prompt. Other top-level
+// fields belong to the host (enabled, priority, store).
 func compileLifecycle(raw []byte) *ruleSet {
-	var request lifecycleRequest
-	if len(raw) > 0 {
-		if errUnmarshal := json.Unmarshal(raw, &request); errUnmarshal != nil {
-			return &ruleSet{err: "decode lifecycle request: " + errUnmarshal.Error()}
-		}
-	}
-	return compileRules(request.ConfigYAML)
-}
-
-// compileRules reads plugins.configs.system-prompt. Other top-level fields
-// belong to the host (enabled, priority, store).
-func compileRules(configYAML []byte) *ruleSet {
 	var doc configDocument
-	if errUnmarshal := yaml.Unmarshal(configYAML, &doc); errUnmarshal != nil {
-		return &ruleSet{err: "decode plugin config: " + errUnmarshal.Error()}
+	if errDecode := config.Decode(raw, &doc); errDecode != nil {
+		return &ruleSet{err: errDecode.Error()}
 	}
 	rules := &ruleSet{}
 	for index, config := range doc.Rules {

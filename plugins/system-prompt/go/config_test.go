@@ -6,14 +6,23 @@ import (
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/whexy/whexy-cpa-store/pluginkit/rpc"
 )
 
 func configureYAML(t *testing.T, configYAML string) {
 	t.Helper()
 	previous := currentRuleSet.Load()
 	t.Cleanup(func() { currentRuleSet.Store(previous) })
-	raw, _ := json.Marshal(lifecycleRequest{ConfigYAML: []byte(configYAML)})
-	configure(raw)
+	configure(lifecycle(configYAML))
+}
+
+func lifecycle(configYAML string) []byte {
+	raw, _ := json.Marshal(rpc.LifecycleRequest{ConfigYAML: []byte(configYAML)})
+	return raw
+}
+
+func compileYAML(configYAML []byte) *ruleSet {
+	return compileLifecycle(lifecycle(string(configYAML)))
 }
 
 func interceptRequestFor(format, requested, model, body string) pluginapi.RequestInterceptRequest {
@@ -26,7 +35,7 @@ func interceptRequestFor(format, requested, model, body string) pluginapi.Reques
 }
 
 func TestCompileRules(t *testing.T) {
-	rules := compileRules([]byte(`
+	rules := compileYAML([]byte(`
 enabled: true
 priority: 10
 rules:
@@ -52,13 +61,13 @@ rules:
 
 func TestCompileRulesUnreadable(t *testing.T) {
 	for _, configYAML := range []string{"rules: {models: x}", "rules: [", "rules: [{models: {a: b}}]"} {
-		rules := compileRules([]byte(configYAML))
+		rules := compileYAML([]byte(configYAML))
 		if rules.err == "" || len(rules.rules) != 0 {
-			t.Fatalf("compileRules(%q) = %+v, want an error and no rules", configYAML, rules)
+			t.Fatalf("compileYAML(%q) = %+v, want an error and no rules", configYAML, rules)
 		}
 	}
-	if rules := compileRules(nil); rules.err != "" || len(rules.rules) != 0 {
-		t.Fatalf("compileRules(nil) = %+v, want no rules and no error", rules)
+	if rules := compileYAML(nil); rules.err != "" || len(rules.rules) != 0 {
+		t.Fatalf("compileYAML(nil) = %+v, want no rules and no error", rules)
 	}
 }
 
